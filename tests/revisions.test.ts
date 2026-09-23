@@ -3,6 +3,7 @@ import { Store } from '../src/runtime/store';
 import { RevisionStore } from '../src/runtime/revisions';
 import { createArtifact, digest } from '../src/core/artifact';
 import { decodeProject } from '../src/runtime/decode-project';
+import type { Signal } from '../src/core';
 import demo from '../project/project';
 test('actual SQLite stores builds, separates published/applied, and compare-and-swaps',async()=>{
   const store=new Store(':memory:');await store.init();const revisions=new RevisionStore(store.sql);await revisions.init();
@@ -14,6 +15,6 @@ test('actual SQLite stores builds, separates published/applied, and compare-and-
     await expect(revisions.publish(b.hash,null)).rejects.toThrow('changed');await revisions.publish(b.hash,a.hash);
     await expect(revisions.apply(b.hash,null)).rejects.toThrow('changed');expect((await revisions.state()).applied).toBe(a.hash);
     await revisions.apply(b.hash,a.hash);const restored=new RevisionStore(store.sql);expect((await restored.state()).applied).toBe(b.hash);
-    const model=decodeProject((await restored.get(b.hash)).model);expect(model.equipment).toHaveLength(4);expect(model.pipes[0]?.flow).toBe(model.signals.flow);
+    const model=decodeProject((await restored.get(b.hash)).model);expect(model.equipment).toHaveLength(4);expect(model.pipes[0]?.flow).toBe(model.signals.flow as Signal<number>);
   } finally {await store.close();}
 });
