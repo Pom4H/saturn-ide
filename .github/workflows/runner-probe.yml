@@ -1,0 +1,24 @@
+name: Runner probe
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/runner-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Prove runner execution
+        run: |
+          mkdir -p artifacts
+          printf 'runner-ok\n' > artifacts/runner.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runner-probe
+          path: artifacts/runner.txt
+          retention-days: 1
