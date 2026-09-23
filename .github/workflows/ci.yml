@@ -1,0 +1,61 @@
+name: MVP checks
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: saturn-ide-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: saturn
+          POSTGRES_PASSWORD: saturn
+          POSTGRES_DB: saturn
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      TEST_POSTGRES_URL: postgres://saturn:saturn@127.0.0.1:5432/saturn
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - name: Install
+        run: |
+          if test -f bun.lock; then bun install --frozen-lockfile; else bun install; fi
+      - name: Typecheck
+        run: bun run check
+      - name: Unit and integration tests (SQLite and real PostgreSQL)
+        run: bun test tests
+      - name: Chromium
+        run: bunx playwright install --with-deps chromium
+      - name: Browser round trip and real screenshots
+        run: bun run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mvp-evidence
+          path: artifacts/
+          retention-days: 14
+      - name: Save the first verified dependency lock
+        if: success()
+        run: |
+          if ! git ls-files --error-unmatch bun.lock >/dev/null 2>&1; then
+            if [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA" ]; then
+              git config user.name 'github-actions[bot]'
+              git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+              git add -- bun.lock
+              git commit -m 'chore: lock dependencies verified by MVP checks'
+              git push origin HEAD:main
+            fi
+          fi

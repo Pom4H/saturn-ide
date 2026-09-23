@@ -1,0 +1,6 @@
+node_modules/
+.saturn/
+.env
+.env.*
+!.env.example
+artifacts/
