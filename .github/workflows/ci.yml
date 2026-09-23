@@ -13,14 +13,21 @@ permissions:
 
 jobs:
   check:
-    # GitHub-hosted jobs for this private repository are currently failing before
-    # step execution. Use the same proven Windows self-hosted runner as Saturn's
-    # visual evidence workflows so browser screenshots are actually produced.
-    runs-on: [self-hosted, windows]
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
-    defaults:
-      run:
-        shell: powershell
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: saturn
+          POSTGRES_PASSWORD: saturn
+          POSTGRES_DB: saturn
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      TEST_POSTGRES_URL: postgres://saturn:saturn@127.0.0.1:5432/saturn
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -32,20 +39,16 @@ jobs:
 
       - name: Install
         run: |
-          if (Test-Path bun.lock) {
-            bun install --frozen-lockfile
-          } else {
-            bun install
-          }
+          if test -f bun.lock; then bun install --frozen-lockfile; else bun install; fi
 
       - name: Typecheck
         run: bun run check
 
-      - name: Unit and integration tests
+      - name: Unit and integration tests (SQLite and real PostgreSQL)
         run: bun test tests
 
       - name: Chromium
-        run: bunx playwright install chromium
+        run: bunx playwright install --with-deps chromium
 
       - name: Browser round trip and real screenshots
         run: bun run test:browser
