@@ -5,6 +5,7 @@ import { text, type Driver, type Problem, type Project } from '../core';
 import type { IDEState } from '../protocol';
 import { Workspace, HttpError, hash } from '../workspace/files';
 import { Builder, BuildError, type DraftBuild } from '../workspace/build';
+import { indexResources } from '../workspace/resource-index';
 import { Git } from '../workspace/git';
 import { Store } from '../runtime/store';
 import { Events } from '../runtime/events';
@@ -51,9 +52,7 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
   }
   const apply = async (build: NonNullable<typeof draft>['artifact'], expected: string | null) => {
     try { await manager.apply(build, expected); }
-    finally {
-      releaseState = await revisions.state(); events.emit('project', state());
-    }
+    finally { releaseState = await revisions.state(); events.emit('project', state()); }
   };
   // Restore runtime before reading the working tree. A broken draft cannot replace its applied build.
   if (releaseState.applied) {
@@ -66,9 +65,7 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
       const next = await builder.build(); draft = next; problems = [];
       await revisions.put(next.artifact);
       if (!manager.applied) { runtime.project = next.project; await runtime.init(); }
-      // This is a trusted local project, not a sandbox. Automatic preview is opt-out
-      // and applies only while BOTH the current and candidate drivers are simulators.
-      // Live application is always an explicit operation and requires a lockfile.
+      // Automatic preview is simulator-only. Listing/opening resource files never activates code.
       if (autoPreview && (mode() === 'simulation' || manager.phase === 'empty')) {
         const candidate = await ProjectInstallation.prepare(next.artifact, runtime, dataDir);
         if (candidate.driver?.mode === 'simulation') {
@@ -105,6 +102,7 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
         if (request.method === 'GET') {
           if (path === '/api/state') return json(state());
           if (path === '/api/events') return events.response(request, state());
+          if (path === '/api/resources') return json(indexResources(workspace, runtime.project, manager.applied ?? ''));
           if (path === '/api/releases') return json({ key, source: draft?.artifact.provenance ?? null, checked: draft?.artifact.hash ?? null, ...await revisions.state(), phase: manager.phase, error: manager.error });
           if (path === '/api/files') return json(workspace.list());
           if (path === '/api/file') return json(workspace.read(url.searchParams.get('path') ?? 'project.ts'));

@@ -1,0 +1,27 @@
+/* Native CSS enhancement of the existing Shell tokens, not a second design system. */
+.resource-icon{flex-shrink:0;vertical-align:middle;color:var(--muted)}
+.resource-explorer{container:resource-explorer/inline-size;flex:1;min-height:0;overflow:auto}
+.resource-search{display:flex;align-items:center;gap:6px;margin:9px 8px;padding:3px 6px;border:1px solid var(--border);border-radius:3px}
+.resource-search input{padding:2px 0;width:100%;border:0;outline:0;background:transparent;font-size:11px}
+.resource-row{display:flex;align-items:center;gap:2px;min-height:34px;border-inline-start:2px solid transparent}
+.resource-row.active{background:var(--accent-soft);border-inline-start-color:var(--accent)}
+.resource-disclosure{width:14px;flex-shrink:0;border:0;background:transparent;padding:0;font-size:11px}
+.resource-open{display:grid;grid-template-columns:18px minmax(0,1fr);column-gap:7px;row-gap:1px;align-items:center;flex:1;min-width:0;text-align:left;border:0;background:transparent;padding:5px 7px 5px 0}
+.resource-open>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.resource-open>code{grid-column:2;color:var(--muted);font-size:9px}
+.resource-row.active .resource-icon{color:var(--accent)}
+.resource-tabs{height:35px;flex-shrink:0;display:flex;align-items:stretch;overflow:auto;background:var(--panel);border-bottom:1px solid var(--border)}
+.resource-tabs>div{display:flex;border-right:1px solid var(--border);border-bottom:2px solid transparent;flex-shrink:0}
+.resource-tabs>div.active{border-bottom-color:var(--accent);background:var(--editor)}
+.resource-tabs button{display:flex;align-items:center;gap:6px;border:0;background:transparent;white-space:nowrap;font-size:11px;padding:4px 10px}
+.resource-tabs button+button{padding:4px 7px;color:var(--muted)}
+.resource-link{flex-direction:row;align-items:center;gap:6px}
+.command-results>button{justify-content:flex-start;gap:9px}
+.pane-heading>code{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.environment-surface dd{overflow-wrap:anywhere}
+.workbench{container:workbench/inline-size}
+@container resource-explorer (min-width:280px){.resource-open{grid-template-columns:18px minmax(0,1fr) auto}.resource-open>code{grid-column:3}}
+@container workbench (max-width:600px){.diagram-workspace:has(.code-pane){flex-direction:column}.diagram-workspace>.code-pane{width:100%;max-width:none;height:45%;min-height:130px;resize:none;border-right:0;border-bottom:1px solid var(--border)}}
+/* Keep selection readable while zooming; physical pipe thickness still scales with its geometry. */
+.selection{vector-effect:non-scaling-stroke}
+@media print{.resource-tabs{display:none!important}}

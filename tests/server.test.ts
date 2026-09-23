@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { expect, test } from 'bun:test';
 import { createApp } from '../src/host/dev';
 import type { IDEState } from '../src/protocol';
+import type { ResourceCatalog } from '../src/core/resources';
 import type { SourceFile } from '../src/workspace/files';
 import { fixture } from './helpers';
 test('real dev host: simulator preview, telemetry, safe writes and last-good applied build', async () => {
@@ -10,12 +11,16 @@ test('real dev host: simulator preview, telemetry, safe writes and last-good app
   try {
     const base = app.server.url, state = await fetch(new URL('api/state', base)).then(r => r.json()) as IDEState;
     expect(state.problems).toEqual([]); expect(state.mode).toBe('simulation'); expect(state.snapshot.samples['pump.rpm']?.value).toBe(1450);
+    const catalog = await fetch(new URL('api/resources', base)).then(r => r.json()) as ResourceCatalog;
+    const pump = catalog.resources.find(r => r.entityId === 'P-01')!;
+    expect(pump.icon).toBe('pump'); expect(pump.source?.path).toBe('equipment/P-01.device.ts');
+    expect(catalog.resources.filter(r => r.source?.path === pump.source?.path)).toHaveLength(1);
     const post = (path: string, body: unknown, headers: Record<string,string> = {}) => fetch(new URL(`api/${path}`, base), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Saturn-Key': state.key, ...headers }, body: JSON.stringify(body) });
     expect((await post('command', { signal:'pump.run', value:false }, { 'X-Saturn-Key':'wrong' })).status).toBe(403);
     expect((await post('command', { signal:'pump.run', value:false }, { Origin:'https://evil.test' })).status).toBe(403);
     expect((await post('command', { signal:'pump.run', value:false })).status).toBe(200);
     await Bun.sleep(1200); expect(app.state().snapshot.samples['pump.run']?.value).toBe(false);
-    const file = app.workspace.read('project.ts');
+    const file = app.workspace.read('equipment/P-01.device.ts');
     const saved = await (await post('file', { ...file, source:file.source.replace('x: 335','x: 375') })).json() as { file:SourceFile; state:IDEState };
     expect(saved.state.problems).toEqual([]); expect(saved.state.project.equipment.find(e => e.id==='P-01')?.x).toBe(375);
     await Bun.sleep(1100); expect(app.state().snapshot.samples['pump.run']?.value).toBe(false);
@@ -34,7 +39,7 @@ test('manual preview: saving cannot publish/apply until explicitly requested', a
     const post=(path:string,body:unknown)=>fetch(new URL(`api/${path}`,app.server.url),{method:'POST',headers:{'Content-Type':'application/json','X-Saturn-Key':initial.key},body:JSON.stringify(body)});
     expect((await post('publish',{hash:initial.checked,expectedPublished:null})).ok).toBe(true);
     expect((await post('apply',{hash:initial.checked,expectedApplied:null})).ok).toBe(true);
-    const file=app.workspace.read('project.ts');await post('file',{...file,source:file.source.replace('x: 335','x: 360')});
+    const file=app.workspace.read('equipment/P-01.device.ts');await post('file',{...file,source:file.source.replace('x: 335','x: 360')});
     const next=await releases();expect(next.checked).not.toBe(initial.checked);expect(next.applied).toBe(initial.checked);expect(next.published).toBe(initial.checked);
     expect(app.state().project.equipment.find(e=>e.id==='P-01')?.x).toBe(335);
     expect((await post('apply',{hash:next.checked,expectedApplied:initial.checked})).status).toBe(409);

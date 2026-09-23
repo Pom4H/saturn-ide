@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
 import { geometry } from '../geometry';
 import { routeConnections, routePath } from '../topology';
-import { advancePhase, flowOf, rpmOf } from '../motion';
+import { useSvgMotion } from './svg-motion';
 import { Symbol } from './symbols';
 export interface SceneProps {
   project:Project;snapshot:Snapshot;locale:Locale;selected:string;focus?:string;fit?:number;ports?:boolean;
@@ -11,7 +11,8 @@ export interface SceneProps {
 export function Scene(props:SceneProps){
   const svg=useRef<SVGSVGElement>(null),latest=useRef(props);latest.current=props;
   const drag=useRef<{id:string;x:number;y:number;sx:number;sy:number;moved:boolean}|null>(null);
-  const pan=useRef<{x:number;y:number;box:number[]}|null>(null),phases=useRef(new Map<string,number>());
+  const pan=useRef<{x:number;y:number;box:number[]}|null>(null);
+  useSvgMotion(svg,props.project,props.snapshot,props.focus);
   const base=props.focus?props.project.equipment.filter(e=>e.id===props.focus):props.project.equipment;
   const bounds=()=>{
     if(props.focus&&base[0]){const e=base[0],g=geometry[e.kind];return [e.x-18,e.y-30,g.width+36,g.height+70];}
@@ -25,21 +26,8 @@ export function Scene(props:SceneProps){
   useEffect(()=>{
     const node=svg.current!;
     const wheel=(event:WheelEvent)=>{if(latest.current.focus)return;event.preventDefault();const factor=Math.exp(Math.max(-.2,Math.min(.2,event.deltaY*.001)));setBox(([x=0,y=0,w=850,h=460])=>{const width=Math.max(200,Math.min(8000,w*factor)),height=h*width/w;return [x+(w-width)/2,y+(h-height)/2,width,height];});};
-    node.addEventListener('wheel',wheel,{passive:false});let frame=0,last=performance.now();
-    const tick=(now:number)=>{
-      const dt=(now-last)/1000;last=now;const p=latest.current,reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if(!document.hidden){
-        for(const equipment of p.project.equipment){const rpm=rpmOf(equipment,p.snapshot),phase=advancePhase(phases.current.get(equipment.id)??0,reduced||rpm===null?0:rpm/1450*.35,dt);phases.current.set(equipment.id,phase);
-          const rotor=node.querySelector<SVGGElement>(`[data-equipment="${equipment.id}"] [data-part="rotor"]`);
-          if(rotor){rotor.style.animation='none';rotor.style.transform=`rotate(${phase*360}deg)`;rotor.dataset.phase=String(phase);}
-        }
-        for(const pipe of p.project.pipes){const flow=flowOf(pipe,p.project,p.snapshot),phase=advancePhase(phases.current.get(pipe.id)??0,reduced||flow===null?0:Math.sign(flow)*Math.min(2,Math.abs(flow)/18),dt);phases.current.set(pipe.id,phase);
-          const path=node.querySelector<SVGPathElement>(`[data-pipe="${pipe.id}"] .flow`);if(path){path.style.animation='none';path.style.strokeDashoffset=String(-phase*46);path.style.opacity=flow===null||flow===0?'0':'.8';}
-        }
-      }
-      frame=requestAnimationFrame(tick);
-    };frame=requestAnimationFrame(tick);
-    return()=>{cancelAnimationFrame(frame);node.removeEventListener('wheel',wheel);};
+    node.addEventListener('wheel',wheel,{passive:false});
+    return()=>node.removeEventListener('wheel',wheel);
   },[]);
   const start=(event:PointerEvent,e:Equipment)=>{event.stopPropagation();props.select(e.id);if(event.button!==0||!props.begin?.(e.id))return;const p=coordinate(event);drag.current={id:e.id,x:e.x,y:e.y,sx:p.x,sy:p.y,moved:false};svg.current!.setPointerCapture(event.pointerId);};
   const finish=(cancel:boolean)=>{pan.current=null;if(drag.current){const d=drag.current;drag.current=null;props.end?.(cancel||!d.moved);}};
