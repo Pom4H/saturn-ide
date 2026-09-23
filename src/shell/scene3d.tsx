@@ -107,7 +107,7 @@ export default function Scene3D(props:SceneProps){
     renderer.domElement.addEventListener('pointerdown',pointerDown);renderer.domElement.addEventListener('pointerup',select);
     const theme=matchMedia('(prefers-color-scheme: dark)'),applyTheme=()=>{const bg=theme.matches?0x1b2631:0xe8eef0;scene.background=new T.Color(bg);floor.material.color.set(theme.matches?0x27343f:0xdde5e8);};applyTheme();theme.addEventListener('change',applyTheme);
     let frame=0,last=performance.now(),count=0;
-    const selection=new T.BoxHelper(undefined,0x258ebb);selection.visible=false;scene.add(selection);
+    const selection=new T.BoxHelper(world,0x258ebb);selection.visible=false;scene.add(selection);
     const tick=(now:number)=>{const dt=Math.min(.1,(now-last)/1000);last=now;if(!document.hidden){const elapsed=matchMedia('(prefers-reduced-motion: reduce)').matches?0:dt;for(const update of updaters)update(elapsed);const chosen=roots.get(current.current.selected);selection.visible=!!chosen;if(chosen)selection.setFromObject(chosen);controls.update();renderer.render(scene,camera);node.dataset.frames=String(++count);}frame=requestAnimationFrame(tick);};frame=requestAnimationFrame(tick);
     return()=>{cancelAnimationFrame(frame);resize.disconnect();theme.removeEventListener('change',applyTheme);controls.dispose();selection.geometry.dispose();selection.material.dispose();environment.dispose();for(const g of geometries)g.dispose();for(const m of materials)m.dispose();floor.geometry.dispose();floor.material.dispose();grid.geometry.dispose();for(const m of Array.isArray(grid.material)?grid.material:[grid.material])m.dispose();renderer.dispose();renderer.domElement.remove();rebuild.current=()=>{};fit.current=()=>{};};
   },[]);
