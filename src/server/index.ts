@@ -168,9 +168,10 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
   let closed = false;
   const close = async () => {
     if (closed) return; closed = true;
-    watcher.close(); clearTimeout(debounce); clearInterval(background); clearInterval(retention); stopDriver?.();
-    await reloadQueue; await runtime.serial(async () => {});
-    events.close(); await server.stop(true); language.dispose(); await store.close();
+    watcher.close(); clearTimeout(debounce); clearInterval(background); clearInterval(retention);
+    await server.stop(true);
+    await reloadQueue; stopDriver?.(); await runtime.serial(async () => {});
+    events.close(); language.dispose(); await store.close();
   };
   return { server, close, runtime, workspace, state, reload };
 }
