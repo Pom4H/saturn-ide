@@ -1,180 +1,143 @@
-import { StrictMode, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { createRoot } from "react-dom/client";
-import { text, type Equipment, type Locale, type Sample, type Signal, type Snapshot, type Value } from "../core";
-import type { IDEState } from "../protocol";
-import type { SourceFile } from "../server/workspace";
-import type { AlarmEvent } from "../server/store";
-import type { Git } from "../server/git";
-import { moveSource, type PositionSource } from "../source-edits";
-import { api, setKey } from "./api";
-import { copy } from "./i18n";
-import { Editor } from "./editor";
-import { Scene } from "./scene";
-
-type GitState = Awaited<ReturnType<Git["status"]>>;
-type Dock = "signals" | "alarms" | "history" | "git";
-const format = (value: Value) => typeof value === "number" ? Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value) : String(value);
-const time = (at: number) => at ? new Date(at).toLocaleTimeString() : "—";
-function Control({ signal, sample, locale, command }: { signal: Signal; sample?: Sample; locale: Locale; command: (id: string, value: Value) => void }) {
-  const [value, setValue] = useState(String(sample?.value ?? signal.initial));
-  useEffect(() => setValue(String(sample?.value ?? signal.initial)), [signal.id, sample?.value]);
-  const c = copy[locale];
-  if (!signal.writable) return null;
-  if (typeof signal.initial === "boolean") return <button className={sample?.value ? "stop" : "primary"} onClick={() => command(signal.id, !sample?.value)}>{sample?.value ? c.stop : c.start}</button>;
-  return <form className="command" onSubmit={event => { event.preventDefault(); command(signal.id, typeof signal.initial === "number" ? Number(value) : value); }}>
-    <input aria-label={signal.id} type={typeof signal.initial === "number" ? "number" : "text"} min={signal.min} max={signal.max} step="any" value={value} onChange={event => setValue(event.target.value)}/>
-    <span>{signal.unit}</span><button type="submit">{c.send}</button>
-  </form>;
+import { StrictMode, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { text, type Equipment, type Locale, type Sample, type Signal, type Snapshot, type Value } from '../core';
+import type { IDEState } from '../protocol';
+import { moveSource, type PositionSource } from '../source-edits';
+import { related } from '../topology';
+import { api, setKey } from './api';
+import { Editor } from './editor';
+import { Scene } from './scene';
+import { Reports } from './reports';
+import { Control } from './controls';
+const Scene3D=lazy(()=>import('./scene3d'));
+type Surface='diagram'|'source'|'signals'|'reports'|'hmi'|'targets'|'git';
+interface File {path:string;source:string;version:string}
+interface Buffer extends File {draft:string}
+interface GitState {available:boolean;branch:string;status:string;log:string;remotes:string;diff:string}
+interface AlarmEvent {id:string;active:boolean;acknowledged:boolean;at:number;event:'active'|'clear'|'ack'}
+const labels={ru:{diagram:'Схема',source:'Исходники',signals:'Сигналы',reports:'Отчёты',hmi:'HMI',targets:'Среда',git:'Git'},en:{diagram:'Diagram',source:'Source',signals:'Signals',reports:'Reports',hmi:'HMI',targets:'Environment',git:'Git'}};
+const surfaces:Surface[]=['diagram','source','signals','reports','hmi','targets','git'];
+const fmt=(v:Value|null|undefined)=>v==null?'—':typeof v==='number'?Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(v):String(v);
+const clock=(at?:number)=>at?new Date(at).toLocaleTimeString():'—';
+function History({id,locale}:{id:string;locale:Locale}){
+  const [samples,setSamples]=useState<Sample[]>([]),[error,setError]=useState('');
+  useEffect(()=>{const abort=new AbortController();let pending=false;const load=async()=>{if(pending||!id)return;pending=true;try{const s=await api<Sample[]>(`history?signal=${encodeURIComponent(id)}`,undefined,abort.signal);if(!abort.signal.aborted){setSamples(s);setError('');}}catch(e){if(!abort.signal.aborted)setError(String(e));}finally{pending=false;}};setSamples([]);void load();const timer=setInterval(()=>void load(),5000);return()=>{abort.abort();clearInterval(timer);};},[id]);
+  const values=samples.filter((s):s is Sample<number>=>s.quality==='good'&&typeof s.value==='number');
+  const min=Math.min(...values.map(s=>s.value)),max=Math.max(...values.map(s=>s.value)),from=values[0]?.at??0,to=values.at(-1)?.at??1;
+  // A chart is a recent-observation view, not the report query. Do not silently claim complete time coverage.
+  const points=values.map(s=>`${24+(s.at-from)/Math.max(1,to-from)*920},${112-(s.value-min)/Math.max(.01,max-min)*90}`).join(' ');
+  return <div className="history"><div className="pane-heading"><code>{id}</code><span>{samples.length} {locale==='ru'?'последних измерений':'recent observations'}</span></div>{error?<p role="alert">{error}</p>:values.length?<><svg className="trend" viewBox="0 0 970 142" preserveAspectRatio="none" aria-label={`${id}: ${min}–${max}`}><path d="M24 12V119H944" fill="none" stroke="var(--border)"/><polyline points={points} fill="none" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke"/><text x={24} y={138}>{clock(from)}</text><text x={944} y={138} textAnchor="end">{clock(to)}</text></svg><small>{fmt(min)} — {fmt(max)}</small></>:<p className="muted">{locale==='ru'?'Числовых измерений пока нет':'No numeric observations yet'}</p>}</div>;
 }
-function History({ project, locale, selected }: { project: IDEState["project"]; locale: Locale; selected: string }) {
-  const [id, setId] = useState(selected), [samples, setSamples] = useState<Sample[]>([]), [error, setError] = useState("");
-  useEffect(() => { const abort = new AbortController(); api<Sample[]>(`history?signal=${encodeURIComponent(id)}`, undefined, abort.signal).then(setSamples).catch(e => { if (!abort.signal.aborted) setError(String(e)); }); return () => abort.abort(); }, [id]);
-  const points = samples.filter((s): s is Sample & { value: number } => typeof s.value === "number" && s.quality === "good");
-  const min = Math.min(...points.map(s => s.value)), max = Math.max(...points.map(s => s.value)), t0 = points[0]?.at ?? 0, t1 = points.at(-1)?.at ?? 1;
-  const path = points.map(s => `${24+(s.at-t0)/Math.max(1,t1-t0)*910},${100-(s.value-min)/Math.max(.01,max-min)*80}`).join(" ");
-  return <div className="history-pane"><div className="inline"><select aria-label={copy[locale].signal} value={id} onChange={e => setId(e.target.value)}>{Object.values(project.signals).map(s => <option key={s.id}>{s.id}</option>)}</select><span className="muted">{samples.length} {copy[locale].samples}</span></div>
-    {error ? <p role="alert">{error}</p> : points.length ? <><svg className="trend" viewBox="0 0 970 130" preserveAspectRatio="none" aria-label={`${id}: ${min}–${max}`}><path d="M24 12V106H950" fill="none" stroke="var(--border)"/><polyline points={path} fill="none" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke"/><text x={24} y={125}>{time(t0)}</text><text x={930} y={125} textAnchor="end">{time(t1)}</text></svg><span className="muted">{format(min)} — {format(max)} {Object.values(project.signals).find(s => s.id === id)?.unit}</span></> : <p className="muted">{copy[locale].emptyHistory}</p>}
-  </div>;
-}
-function App() {
-  const [locale, setLocale] = useState<Locale>(() => localStorage.getItem("saturn.locale") === "en" ? "en" : "ru");
-  const c = copy[locale];
-  const [state, setState] = useState<IDEState | null>(null), [connected, setConnected] = useState(false);
-  const [file, setFile] = useState<SourceFile | null>(null), [source, setSource] = useState(""), [files, setFiles] = useState<string[]>([]);
-  const [selected, setSelected] = useState("P-01"), [dock, setDock] = useState<Dock>("signals");
-  const [showCode, setShowCode] = useState(window.innerWidth >= 1150), [operator, setOperator] = useState(false);
-  const [error, setError] = useState(""), [notice, setNotice] = useState(""), [saving, setSaving] = useState(false);
-  const [git, setGit] = useState<GitState | null>(null), [message, setMessage] = useState("");
-  const [audit, setAudit] = useState<AlarmEvent[]>([]), [historySignal, setHistorySignal] = useState("station.pressure");
-  const [preview, setPreview] = useState<{ id: string; x: number; y: number } | null>(null), [dragging, setDragging] = useState(false);
-  const drag = useRef<{ source: string; file: SourceFile; position: PositionSource } | null>(null);
-  const current = useRef({ file, source, state, saving, dragging }); current.current = { file, source, state, saving, dragging };
-  const dirty = file !== null && source !== file.source;
-  const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
-  const receive = useCallback((next: IDEState) => { setKey(next.key); setState(next); }, []);
-  const refreshGit = () => api<GitState>("git").then(setGit).catch(fail);
-  useEffect(() => {
-    let disposed = false;
-    Promise.all([api<IDEState>("state"), api<SourceFile>("file?path=project.ts"), api<string[]>("files")]).then(([next, file, files]) => {
-      if (disposed) return; receive(next); setFile(file); setSource(file.source); setFiles(files);
-    }).catch(fail);
+function App(){
+  const [locale,setLocale]=useState<Locale>(()=>localStorage.getItem('saturn.locale')==='en'?'en':'ru'),ru=locale==='ru';
+  const [now,setNow]=useState(Date.now());
+  const [state,setState]=useState<IDEState|null>(null),[connected,setConnected]=useState(false),[error,setError]=useState('');
+  const [surface,setSurface]=useState<Surface>('diagram'),[operator,setOperator]=useState(false),[tree,setTree]=useState(true),[inspect,setInspect]=useState(innerWidth>=1000),[dock,setDock]=useState(false);
+  const [code,setCode]=useState(innerWidth>=1250),[dimension,setDimension]=useState<'2d'|'3d'>('2d'),[ports,setPorts]=useState(false),[fit,setFit]=useState(0);
+  const [files,setFiles]=useState<string[]>([]),[buffers,setBuffers]=useState<Record<string,Buffer>>({}),[active,setActive]=useState('project.ts'),[saving,setSaving]=useState(false);
+  const [selected,setSelected]=useState(''),[signalId,setSignalId]=useState(''),[reportId,setReportId]=useState(''),[git,setGit]=useState<GitState|null>(null),[message,setMessage]=useState(''),[gitBusy,setGitBusy]=useState(false),[audit,setAudit]=useState<AlarmEvent[]>([]);
+  const [palette,setPalette]=useState(false),[query,setQuery]=useState(''),[choice,setChoice]=useState(0);
+  const [preview,setPreview]=useState<{id:string;x:number;y:number}|null>(null),[dragging,setDragging]=useState(false);
+  const drag=useRef<{file:Buffer;position:PositionSource;next:string}|null>(null);
+  const current=useRef({buffers,active,state,saving,dragging});current.current={buffers,active,state,saving,dragging};
+  const fail=(e:unknown)=>setError(e instanceof Error?e.message:String(e));
+  const receive=useCallback((next:IDEState)=>{setKey(next.key);setState(next);},[]);
+  const refreshGit=()=>api<GitState>('git').then(setGit).catch(fail);
+  const read=useCallback(async(path:string)=>{const file=await api<File>(`file?path=${encodeURIComponent(path)}`);setBuffers(old=>{const existing=old[path];return existing&&existing.draft!==existing.source?old:{...old,[path]:{...file,draft:file.source}};});return file;},[]);
+  const open=async(path:string)=>{setActive(path);if(!current.current.buffers[path])try{await read(path);}catch(e){fail(e);}};
+  const dirty=Object.values(buffers).some(b=>b.source!==b.draft);
+  useEffect(()=>{
+    let disposed=false;
+    void Promise.all([api<IDEState>('state'),api<string[]>('files')]).then(([s,f])=>{if(disposed)return;receive(s);setFiles(f);setSelected(s.project.equipment.find(e=>e.kind==='pump')?.id??s.project.equipment[0]?.id??'');setSignalId(Object.values(s.project.signals)[0]?.id??'');}).catch(fail);
+    // HMI is an operator surface; it does not depend on loading editable source files.
+    if(location.pathname!=='/hmi')void read('project.ts').catch(fail);
     void refreshGit();
-    const events = new EventSource("/api/events");
-    events.onopen = () => setConnected(true);
-    events.onerror = () => setConnected(false);
-    events.addEventListener("snapshot", event => receive(JSON.parse((event as MessageEvent).data)));
-    events.addEventListener("project", event => {
-      receive(JSON.parse((event as MessageEvent).data));
-      void api<string[]>("files").then(setFiles).catch(fail);
-      const currentFile = current.current.file;
-      if (currentFile && current.current.source === currentFile.source && !current.current.dragging && !current.current.saving) {
-        void api<SourceFile>(`file?path=${encodeURIComponent(currentFile.path)}`).then(next => {
-          if (current.current.file?.path === next.path && current.current.source === current.current.file.source && !current.current.dragging) { setFile(next); setSource(next.source); }
-        }).catch(fail);
-      }
-    });
-    events.addEventListener("telemetry", event => setState(s => s ? { ...s, snapshot: JSON.parse((event as MessageEvent).data) } : s));
-    events.addEventListener("alarm", () => void api<AlarmEvent[]>("alarms").then(setAudit).catch(fail));
-    return () => { disposed = true; events.close(); };
-  }, [receive]);
-  useEffect(() => { localStorage.setItem("saturn.locale", locale); document.documentElement.lang = locale; }, [locale]);
-  useEffect(() => { const listener = (event: BeforeUnloadEvent) => { if (dirty) event.preventDefault(); }; window.addEventListener("beforeunload", listener); return () => window.removeEventListener("beforeunload", listener); }, [dirty]);
-  const open = async (path: string, force = false) => {
-    if (current.current.source !== current.current.file?.source && !force) { setError(c.discardFirst); return; }
-    try { const next = await api<SourceFile>(`file?path=${encodeURIComponent(path)}`); setFile(next); setSource(next.source); setError(""); } catch (e) { fail(e); }
+    const events=new EventSource('/api/events');events.onopen=()=>setConnected(true);events.onerror=()=>setConnected(false);
+    events.addEventListener('snapshot',event=>receive(JSON.parse((event as MessageEvent).data)));
+    events.addEventListener('telemetry',event=>setState(s=>s?{...s,snapshot:JSON.parse((event as MessageEvent).data)}:s));
+    events.addEventListener('project',event=>{receive(JSON.parse((event as MessageEvent).data));void api<string[]>('files').then(setFiles).catch(fail);for(const b of Object.values(current.current.buffers))if(b.source===b.draft&&!current.current.saving&&!current.current.dragging)void read(b.path).catch(fail);});
+    events.addEventListener('alarm',()=>void api<AlarmEvent[]>('alarms').then(setAudit).catch(fail));
+    return()=>{disposed=true;events.close();};
+  },[receive,read]);
+  useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);
+  useEffect(()=>{document.documentElement.lang=locale;localStorage.setItem('saturn.locale',locale);},[locale]);
+  useEffect(()=>{const before=(e:BeforeUnloadEvent)=>{if(dirty)e.preventDefault();};addEventListener('beforeunload',before);return()=>removeEventListener('beforeunload',before);},[dirty]);
+  const save=async(path=current.current.active,source?:string)=>{
+    const file=current.current.buffers[path];if(!file||current.current.saving)return;
+    const submitted=source??file.draft;current.current.saving=true;setSaving(true);setError('');
+    try{const result=await api<{file:File;state:IDEState}>('file',{path,source:submitted,version:file.version});setBuffers(old=>({...old,[path]:{...result.file,draft:old[path]?.draft??submitted}}));receive(result.state);void refreshGit();}
+    catch(e){fail(e);}finally{current.current.saving=false;setSaving(false);}
   };
-  const save = async (nextSource?: string, expected?: SourceFile) => {
-    const target = expected ?? current.current.file;
-    if (!target || current.current.saving) return;
-    const submitted = nextSource ?? current.current.source;
-    current.current.saving = true; setSaving(true); setError("");
-    try {
-      const result = await api<{ file: SourceFile; state: IDEState }>("file", { path: target.path, source: submitted, version: target.version });
-      if (current.current.file?.path === target.path) { setFile(result.file); if (current.current.source === submitted) setSource(result.file.source); }
-      receive(result.state); void refreshGit();
-    } catch (e) { fail(e); } finally { current.current.saving = false; setSaving(false); }
+  const begin=(id:string)=>{
+    const p=current.current.state?.positions[id];if(operator||current.current.saving||!p)return false;
+    const b=current.current.buffers[p.path];if(!b){void open(p.path);setError(ru?'Исходник открыт. Повторите перемещение.':'Source opened. Drag again.');return false;}
+    if(b.draft!==b.source||b.version!==p.version){setError(ru?'Сохраните или перечитайте изменённый исходник перед перемещением.':'Save or reload the changed source before dragging.');return false;}
+    setActive(p.path);drag.current={file:b,position:p,next:b.source};current.current.dragging=true;setDragging(true);return true;
   };
-  const begin = (id: string) => {
-    const p = current.current.state?.positions[id], f = current.current.file;
-    if (operator || saving) return false;
-    if (dirty) { setError(c.discardFirst); return false; }
-    if (!p || !f || p.version !== f.version && p.path === f.path) { setError(c.noLiteral); return false; }
-    if (p.path !== f.path) { setError(c.sourceFirst); void open(p.path); return false; }
-    drag.current = { source: f.source, file: f, position: p }; setDragging(true); return true;
-  };
-  const move = (id: string, x: number, y: number) => {
-    if (!drag.current) return;
-    setPreview({ id, x, y });
-    const next = moveSource(drag.current.source, drag.current.position, x, y);
-    current.current.source = next;
-    setSource(next);
-  };
-  const end = (cancel: boolean) => {
-    const edit = drag.current; drag.current = null; setDragging(false); setPreview(null);
-    if (!edit) return;
-    if (cancel) setSource(edit.source); else void save(current.current.source, edit.file);
-  };
-  const command = (id: string, value: Value) => {
-    setError(""); void api("command", { signal: id, value }).then(() => setNotice(c.commandAccepted)).catch(fail);
-  };
-  const notify = async () => {
-    try {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) throw new Error(c.noPush);
-      if (await Notification.requestPermission() !== "granted") throw new Error(c.denied);
-      const registration = await navigator.serviceWorker.register("/sw.js");
-      await navigator.serviceWorker.ready;
-      const raw = state!.pushPublicKey.replace(/-/g, "+").replace(/_/g, "/");
-      const applicationServerKey = Uint8Array.from(atob(raw + "=".repeat((4-raw.length%4)%4)), c => c.charCodeAt(0)).buffer;
-      const subscription = await registration.pushManager.getSubscription() ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
-      await api("push/subscribe", { subscription: subscription.toJSON() }); setNotice(c.pushEnabled);
-    } catch (e) { fail(e); }
-  };
-  const gitAction = (action: string) => { setError(""); void api<GitState>("git", { action, message }).then(next => { setGit(next); setMessage(""); }).catch(fail); };
-  if (!state || !file) return <main className="loading"><h1>Saturn IDE</h1><p>{error || c.reconnect}</p></main>;
-  const snapshot: Snapshot = connected ? state.snapshot : { ...state.snapshot, samples: Object.fromEntries(Object.entries(state.snapshot.samples).map(([id, s]) => [id, { ...s, quality: "stale" as const }])) };
-  const equipment = state.project.equipment.find(e => e.id === selected);
-  const control = equipment?.kind === "pump" ? equipment.run : equipment?.kind === "valve" ? equipment.opening : undefined;
-  const active = Object.values(snapshot.alarms).filter(a => a.active);
-  const sceneProps = { project: state.project, snapshot, locale, selected, select: setSelected };
-  if (location.pathname === "/hmi") {
-    const ids = state.project.hmi?.equipment.map(e => e.id);
-    const devices = state.project.equipment.filter(e => !ids || ids.includes(e.id));
-    const index = Math.max(0, devices.findIndex(e => e.id === selected));
-    const shown = devices[index];
-    const hmiControl = shown?.kind === "pump" ? shown.run : shown?.kind === "valve" ? shown.opening : undefined;
-    return <main className="hmi"><header><strong>{devices[index]?.id ?? "HMI"}</strong><span className={connected ? "status good" : "status stale"}>{connected ? c[state.mode] : c.disconnected}</span></header>
-      <Scene {...sceneProps} focus={devices[index]?.id}/><footer><button disabled={devices.length < 2} onClick={() => setSelected(devices[(index+devices.length-1)%devices.length]!.id)} aria-label="Previous">←</button>
-        {hmiControl && connected && <Control signal={hmiControl} sample={snapshot.samples[hmiControl.id]} locale={locale} command={command}/>}
-        <button disabled={devices.length < 2} onClick={() => setSelected(devices[(index+1)%devices.length]!.id)} aria-label="Next">→</button></footer>{error && <div role="alert">{error}</div>}</main>;
+  const move=(id:string,x:number,y:number)=>{const d=drag.current;if(!d)return;d.next=moveSource(d.file.source,d.position,x,y);setPreview({id,x,y});setBuffers(old=>({...old,[d.file.path]:{...d.file,draft:d.next}}));};
+  const end=(cancel:boolean)=>{const d=drag.current;drag.current=null;current.current.dragging=false;setDragging(false);if(!d)return;setPreview(null);if(cancel)setBuffers(old=>({...old,[d.file.path]:d.file}));else void save(d.file.path,d.next);};
+  const send=async(id:string,value:Value)=>{await api('command',{signal:id,value});};
+  const notify=async()=>{try{
+    if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))throw new Error(ru?'Web Push недоступен':'Web Push unavailable');
+    if(await Notification.requestPermission()!=='granted')throw new Error(ru?'Нет разрешения на уведомления':'Notification permission denied');
+    await navigator.serviceWorker.register('/sw.js');const registration=await navigator.serviceWorker.ready;
+    const raw=state!.pushPublicKey.replace(/-/g,'+').replace(/_/g,'/'),bytes=Uint8Array.from(atob(raw+'='.repeat((4-raw.length%4)%4)),c=>c.charCodeAt(0));
+    const subscription=await registration.pushManager.getSubscription()??await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes.buffer});await api('push/subscribe',{subscription:subscription.toJSON()});
+  }catch(e){fail(e);}};
+  const gitAction=async(action:string)=>{setGitBusy(true);setError('');try{setGit(await api<GitState>('git',{action,message}));setMessage('');if(action==='pull')for(const b of Object.values(current.current.buffers))if(b.draft===b.source)await read(b.path);}catch(e){fail(e);}finally{setGitBusy(false);}};
+  const chooseSurface=(s:Surface)=>{setSurface(s);if(s==='git')void refreshGit();};
+  useEffect(()=>{
+    const key=(event:KeyboardEvent)=>{if(event.defaultPrevented)return;const mod=event.ctrlKey||event.metaKey;if(mod&&['k','b','j','s'].includes(event.key.toLowerCase()))event.stopPropagation();
+      if(mod&&event.key.toLowerCase()==='k'){event.preventDefault();setPalette(p=>!p);setQuery('');setChoice(0);}
+      if(mod&&event.key.toLowerCase()==='b'){event.preventDefault();setTree(p=>!p);}
+      if(mod&&event.key.toLowerCase()==='j'){event.preventDefault();setDock(p=>!p);}
+      if(mod&&event.key.toLowerCase()==='s'){event.preventDefault();if(!operator)void save();}
+      if(event.key==='Escape')setPalette(false);
+    };addEventListener('keydown',key,true);return()=>removeEventListener('keydown',key,true);
+  },[operator]);
+  const previewProject=useMemo(()=>state?(preview?{...state.project,equipment:state.project.equipment.map(e=>e.id===preview.id?{...e,x:preview.x,y:preview.y}:e)}:state.project):null,[state?.project,preview]);
+  if(!state||!previewProject)return <main className="empty-state"><h1>Saturn IDE</h1><p>{error||(ru?'Подключение к локальному серверу…':'Connecting to the local server…')}</p></main>;
+  const definitions=new Map(Object.values(state.project.signals).map(s=>[s.id,s]));
+  const snapshot:Snapshot={...state.snapshot,samples:Object.fromEntries(Object.entries(state.snapshot.samples).map(([id,s])=>[id,!connected||now-s.at>(definitions.get(id)?.staleAfter??5000)?{...s,quality:'stale' as const}:s]))};
+  const equipment=state.project.equipment.find(e=>e.id===selected),references=equipment?related(state.project,equipment):null;
+  const signal=Object.values(state.project.signals).find(s=>s.id===signalId)??Object.values(state.project.signals)[0];
+  const activeAlarms=Object.values(snapshot.alarms).filter(a=>a.active),file=buffers[active];
+  const mode=state.mode==='simulation'?(ru?'Симуляция':'Simulation'):state.mode==='live'?(ru?'Реальный драйвер':'Live driver'):(ru?'Нет драйвера':'No driver');
+  const scene={project:previewProject,snapshot,locale,selected,select:setSelected,fit,ports,begin,move,end};
+  const controlFor=(e?:Equipment)=>e?.kind==='pump'?e.run:e?.kind==='valve'?e.opening:undefined;
+  const control=controlFor(equipment);
+  const sourcePanel=<section className="code-pane"><nav className="file-tabs" aria-label={ru?'Открытые файлы':'Open files'}>{Object.values(buffers).map(b=><button key={b.path} className={active===b.path?'active':''} onClick={()=>setActive(b.path)} title={b.path}>{b.path.split('/').at(-1)}{b.draft!==b.source&&<span className="modified"> ●</span>}</button>)}</nav><div className="pane-heading"><code>{active}</code><button disabled={!file||file.draft===file.source||saving||dragging} onClick={()=>void save()}>{saving?'…':ru?'Сохранить':'Save'}</button></div>{file?<Editor path={active} source={file.draft} locale={locale} dragging={dragging} change={draft=>setBuffers(old=>({...old,[active]:{...old[active]!,draft}}))} save={()=>void save()}/>:<p>{ru?'Открытие…':'Opening…'}</p>}</section>;
+  if(location.pathname==='/hmi'){
+    const configured=state.project.hmi?.equipment.map(e=>e.id),devices=state.project.equipment.filter(e=>!configured||configured.includes(e.id));const index=Math.max(0,devices.findIndex(e=>e.id===selected)),shown=devices[index],cmd=controlFor(shown);
+    return <main className="hmi"><header><strong>{shown?.id??'HMI'}</strong><span className={`status ${state.mode==='simulation'?'simulation':''}`}>{connected?mode:ru?'Нет связи':'Disconnected'}</span></header><Scene {...scene} focus={shown?.id} begin={undefined} move={undefined} end={undefined}/><footer><button aria-label="Previous" disabled={devices.length<2} onClick={()=>setSelected(devices[(index+devices.length-1)%devices.length]!.id)}>←</button>{cmd&&<Control signal={cmd} sample={snapshot.samples[cmd.id]} locale={locale} enabled={connected} send={send}/>}<button aria-label="Next" disabled={devices.length<2} onClick={()=>setSelected(devices[(index+1)%devices.length]!.id)}>→</button></footer></main>;
   }
-  return <div className={`app ${operator ? "operator-mode" : ""}`}>
-    <header className="topbar"><div className="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx={16} cy={16} r={9}/><ellipse cx={16} cy={16} rx={15} ry={5} transform="rotate(-25 16 16)"/></svg><strong>Saturn</strong><span>IDE</span></div>
-      <span className="project-title">{text(state.project.label, locale)}</span><span className={`status ${state.mode === "simulation" ? "simulation" : state.mode === "live" ? "good" : "stale"}`}>{c[state.mode]}</span>
-      <div className="top-actions"><button onClick={() => { if (dirty) { setError(c.discardFirst); return; } if (!operator && dock === "git") setDock("signals"); setOperator(!operator); }}>{operator ? c.engineering : c.operator}</button><button className="icon-button" onClick={() => void notify()} title={c.notifications} aria-label={c.notifications}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></button><select aria-label="Language" value={locale} onChange={e => setLocale(e.target.value as Locale)}><option value="ru">RU</option><option value="en">EN</option></select></div>
-    </header>
-    {(error || notice) && <div className={error ? "message error" : "message"} role={error ? "alert" : "status"}><span>{error || notice}</span><button aria-label="Close" onClick={() => { setError(""); setNotice(""); }}>×</button></div>}
-    {state.problems.length > 0 && <div className="problems"><strong>{c.errors}</strong>{state.problems.map((p,i) => <div key={i}>{p.code} {p.path}: {p.message[locale]}</div>)}</div>}
-    <div className="workspace">
-      {!operator && <aside className="sidebar"><h2>{c.project}</h2><div className="filetree">{files.map(path => <button key={path} className={file.path === path ? "file active" : "file"} onClick={() => void open(path)} title={path}><span className="file-type">{path.endsWith("ts") ? "TS" : path.endsWith("tsx") ? "TSX" : "·"}</span><span>{path}</span></button>)}</div><div className="sidebar-bottom"><span className="branch">⑂ {git?.branch || "—"}</span><span className="muted">{state.adapter === "sqlite" ? "SQLite" : "PostgreSQL"}</span></div></aside>}
-      <main className="workbench">
-        <div className="workbar"><div className="view-switch"><span className="active">{c.diagram}</span>{!operator && <button aria-pressed={showCode} onClick={() => setShowCode(!showCode)}>{c.code}</button>}</div><span className="muted hint">{operator ? `${state.project.equipment.length} · ${Object.keys(state.project.signals).length} ${c.signals.toLowerCase()}` : c.drag}</span><a href="/hmi" target="_blank" rel="noreferrer">{c.hmi} ↗</a></div>
-        <div className={`canvas-row ${showCode && !operator ? "with-code" : ""}`}>
-          {showCode && !operator && <section className="code-pane"><div className="pane-title"><span>{file.path}</span><span className={dirty ? "modified" : "muted"}>{dirty ? "●" : ""}</span><button onClick={() => void save()} disabled={!dirty || saving || dragging}>{saving ? "…" : c.save}</button></div><Editor path={file.path} source={source} locale={locale} change={setSource} save={() => void save()} dragging={dragging}/></section>}
-          <section className="diagram-pane"><Scene {...sceneProps} preview={preview} begin={operator ? undefined : begin} move={move} end={end}/>
-            <div className="selection-bar">{equipment ? <><div><strong>{equipment.id}</strong><span className="muted">{text(equipment.label, locale)}</span></div>{control && connected && <Control signal={control} sample={snapshot.samples[control.id]} locale={locale} command={command}/>}<div className="selection-actions">{!operator && state.positions[equipment.id] && <button onClick={() => { setShowCode(true); void open(state.positions[equipment.id]!.path); }}>{c.source} ↗</button>}</div></> : <span className="muted">{c.select}</span>}</div>
-          </section>
-        </div>
-        <section className="dock"><nav>{(["signals","alarms","history","git"] as const).filter(tab => !operator || tab !== "git").map(tab => <button className={dock === tab ? "active" : ""} key={tab} onClick={() => { setDock(tab); if (tab === "git") void refreshGit(); if (tab === "alarms") void api<AlarmEvent[]>("alarms").then(setAudit).catch(fail); }}>{c[tab]}{tab === "alarms" && active.length > 0 && <span className="count">{active.length}</span>}</button>)}</nav>
-          <div className="dock-content">
-            {dock === "signals" && <table><thead><tr><th>{c.signal}</th><th>{c.value}</th><th>{c.quality}</th><th>{c.time}</th></tr></thead><tbody>{Object.values(state.project.signals).map(s => { const sample = snapshot.samples[s.id]; return <tr key={s.id} onClick={() => { setHistorySignal(s.id); setDock("history"); }}><td className="mono">{s.id}</td><td className="value">{sample?.quality === "good" ? format(sample.value) : "—"}<span className="muted unit">{s.unit}</span></td><td><span className={`quality ${sample?.quality ?? "stale"}`}>{c[sample?.quality ?? "stale"]}</span></td><td className="muted mono">{time(sample?.at ?? 0)}</td></tr>; })}</tbody></table>}
-            {dock === "history" && <History key={historySignal} project={state.project} locale={locale} selected={historySignal}/>}
-            {dock === "alarms" && <div className="alarm-pane">{!active.length && <p className="muted">{c.noAlarms}</p>}{active.map(a => <div className="alarm-row" key={a.id}><span className="alarm-dot"/><strong>{text(state.project.alarms.find(rule => rule.id === a.id)?.label ?? a.id, locale)}</strong><span className="muted">{time(a.at)}</span>{a.acknowledged ? <span>{c.acknowledged}</span> : <button onClick={() => void api("ack", { id: a.id }).catch(fail)}>{c.ack}</button>}</div>)}{audit.length > 0 && <div className="audit">{audit.slice(0,12).map((e,i) => <div key={i}><span>{time(e.at)}</span><code>{e.id}</code><span>{e.event === "ack" ? c.acknowledged : e.event === "clear" ? c.clear : c.active}</span></div>)}</div>}</div>}
-            {dock === "git" && <div className="git-pane">{git?.available ? <><div className="git-controls"><input aria-label={c.commitMessage} placeholder={c.commitMessage} value={message} onChange={e => setMessage(e.target.value)}/><button onClick={() => gitAction("commit")} disabled={!message.trim() || !git.status.trim() || dirty}>{c.commit}</button>{git.remotes && <><button onClick={() => gitAction("pull")}>Pull</button><button onClick={() => gitAction("push")}>Push</button></>}</div><div className="git-columns"><pre>{git.status || c.clean}{git.diff ? `\n${git.diff}` : ""}</pre><pre className="muted">{git.log}</pre></div></> : <button onClick={() => gitAction("init")}>{c.init}</button>}</div>}
-          </div>
-        </section>
-      </main>
-    </div>
-    <footer className="statusbar"><span className={connected ? "connected" : "disconnected"}>{connected ? c.connected : c.disconnected}</span><span>{dirty ? c.unsaved : c.saved}{dirty && <button onClick={() => { if (confirm(locale === "ru" ? "Отбросить несохранённый текст?" : "Discard unsaved text?")) void open(file.path, true); }}>{c.reset}</button>}</span><span className="revision">{state.revision.slice(0,8)}</span></footer>
+  const commands=[...surfaces.filter(s=>!operator||!['source','git','targets'].includes(s)).map(s=>({id:s,title:labels[locale][s],detail:ru?'Рабочий раздел':'Surface',run:()=>chooseSurface(s)})),...state.project.equipment.map(e=>({id:e.id,title:`${e.id} ${text(e.label,locale)}`,detail:ru?'Оборудование':'Equipment',run:()=>{setSelected(e.id);setSurface('diagram');setInspect(true);}})),...(!operator?files.map(path=>({id:path,title:path,detail:ru?'Файл':'File',run:()=>{void open(path);setSurface('source');}})):[])].filter(item=>`${item.title} ${item.detail}`.toLowerCase().includes(query.toLowerCase())).slice(0,30);
+  const inspector=equipment&&<aside className="inspector"><div className="pane-heading"><strong>{equipment.id}</strong><button aria-label={ru?'Закрыть свойства':'Close inspector'} onClick={()=>setInspect(false)}>×</button></div><div className="inspector-body"><h2>{text(equipment.label,locale)}</h2><p className="muted">{equipment.kind} · x {equipment.x}, y {equipment.y}</p>{control&&<Control signal={control} sample={snapshot.samples[control.id]} locale={locale} enabled={connected} send={send}/>}
+    {!operator&&state.positions[equipment.id]&&<button className="text-button" onClick={()=>{void open(state.positions[equipment.id]!.path);setCode(true);setSurface('source');}}>{ru?'Открыть исходник':'Open source'} ↗</button>}
+    <h3>{ru?'Сигналы':'Signals'}</h3>{references?.signals.map(s=><button className="reference" key={s.id} onClick={()=>{setSignalId(s.id);setSurface('signals');}}><code>{s.id}</code><strong>{snapshot.samples[s.id]?.quality==='good'?fmt(snapshot.samples[s.id]?.value):'—'} <small>{s.unit}</small></strong></button>)}
+    <h3>{ru?'Соединения':'Connections'}</h3>{references?.connections.map(c=><div className="connection-reference" key={c.id}><strong>{c.kind==='pipe'?(ru?'Труба':'Pipe'):(ru?'Кабель':'Cable')} · {c.id}</strong><button onClick={()=>setSelected(c.from.device)}>{c.from.device}.{c.from.port}</button><span> → </span><button onClick={()=>setSelected(c.to.device)}>{c.to.device}.{c.to.port}</button></div>)}
+    {references?.reports.length!==0&&<><h3>{ru?'Используется в отчётах':'Used in reports'}</h3>{references?.reports.map(r=><button className="reference" key={r.id} onClick={()=>{setReportId(r.id);setSurface('reports');}}>{text(r.label,locale)} ↗</button>)}</>}
+  </div></aside>;
+  return <div className={`shell ${operator?'operator-mode':''}`}>
+    <header className="topbar"><button className="brand" onClick={()=>chooseSurface('diagram')}><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx={16} cy={16} r={9}/><ellipse cx={16} cy={16} rx={15} ry={5} transform="rotate(-25 16 16)"/></svg><strong>Saturn</strong></button><button className="project-name" onClick={()=>chooseSurface('targets')}>{text(state.project.label,locale)}</button><span className={`status ${state.mode==='simulation'?'simulation':state.mode==='live'?'good':'stale'}`}>{mode}</span><span className="spacer"/><button className="palette-trigger" onClick={()=>{setPalette(true);setQuery('');setChoice(0);}}>{ru?'Найти / перейти':'Find / go to'} <kbd>⌘ K</kbd></button><button onClick={()=>{setOperator(!operator);if(!operator){setSurface('diagram');setDock(false);}}}>{operator?(ru?'Инженер':'Engineer'):(ru?'Оператор':'Operator')}</button><select aria-label="Language" value={locale} onChange={e=>setLocale(e.target.value as Locale)}><option value="ru">RU</option><option value="en">EN</option></select></header>
+    {error&&<div className="message error" role="alert"><span>{error}</span><button onClick={()=>setError('')} aria-label="Close">×</button></div>}
+    {state.problems.length>0&&<div className="problems" role="alert"><strong>{state.problems.some(p=>p.code==='RUNTIME')?(ru?'Ошибка сервиса':'Service error'):(ru?'Ошибка черновика. Последняя корректная модель продолжает работать.':'Draft error. The last valid model is still running.')}</strong>{state.problems.map((p,i)=><button key={i} onClick={()=>{if(p.path){void open(p.path);setSurface('source');}}}>{p.code} {p.path} {p.message[locale]}</button>)}</div>}
+    <div className="shell-body"><nav className="activity" aria-label={ru?'Рабочие разделы':'Workspaces'}>{surfaces.filter(s=>!operator||['diagram','signals','reports','hmi'].includes(s)).map(s=><button key={s} aria-current={surface===s?'page':undefined} className={surface===s?'active':''} onClick={()=>chooseSurface(s)}><span className="activity-icon" aria-hidden="true">{({diagram:'◫',source:'{}',signals:'≋',reports:'▤',hmi:'▣',targets:'⌁',git:'⑂'})[s]}</span><span>{labels[locale][s]}</span></button>)}</nav>
+    {!operator&&tree&&<aside className="explorer"><div className="pane-heading"><strong>{ru?'Проект':'Project'}</strong><button aria-label={ru?'Скрыть дерево':'Hide explorer'} onClick={()=>setTree(false)}>×</button></div><h3>{ru?'Оборудование':'Equipment'}</h3>{state.project.equipment.map(e=><button className={`tree-item ${selected===e.id?'selected':''}`} key={e.id} onClick={()=>{setSelected(e.id);setSurface('diagram');setInspect(true);}}><code>{e.id}</code><span>{text(e.label,locale)}</span></button>)}<h3>{ru?'Файлы':'Files'}</h3><div className="filetree">{files.map(path=><button key={path} className={`file ${active===path?'active':''}`} title={path} onClick={()=>{void open(path);if(surface!=='diagram')setSurface('source');else setCode(true);}}><span className="file-type">{path.endsWith('ts')?'TS':path.endsWith('tsx')?'TSX':'·'}</span><span>{path}</span>{buffers[path]?.draft!==buffers[path]?.source&&<span>●</span>}</button>)}</div><div className="explorer-footer"><button onClick={()=>chooseSurface('git')}>⑂ {git?.branch||'—'}</button><span>{state.adapter==='sqlite'?'SQLite':'PostgreSQL'}</span></div></aside>}
+    <main className="workbench"><div className="surface-toolbar"><strong>{labels[locale][surface]}</strong>{!operator&&<button aria-label={ru?'Показать дерево':'Show explorer'} aria-pressed={tree} onClick={()=>setTree(!tree)}>☷</button>}{surface==='diagram'&&<><div className="segmented"><button aria-pressed={dimension==='2d'} onClick={()=>setDimension('2d')}>2D</button><button aria-pressed={dimension==='3d'} onClick={()=>setDimension('3d')}>3D</button></div><button onClick={()=>setFit(f=>f+1)}>{ru?'Вписать':'Fit'}</button><button aria-pressed={ports} disabled={dimension==='3d'} onClick={()=>setPorts(!ports)}>{ru?'Порты':'Ports'}</button>{!operator&&<button aria-pressed={code} onClick={()=>setCode(!code)}>{ru?'Код':'Code'}</button>}</>}<span className="spacer"/>{surface==='diagram'&&<button aria-pressed={inspect} onClick={()=>{setInspect(!inspect);if(!inspect&&innerWidth<950)setCode(false);}}>{ru?'Свойства':'Inspector'}</button>}<button onClick={()=>{setDock(!dock);void api<AlarmEvent[]>('alarms').then(setAudit).catch(fail);}} className={activeAlarms.length?'alarm-button':''}>{ru?'Тревоги':'Alarms'}{activeAlarms.length>0&&<b>{activeAlarms.length}</b>}</button></div>
+      <div className="surface-content">
+        {surface==='diagram'&&<div className="diagram-workspace">{code&&!operator&&sourcePanel}<section className="diagram-pane">{dimension==='2d'?<Scene {...scene}/>:<Suspense fallback={<p className="empty-state">3D…</p>}><Scene3D {...scene}/></Suspense>}<div className="canvas-footer"><span>{dimension==='3d'?(ru?'Вращение — мышью. Масштаб — колесом.':'Drag to orbit. Scroll to zoom.'):(ru?'Оборудование — переместить. Фон — панорамировать.':'Drag equipment to edit. Drag background to pan.')}</span><span>{state.project.equipment.length} / {state.project.pipes.length+(state.project.cables?.length??0)}</span></div></section>{inspect&&inspector}</div>}
+        {surface==='source'&&<div className="source-workspace">{sourcePanel}{!operator&&<div className="source-note"><strong>TypeScript</strong><span>{ru?'Файл → модель → все представления. Сохранение не создаёт коммит.':'File → model → every surface. Saving does not create a commit.'}</span><kbd>⌘ S</kbd></div>}</div>}
+        {surface==='signals'&&<section className="signals-surface"><div className="table-scroll"><table><thead><tr><th>{ru?'Сигнал':'Signal'}</th><th>{ru?'Значение':'Value'}</th><th>{ru?'Качество':'Quality'}</th><th>{ru?'Получен':'Observed'}</th></tr></thead><tbody>{Object.values(state.project.signals).map(s=>{const sample=snapshot.samples[s.id];return <tr key={s.id} className={signal?.id===s.id?'active':''} onClick={()=>setSignalId(s.id)}><td><button className="text-button" onClick={()=>setSignalId(s.id)}><code>{s.id}</code></button></td><td>{sample?.quality==='good'?fmt(sample.value):'—'} <span className="muted">{s.unit}</span></td><td className={sample?.quality??'stale'}>{sample?.quality??'stale'}</td><td className="muted">{clock(sample?.at)}</td></tr>;})}</tbody></table></div>{signal&&<History key={signal.id} id={signal.id} locale={locale}/>}</section>}
+        {surface==='reports'&&<Reports project={state.project} locale={locale} selected={reportId} onSelect={setReportId}/>}
+        {surface==='hmi'&&<section className="hmi-surface"><div className="surface-description"><h2>{ru?'Операторский HMI':'Operator HMI'}</h2><p>{ru?'Тот же проект и SVG. Браузерная проверка, не прошивка физического дисплея.':'The same project and SVG. Browser preview, not physical display firmware.'}</p><a href="/hmi" target="_blank" rel="noreferrer">{ru?'Открыть отдельно':'Open separately'} ↗</a></div><iframe title="HMI preview" src="/hmi" width={state.project.hmi?.width??320} height={state.project.hmi?.height??240}/></section>}
+        {surface==='targets'&&<section className="environment-surface"><h1>{ru?'Среда исполнения':'Runtime environment'}</h1><dl><dt>{ru?'Проект':'Project'}</dt><dd>{state.project.id}</dd><dt>{ru?'Подключение':'Connection'}</dt><dd>localhost · <strong>{mode}</strong></dd><dt>{ru?'Исходники':'Source'}</dt><dd>{git?.branch||'—'} {git?.status.trim()?(ru?'· есть изменения':'· modified'):''}</dd><dt>{ru?'Модель runtime':'Runtime model'}</dt><dd><code>{state.revision.slice(0,12)}</code></dd><dt>{ru?'История':'History'}</dt><dd>{state.adapter}</dd><dt>{ru?'Публикация на объект':'Plant deployment'}</dt><dd>{ru?'Не настроена. Сохранение применяется только к локальному runtime.':'Not configured. Saving only applies to this local runtime.'}</dd></dl><button onClick={()=>void notify()}>{ru?'Включить Web Push':'Enable Web Push'}</button><h2>{ru?'Целевые устройства':'Device targets'}</h2>{files.filter(f=>/\/(compiler|hmi|device)\.ts$/.test(f)).map(path=><button className="reference" key={path} onClick={()=>{void open(path);setSurface('source');}}>{path} ↗</button>)}<p className="muted">{ru?'Компилятор запускается явно: bun run firmware equipment/<device>. Физические драйверы и toolchain добавляются в проект.':'Compile explicitly: bun run firmware equipment/<device>. Physical drivers and toolchains belong to the project.'}</p></section>}
+        {surface==='git'&&<section className="git-surface">{git?.available?<><div className="git-controls"><input aria-label={ru?'Описание коммита':'Commit message'} placeholder={ru?'Что изменено?':'What changed?'} value={message} onChange={e=>setMessage(e.target.value)}/><button disabled={gitBusy||!message.trim()||!git.status.trim()||dirty} onClick={()=>void gitAction('commit')}>{ru?'Коммит':'Commit'}</button>{git.remotes&&<><button disabled={gitBusy||dirty} onClick={()=>void gitAction('pull')}>Pull</button><button disabled={gitBusy} onClick={()=>void gitAction('push')}>Push</button></>}</div>{dirty&&<p className="muted">{ru?'Перед коммитом сохраните открытые файлы.':'Save open files before committing.'}</p>}<h3>{ru?'Изменения проекта':'Project changes'}</h3><pre>{git.status||(ru?'Рабочая копия чистая':'Working tree is clean')}{git.diff?`\n${git.diff}`:''}</pre><h3>{ru?'Последние коммиты':'Recent commits'}</h3><pre className="muted">{git.log}</pre></>:<button onClick={()=>void gitAction('init')}>{ru?'Создать Git-репозиторий':'Initialize Git repository'}</button>}</section>}
+      </div>
+      {dock&&<section className="runtime-dock"><div className="pane-heading"><strong>{ru?'Тревоги и события':'Alarms and events'}</strong><button aria-label="Close alarms" onClick={()=>setDock(false)}>×</button></div><div className="runtime-dock-body">{!activeAlarms.length&&<p className="muted">{ru?'Нет активных тревог':'No active alarms'}</p>}{activeAlarms.map(a=><div className="alarm-row" key={a.id}><strong>{text(state.project.alarms.find(r=>r.id===a.id)?.label??a.id,locale)}</strong><time>{clock(a.at)}</time>{a.acknowledged?<span>{ru?'Квитировано':'Acknowledged'}</span>:<button disabled={!connected} onClick={()=>void api('ack',{id:a.id}).catch(fail)}>{ru?'Квитировать':'Acknowledge'}</button>}</div>)}{audit.slice(0,10).map((a,i)=><div className="event-row" key={i}><time>{clock(a.at)}</time><code>{a.id}</code><span>{a.event}</span></div>)}</div></section>}
+    </main></div>
+    <footer className="statusbar"><span className={connected?'good':'bad'}>{connected?'SSE':ru?'Нет связи':'Disconnected'}</span><button onClick={()=>chooseSurface('git')}>⑂ {git?.branch||'—'}</button><span>{Object.values(buffers).filter(b=>b.draft!==b.source).length} {ru?'несохранённых':'unsaved'}</span>{file&&file.draft!==file.source&&<button onClick={()=>{if(confirm(ru?'Отбросить несохранённый текст этого файла?':'Discard this file’s unsaved text?')){setBuffers(old=>({...old,[active]:{...old[active]!,draft:old[active]!.source}}));void read(active).catch(fail);}}}>{ru?'Перечитать файл':'Reload file'}</button>}<span className="spacer"/><span>{state.adapter}</span><span title={state.revision}>runtime {state.revision.slice(0,8)}</span></footer>
+    {palette&&<div className="palette-backdrop" onPointerDown={e=>{if(e.target===e.currentTarget)setPalette(false);}}><div role="dialog" aria-modal="true" aria-label={ru?'Перейти к':'Go to'} className="command-palette"><input autoFocus aria-label={ru?'Поиск':'Search'} placeholder={ru?'Раздел, оборудование или файл…':'Surface, equipment or file…'} value={query} onChange={e=>{setQuery(e.target.value);setChoice(0);}} onKeyDown={e=>{if(e.key==='ArrowDown'){e.preventDefault();setChoice(c=>Math.min(c+1,commands.length-1));}if(e.key==='ArrowUp'){e.preventDefault();setChoice(c=>Math.max(0,c-1));}if(e.key==='Enter'){e.preventDefault();commands[choice]?.run();setPalette(false);}if(e.key==='Tab'){e.preventDefault();setChoice(c=>(c+(e.shiftKey?-1:1)+Math.max(1,commands.length))%Math.max(1,commands.length));}}}/><div className="command-results">{commands.map((command,i)=><button key={`${command.detail}:${command.id}`} className={i===choice?'active':''} onClick={()=>{command.run();setPalette(false);}}><span>{command.title}</span><small>{command.detail}</small></button>)}</div><footer>↑ ↓ Enter <span>Esc</span></footer></div></div>}
   </div>;
 }
-createRoot(document.getElementById("root")!).render(<StrictMode><App/></StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode><App/></StrictMode>);
