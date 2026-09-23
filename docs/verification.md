@@ -1,35 +1,52 @@
-# Verification — Shell, topology and reports, 2026-09-23
+# Verification — architecture foundation, 2026-09-23
 
-Base: `6a4fd0b295e88efd1805046996f9a8bd714db89b`.
+Base: `9be93be56bfb9ee6637d19c11273ea01c1d59b66`.
 
-## Actually executed in this change
+## Executed locally
 
-Available local tools: Node **22.16.0**, TypeScript **5.8.3**. Bun and the new frontend dependencies are not installed. Registry installation failed because this execution environment cannot resolve external hosts.
+Node 22.16.0 and installed TypeScript 5.8.3. No Bun executable and no application dependency
+installation were available. An actual HTTPS registry request failed with DNS resolution error.
 
-Strict compilation of `src/core.ts`, `geometry.ts`, `topology.ts`, `motion.ts`, `reports.ts` and `tests/domain-contracts.test.ts` passed. Negative compiler assertions prove rejection of unknown signal names, wrong command values, read-only commands, invalid cable families/media, wrong pipe directions and nonnumeric report aggregation.
+Strict compilation of `src/core/artifact.ts`, `src/runtime/installation.ts` and
+`tests/foundation.test.ts` passed. The compiled actual implementation ran under Node's test
+runner: **12 tests passed, zero failed**. The state-machine tests deliberately use fault-injected
+installation/persistence handles; they do not pretend to communicate with a PLC or execute Bun.SQL.
 
-The emitted real domain code ran under Node's test runner: **8 passed, 0 failed**. This is not a mock router or a replacement report implementation. Covered:
+Covered: immutable artifact transport, canonical hashing, tamper rejection, preparation before
+stopping the working driver, failed startup rollback, failed durable write rollback, fail-closed
+stop failure, accurate identity after post-commit activation failure, concurrent CAS requests,
+shutdown, restore without publication, compatible reconfiguration without acquisition restart.
 
-- Exact XYZ endpoints and orthogonal routes; layout changes; obstacle avoidance; blocked terminal stubs.
-- Runtime rejection of incompatible ports and double occupancy.
-- Time-weighted integration: 10 m³/h for 30 minutes + 20 m³/h for 30 minutes = 15 m³.
-- Missing/bad/stale intervals, coverage, clipped preceding observations and partial windows.
-- CSV quoting/formula neutralization and phase integration/stopped or stale flow.
+The executable architecture guard was tested against dependency violations:
+**3 tests passed, zero failed**. New/edited TypeScript files were also syntax-transpiled;
+syntax validation is not a complete application typecheck. Local dependency checks covered the
+new modules; CI checks the entire checked-out source tree.
 
-The actual `project/project.ts` was additionally transpiled and evaluated against that compiled core: **4 devices, 2 pipes and 2 cables; all four routes valid**. All new/modified TypeScript and TSX implementations were syntax-transpiled without diagnostics. Syntax transpilation is **not** a React/Three full typecheck or browser execution.
+## Preserved without rewriting
 
-## Implemented gates, not claimed as passed
+`src/ide` was relocated to `src/shell` using the identical Git tree. In particular, the existing
+app, 2D SVG, 3D, motion consumers, HMI and report UI source blobs are unchanged by this pass.
+`core.ts`, geometry/topology/motion/report calculation and existing runtime engine/store/push/SSE
+implementations remain the same blobs (the runtime files moved to their owning directory).
+This proves absence of a renderer-source rewrite, not successful browser execution or visual parity.
 
-`bun run check` runs both native TypeScript 7 and compatibility TypeScript 6. `bun test tests` retains existing checks and adds the new domain suite and a real SQL report contract for SQLite/PostgreSQL. It checks a 400-observation report, deliberately larger than the chart's 300-observation limit.
+## Added but not executed locally
 
-`bun run test:browser` launches the actual `bun dev`. It exercises source/diagram drag before drop, RU/EN JSDoc, explicit cables, controls, alarms, SQL report coverage, history, Git, command navigation and actual WebGL frames. Screenshots are written only by this browser run: 2D, 3D, reports, desktop, tablet, phone and 320×240 HMI.
+The new dev composition builds artifacts and uses retained SQL builds, publish/apply CAS and the
+installation manager. Added actual Bun/SQLite integration tests for retained revisions and manual
+preview. Existing SQLite/Postgres, source/Git/DSL and browser checks were kept with updated imports.
+The browser script still launches the actual `bun dev`, exercises 2D drag/JSDoc/commands/alarms/
+reports/history/Git/command palette/3D, and captures real screenshots at the same viewport sizes.
 
-**The full dependency install, Bun startup, dual-version typechecks, SQL integration and browser workflow were not executed locally in this change. No screenshot or 3D quality parity is claimed from syntax tests.** No lockfile has been fabricated. The existing CI job saves the real lockfile only after a successful full run.
+**Full Bun startup, whole-repository dual-version typecheck, Bun.SQL/PG integration and browser/GPU
+run have NOT been verified locally in this pass. No screenshot or full-CI success is claimed.**
+The current Actions result must be checked separately; prior runs failed before receiving a runner.
+No handwritten lockfile or invented test evidence is included.
 
-The preceding two GitHub Actions runs failed before any job step, with `runner_id: 0`. This is historical evidence, not proof that the new code passes CI. See the current commit's Actions run for its actual state.
+## Readiness limits
 
-## Deliberate scope
-
-3D is a real Three renderer with cutaway equipment, measured animation, physical routed paths and shared port elevations. It is **not** certified dimensional CAD, a reconstruction of every old vendor asset, a hydraulic solver or physical PLC verification. Visual approval still needs inspection of the actual browser output.
-
-Operator mode is a workspace mode, not authorization. Local runtime revision and Git state are shown separately. Published/applied revisions are not invented: remote deployment is explicitly unconfigured.
+The dev host remains one process, so import boundaries do not establish runtime fault isolation.
+Runtime-only host/process isolation, live draft preview/release controls in Shell, project-owned
+arbitrary equipment, full dimension/derived typing, Presentation/targets, report jobs/XLSX and replay
+are still open acceptance criteria in `docs/capabilities.md`. This is a committed foundation and
+partial migration, not a completed replacement of all previous Saturn functionality.

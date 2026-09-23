@@ -1,14 +1,15 @@
-# Saturn IDE
+# Saturn IDE — architecture contract
 
-An engineering IDE, not a landing page. The Shell is a primary product surface, not a demo wrapper.
+Read `docs/architecture.md`, `docs/capabilities.md`, then `docs/verification.md` before changing ownership or claiming a capability is complete.
 
-- One typed TypeScript project drives equipment, physical topology, 2D/3D, HMI, observations and reports. Git is source history; SQL is observations/events/subscriptions. No second JSON project, registry, ORM or proprietary language.
-- Preserve inferred signal IDs/value types/writability, concrete equipment ports and report columns. No explicit `any`, parallel type dictionaries or handwritten fake IntelliSense.
-- TypeScript 7 is the native checker. Stable AST/Language Service APIs currently use Microsoft's TypeScript 6 compatibility alias. Check both; never blindly replace the API package with a CLI-only release.
-- Shell keeps Project, Surface and Environment visible. Contextual canvas tools stay in the canvas. Operator mode must not be confused with authorization. Never invent a published/applied revision for local-only runtime.
-- Preserve original SVG anatomy. 2D/3D must consume the same typed endpoints and routed XYZ paths, not independent connection graphs. Pipes carry fluid, cables carry electrical/control/bus connections; crossing paths do not imply connection.
-- Commands are not observations. No/stale data cannot look healthy. Phase changes integrate time, not restart on every sample. Layout edits must not restart acquisition. Keep the last-good model and reject conflicting file writes.
-- Reports query their actual range, not chart-limited history. Explain integration units and interval convention. Missing is null, not zero; partial aggregates expose coverage. Never silently truncate.
-- Plugins are copied files and imports. Device definitions, HMI and firmware compiler belong beside the device. No marketplace, global registration, orchestration framework or automatic flashing.
-- One `bun dev` process; one CI job. Tests/screenshot generators must execute the real code. A test being written does not mean it passed. Record available runtime versions and blocked stages honestly.
-- Open trusted local code only. No claims of production safety, real hardware support, permissions, deployment or visual parity without corresponding implementation and evidence. Do not force-push main.
+The task is a better architecture with preserved capabilities, not a smaller product. Old Saturn `90da21a` is an implementation/reference baseline. Never label a missing feature “simplified MVP” and silently remove its acceptance criterion.
+
+- One typed authored TS project → Diagram/HMI/Runtime/History/Reports/PLC/Deployment. A checked BuildArtifact is generated output, not another authoring format. Git/source, checked, published and applied are distinct.
+- workspace builds/checks source and owns Git. runtime owns observations/commands/alarms/history/jobs/applied builds, never imports workspace/Shell/compiler. host composes. shell owns Project/Surface/Environment navigation, not runtime authority. Run `bun run architecture:check`.
+- Preserve current DSL inference and restore dimensions/derived expressions/project-owned equipment before claiming parity. Four builtin equipment kinds are not the final extension model. No explicit any, fake IntelliSense, alternate Signal/Project/Topology models.
+- Copy plugins/equipment/targets into projects; wire through normal imports. No global plugin lifecycle, hidden installation DB, automatic flashing or package per directory. A new project must not contain a copy of IDE implementation.
+- Preserve actual SVG/3D code and ports during structural refactors. Never infer visual parity from syntax/type tests. Use real browser recordings and reference frames, including stale/failed/closed states.
+- Save is not live apply. Automatic dev preview is simulator-only and can be disabled. On transition, prepare before stopping the old driver, fence callbacks, gate commands and CAS the durable applied identity. Failure after durable commit must report the real new identity. Driver contracts cannot guarantee reversal of physical effects.
+- One command may launch multiple failure-isolated parts. Current dev is one process: do not claim runtime independence until the runtime-only host and isolation test exist. Operator mode is not authorization.
+- Reports retain missing-data/coverage semantics and must regain old typed schemas/jobs/targets, not become chart-limited queries. No fabricated XLSX or firmware.
+- Preserve and extend acceptance tests. Record exactly what ran and on which runtime; test source is not evidence of a passed test. Do not force-push main.

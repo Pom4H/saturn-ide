@@ -1,12 +1,12 @@
 import { chromium, type Page } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { fixture } from '../tests/helpers';
-import { execute } from '../src/server/git';
+import { execute } from '../src/workspace/git';
 import type { IDEState } from '../src/protocol';
 function assert(ok:unknown,message:string):asserts ok{if(!ok)throw new Error(message);}
 const fixtureProject=fixture(),base='http://127.0.0.1:4017';mkdirSync('artifacts',{recursive:true});
 for(const args of [['init','-b','main'],['config','user.name','Saturn browser test'],['config','user.email','test@localhost'],['add','.'],['commit','-m','Initial project']])await execute(['git',...args],fixtureProject.root);
-const server=Bun.spawn(['bun','dev'],{env:{...Bun.env,SATURN_PROJECT:fixtureProject.root,PORT:'4017',DATABASE_URL:':memory:'},stdout:'pipe',stderr:'pipe'});
+const server=Bun.spawn(['bun','dev'],{env:{...Bun.env,SATURN_PROJECT:fixtureProject.root,PORT:'4017',DATABASE_URL:':memory:',SATURN_PREVIEW:'simulation'},stdout:'pipe',stderr:'pipe'});
 const stdout=new Response(server.stdout).text(),stderr=new Response(server.stderr).text();
 let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined;const checks:string[]=[],errors:string[]=[];
 const state=async()=>await(await fetch(`${base}/api/state`)).json() as IDEState;

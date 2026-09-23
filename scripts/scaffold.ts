@@ -1,34 +1,34 @@
-import { existsSync, mkdirSync, writeFileSync, cpSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
-
-export function scaffold(kind: string, name: string, projectRoot = resolve(Bun.env.SATURN_PROJECT ?? "project")) {
-  if (!/^[a-z][a-z0-9-]{0,47}$/.test(name)) throw new Error("Use a lowercase name: plc-01");
-  if (kind !== "plc" && kind !== "plugin") throw new Error("Usage: bun run scaffold <plc|plugin> <name>");
-  const destination = join(projectRoot, kind === "plc" ? "equipment" : "plugins", name);
+import { existsSync, mkdirSync, writeFileSync, cpSync } from 'node:fs';
+import { basename, join, relative, resolve } from 'node:path';
+export function scaffold(kind: string, name: string, projectRoot = resolve(Bun.env.SATURN_PROJECT ?? 'project')) {
+  if (!/^[a-z][a-z0-9-]{0,47}$/.test(name)) throw new Error('Use a lowercase name: plc-01');
+  if (kind !== 'plc' && kind !== 'plugin') throw new Error('Usage: bun run scaffold <plc|plugin> <name>');
+  const destination = join(projectRoot, kind === 'plc' ? 'equipment' : 'plugins', name);
   if (existsSync(destination)) throw new Error(`Already exists: ${destination}`);
   mkdirSync(destination, { recursive: true });
-  if (kind === "plugin") {
-    writeFileSync(join(destination, "index.ts"), `import { signal } from "@saturn/core";\n\n/** @ru Скопированный модуль проекта.\n * @en A copied project module. */\nexport const enabled = signal("${name}.enabled", { initial: false });\n`);
+  if (kind === 'plugin') {
+    writeFileSync(join(destination, 'index.ts'), `import { signal } from "@saturn/core";\nexport const enabled = signal("${name}.enabled", { initial: false });\n`);
   } else {
-    writeFileSync(join(destination, "device.ts"), `import { plc, signal } from "@saturn/core";\n\nexport const online = signal("${name}.online", { initial: false });\nexport const controller = plc("${name}", {\n  label: { en: "Controller", ru: "Контроллер" },\n  x: 60, y: 60, online,\n});\n`);
-    writeFileSync(join(destination, "hmi.ts"), `import type { Hmi } from "@saturn/core";\nimport { controller } from "./device";\n\n// The same equipment objects, not another HMI model or a second renderer.\nexport default { width: 320, height: 240, equipment: [controller] } satisfies Hmi;\n`);
-    writeFileSync(join(destination, "compiler.ts"), `import type { FirmwareContext } from "@saturn/core";\n\n/** @ru Подключите реальный компилятор и параметры целевого ПЛК.\n * @en Connect the actual compiler and the target PLC configuration. */\nexport default async function compile(context: FirmwareContext): Promise<void> {\n  // await context.run(["vendor-compiler", "firmware/main.c", "-o", context.outDir + "/firmware.bin"]);\n  // Deliberately fail until a real toolchain is configured. Never emit a fake firmware.bin.\n  throw new Error("Configure this PLC's compiler.ts with its real toolchain before building firmware");\n}\n`);
-    mkdirSync(join(destination, "firmware"));
-    writeFileSync(join(destination, "firmware/README.md"), "# Firmware sources\n\nPlace this controller's sources, target memory map and build inputs here. Configure ../compiler.ts for its vendor toolchain. The generic PLC scaffold is not a Saturn PLC hardware driver.\n");
+    writeFileSync(join(destination, 'device.ts'), `import { plc, signal } from "@saturn/core";\nexport const online = signal("${name}.online", { initial: false });\nexport const controller = plc("${name}", { label: {en:"Controller",ru:"Контроллер"}, x:60, y:60, online });\n`);
+    writeFileSync(join(destination, 'hmi.ts'), `import type { Hmi } from "@saturn/core";\nimport { controller } from "./device";\nexport default { width:320, height:240, equipment:[controller] } satisfies Hmi;\n`);
+    writeFileSync(join(destination, 'compiler.ts'), `import type { FirmwareContext } from "@saturn/core";\n/** @ru Подключите реальный toolchain устройства. @en Configure the actual target toolchain. */\nexport default async function compile(context: FirmwareContext): Promise<void> {\n  // await context.run(["vendor-compiler", "firmware/main.c", "-o", context.outDir + "/firmware.bin"]);\n  throw new Error("Configure this PLC's real compiler before building firmware");\n}\n`);
+    mkdirSync(join(destination, 'firmware'));
+    writeFileSync(join(destination, 'firmware/README.md'), '# Firmware\n\nPut target sources and memory configuration here. Configure ../compiler.ts. No physical controller is implied by this scaffold.\n');
   }
   return destination;
 }
 export function create(destination: string) {
-  const target = resolve(destination), appRoot = resolve(import.meta.dir, "..");
-  if (existsSync(target)) throw new Error("Destination already exists");
-  mkdirSync(target, { recursive: true });
-  for (const name of ["src", "project", "scripts", "tests", "package.json", "tsconfig.json", ".gitignore", ".env.example", "README.md"]) cpSync(join(appRoot, name), join(target, name), { recursive: true });
-  if (existsSync(join(appRoot, "bun.lock"))) cpSync(join(appRoot, "bun.lock"), join(target, "bun.lock"));
+  const target = resolve(destination), appRoot = resolve(import.meta.dir, '..');
+  if (existsSync(target)) throw new Error('Destination already exists');
+  // Copy project source, NOT the IDE source, scripts, tests or infrastructure.
+  cpSync(join(appRoot, 'project'), target, { recursive: true, filter: path => !basename(path).startsWith('.') && basename(path) !== 'node_modules' });
+  writeFileSync(join(target, 'package.json'), JSON.stringify({ name: basename(target), private: true, type: 'module' }, null, 2) + '\n');
+  writeFileSync(join(target, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, module: 'Preserve', moduleResolution: 'Bundler', noEmit: true, paths: { '@saturn/core': ['./' + relative(target, join(appRoot, 'src/core.ts')).replaceAll('\\', '/')] } } }, null, 2) + '\n');
+  writeFileSync(join(target, '.gitignore'), 'node_modules/\n.saturn/\n.env\n.env.*\n');
   return target;
 }
 if (import.meta.main) {
-  const [kind, name] = Bun.argv.slice(2);
-  if (!kind || !name) throw new Error("Usage: bun run scaffold <plc|plugin|project> <name>");
-  console.log(kind === "project" ? create(name) : scaffold(kind, name));
-  console.log("Import the generated definitions from project.ts. Files are yours; nothing is registered globally.");
+  const [kind, name] = Bun.argv.slice(2); if (!kind || !name) throw new Error('Usage: bun run scaffold <plc|plugin|project> <name>');
+  console.log(kind === 'project' ? create(name) : scaffold(kind, name));
+  console.log('Import generated definitions normally; nothing is registered globally.');
 }

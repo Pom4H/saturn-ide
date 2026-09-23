@@ -1,0 +1,47 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { validateProject, type Project, type Problem } from '../core';
+import { createArtifact, digest, canonical, type BuildArtifact } from '../core/artifact';
+import type { PositionSource } from '../source-edits';
+import { Workspace } from './files';
+import { Language } from './language';
+import { execute } from './git';
+export interface DraftBuild { artifact: BuildArtifact; project: Project; positions: Record<string, PositionSource> }
+export class BuildError extends Error {
+  constructor(readonly problems: Problem[]) { super('Project check failed'); }
+}
+/** Build trusted authored source. This module cannot start drivers or touch runtime state. */
+export class Builder {
+  readonly language: Language;
+  constructor(readonly workspace: Workspace, readonly appRoot: string, readonly dataDir: string) { this.language = new Language(workspace, appRoot); }
+  private sources() {
+    return this.workspace.list().filter(p => /\.(tsx?|json)$/.test(p)).map(path => this.workspace.read(path));
+  }
+  async build(): Promise<DraftBuild> {
+    const sourceFiles = this.sources();
+    const sourceDigest = await digest(canonical(sourceFiles.map(({ path, source }) => ({ path, source }))));
+    const lock = join(this.appRoot, 'bun.lock');
+    const lockHash = existsSync(lock) ? await digest(readFileSync(lock, 'utf8')) : null;
+    const coreHash = await digest(['core.ts', 'geometry.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
+    const inputKey = await digest(canonical({ sourceDigest, coreHash, lockHash, bunVersion: Bun.version }));
+    this.language.clear(); const problems = this.language.diagnostics();
+    if (problems.length) throw new BuildError(problems);
+    const outdir = join(this.dataDir, 'compiler', inputKey.slice(7));
+    const entrypoints = [this.workspace.file('project.ts')];
+    if (sourceFiles.some(f => f.path === 'server.ts')) entrypoints.push(this.workspace.file('server.ts'));
+    const result = await Bun.build({ entrypoints, outdir, naming: '[name].mjs', target: 'bun', plugins: [{ name: 'core-import', setup: build => {
+      build.onResolve({ filter: /^@saturn\/core$/ }, () => ({ path: join(this.appRoot, 'src/core.ts') }));
+    } }] });
+    if (!result.success) throw new Error(result.logs.map(l => l.message).join('\n'));
+    const project = (await import(pathToFileURL(join(outdir, 'project.mjs')).href)).default as Project;
+    validateProject(project);
+    const after = await digest(canonical(this.sources().map(({ path, source }) => ({ path, source }))));
+    if (after !== sourceDigest) throw new Error('Source changed during build; build again');
+    const sourceRevision = await execute(['git', 'rev-parse', 'HEAD'], this.workspace.root).then(s => s.trim()).catch(() => null);
+    const driver = result.outputs.find(o => o.path.endsWith('server.mjs'));
+    const artifact = await createArtifact(project, driver ? await driver.text() : null, { sourceRevision, sourceDigest, coreHash, lockHash, bunVersion: Bun.version });
+    return { artifact, project, positions: this.workspace.positions(project.equipment.map(e => e.id)) };
+  }
+  close() { this.language.dispose(); }
+}
