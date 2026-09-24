@@ -141,10 +141,10 @@ function App() {
     ...findResources(catalog, query, locale).filter(r => !operator || ['device', 'report', 'project'].includes(r.kind)).map(r => ({ id: r.uri, name: `${r.name[locale]} ${r.entityId ?? ''}`, icon: r.icon, run: () => void openResource(r) })),
   ].slice(0, 30);
   return <div className={`shell ${operator ? 'operator-mode' : ''}`}>
-    <header className="topbar"><button className="brand" onClick={() => chooseSurface('diagram')}><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx={16} cy={16} r={9}/><ellipse cx={16} cy={16} rx={15} ry={5} transform="rotate(-25 16 16)"/></svg><strong>Saturn</strong></button>
-      <button className="project-name" onClick={() => chooseSurface('targets')}>{text(state.project.label, locale)}</button><span className={`status ${state.mode === 'simulation' ? 'simulation' : 'stale'}`}>{mode}</span><span className="spacer"/>
-      <button className="palette-trigger" onClick={() => { setPalette(true); setQuery(''); setChoice(0); }}>{ru ? 'Найти / перейти' : 'Find / go to'} <kbd>⌘ K</kbd></button>
-      <button onClick={() => { setOperator(!operator); if (!operator) { chooseSurface('diagram'); setDock(false); } }}>{operator ? (ru ? 'Инженер' : 'Engineer') : (ru ? 'Оператор' : 'Operator')}</button><select aria-label="Language" value={locale} onChange={e => setLocale(e.target.value as Locale)}><option value="ru">RU</option><option value="en">EN</option></select></header>
+    <header className="topbar"><span className="window-dots" aria-hidden="true"><i/><i/><i/></span><button className="brand" onClick={() => chooseSurface('diagram')}><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx={16} cy={16} r={9}/><ellipse cx={16} cy={16} rx={15} ry={5} transform="rotate(-25 16 16)"/></svg><strong>Saturn</strong></button>
+      <button className="project-chip" onClick={() => chooseSurface('targets')}>{text(state.project.label, locale)} · {state.mode==='live'?'PROD':'DESIGN'}⌄</button><span className="sim-badge">{state.mode==='simulation'?'SIM':'LIVE'}</span><span className="spacer"/>
+      <button className="palette-trigger" onClick={() => { setPalette(true); setQuery(''); setChoice(0); }}>⌕ {ru ? 'Найти / выполнить команду…' : 'Find / run command…'} <kbd>⌘ K</kbd></button>
+      <button className="icon-button" aria-label={ru?'Уведомления':'Notifications'} onClick={() => setDock(true)}>♧</button><button className="avatar-button" aria-label="Account">A</button></header>
     {error && <div className="message error" role="alert"><span>{error}</span><button onClick={() => setError('')} aria-label="Close">×</button></div>}
     {!!state.problems.length && <div className="problems" role="alert"><strong>{ru ? 'Ошибка проекта или сервиса. Применённая ревизия показана отдельно.' : 'Project or service error. Applied revision is shown separately.'}</strong>{state.problems.map((p, i) => <div key={i}>{p.code} {p.path} {p.message[locale]}</div>)}</div>}
     <div className="shell-body">
