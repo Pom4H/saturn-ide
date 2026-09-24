@@ -27,6 +27,9 @@ export interface ProtocolDefinition<C, A> {
   readonly id: string;
   /** Validate address loaded from the checked project's JSON, not just TypeScript. */
   readonly address: (input: unknown) => A;
+  /** @ru Проверить совместимость типа/доступа до I/O, при bind и повторно после JSON.
+   * @en Validate value type/access before I/O, both on bind and after JSON transport. */
+  readonly validate?: (channel: { readonly signal: Signal | SignalSpec; readonly address: A }) => void;
   /** @ru Только runtime вызывает connect. При rejected connect плагин освобождает свои ресурсы.
    * @en Only runtime calls connect. A rejected connect must release resources acquired by the plugin. */
   readonly connect: (config: C, signal: AbortSignal) => Promise<ProtocolSession<A>>;
@@ -80,7 +83,9 @@ export function defineProtocol<C, A>(definition: ProtocolDefinition<C, A>) {
       id, protocol: definition.id, options: settings,
       bind<S extends Signal | SignalSpec>(target: S, address: A): S {
         if (target.binding) throw acquisitionError('PROTOCOL_REBIND', 'Signal already has a binding', 'У сигнала уже есть привязка');
-        const encoded = canonical(definition.address(JSON.parse(canonical(address))));
+        const parsed = definition.address(JSON.parse(canonical(address)));
+        definition.validate?.({ signal: target, address: parsed });
+        const encoded = canonical(parsed);
         if (encoded.length > 8192) throw acquisitionError('PROTOCOL_ADDRESS', 'Address exceeds limit', 'Адрес превышает лимит');
         const binding = { protocol: definition.id, endpoint: id, address: encoded, pollMs: settings.pollMs };
         return { ...target, binding, origin: { kind: 'protocol', protocol: definition.id, endpoint: id, address: encoded } };
@@ -90,7 +95,9 @@ export function defineProtocol<C, A>(definition: ProtocolDefinition<C, A>) {
           const binding = signal.binding;
           if (!binding || binding.protocol !== definition.id || binding.endpoint !== id || typeof binding.address !== 'string' || binding.address.length > 8192 || binding.codec !== undefined || binding.pollMs !== settings.pollMs)
             throw acquisitionError('PROTOCOL_BINDING', `Incompatible binding ${signal.id}`, `Несовместимая привязка ${signal.id}`);
-          return { signal, address: definition.address(JSON.parse(binding.address)) };
+          const channel = { signal, address: definition.address(JSON.parse(binding.address)) };
+          definition.validate?.(channel);
+          return channel;
         });
         const byId = new Map(channels.map(channel => [channel.signal.id, channel]));
         return { signals,
