@@ -33,13 +33,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-1.4.2-${{ hashFiles('package.json') }}
+          key: ${{ runner.os }}-bun-1.4.2-${{ hashFiles('bun.lock', 'package.json') }}
           restore-keys: |
             ${{ runner.os }}-bun-1.4.2-
 
       - name: Install
-        run: |
-          if test -f bun.lock; then bun install --frozen-lockfile; else bun install; fi
+        run: bun install --frozen-lockfile
 
       - name: Chromium
         run: bunx playwright install --with-deps chromium
