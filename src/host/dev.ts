@@ -17,6 +17,7 @@ import { RevisionStore } from '../runtime/revisions';
 import { decodeProject } from '../runtime/decode-project';
 import { HASH } from '../core/artifact';
 import { reportResponse } from './report-api';
+import { projectDocumentation } from '../documentation';
 
 const appRoot = resolve(import.meta.dir, '../..');
 const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 'Проект не загружен' }, signals: {}, equipment: [], pipes: [], alarms: [] };
@@ -107,6 +108,7 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
           if (path === '/api/state') return json(state());
           if (path === '/api/events') return events.response(request, state());
           if (path === '/api/resources') return json(indexResources(workspace, runtime.project, manager.applied ?? ''));
+          if (path === '/api/documentation') { const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ru'; return new Response(projectDocumentation(runtime.project,{locale}), { headers:{'Content-Type':'text/markdown; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'} }); }
           if (path === '/api/releases') return json({ key, source: draft?.artifact.provenance ?? null, checked: draft?.artifact.hash ?? null, ...await revisions.state(), phase: manager.phase, error: manager.error });
           if (path === '/api/files') return json(workspace.list());
           if (path === '/api/file') return json(workspace.read(url.searchParams.get('path') ?? 'project.ts'));
