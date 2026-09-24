@@ -144,7 +144,8 @@ export function terminalFromAnchor<const M extends Medium,const F extends string
   spec:{z:number;medium:M;family:F;role:R;max?:number},
 ):Terminal<M,F,R> {
   if(!anchor)throw new Error('Missing equipment terminal anchor');
-  return terminal({x:anchor.x,y:anchor.y,z:spec.z,side:anchor.side,medium:spec.medium,family:spec.family,role:spec.role,max:spec.max});
+  const side:Side=anchor.side==='top'?'up':anchor.side==='bottom'?'down':anchor.side;
+  return terminal({x:anchor.x,y:anchor.y,z:spec.z,side,medium:spec.medium,family:spec.family,role:spec.role,max:spec.max});
 }
 export interface Endpoint<M extends Medium=Medium,F extends string=string,R extends Role=Role,I extends string=string> {
   readonly device:I; readonly port:string; readonly terminal:Terminal<M,F,R>;
