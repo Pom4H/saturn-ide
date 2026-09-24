@@ -414,3 +414,29 @@ Verification results are recorded after execution below.
 Executed on macOS arm64 / Bun 1.4.2: `bun run check` passed both TypeScript compilers
 and the 76-module architecture guard; `bun test tests/runtime-host.test.ts` passed
 1 test / 20 assertions, including command/apply revision fencing.
+
+## 2026-09-24 — Firmverse, Workflow scenarios and SaaS operator
+
+External project: `saturn-examples/firmverse-station`; infrastructure and authorization:
+`saturn-saas`. No SaaS dependency introduced into IDE or core.
+
+Executed on macOS arm64, Bun 1.4.2:
+- Example strict TypeScript and 2 emulator tests / 14 assertions passed.
+- Firmware application compiled by pinned Firmverse WASM: 208 bytes,
+  SHA256 `4f22296f0ad1bd8fd70e01e60181e03d604736a4c65c2bfeaa27221b68ad6650`.
+- Actual Nitro-compiled Workflow SDK run `wrun_01M3A8EA2CF8JZXVJYD2BFHMV7`
+  completed against separate Firmverse process via runtime commands: rpm 0→1450,
+  flow 12 m³/h at opening 50%; readbacks include advancing sequence/sourceAt.
+- Checked portable runtime applied as `ff348352f7a5fafbb9f190732708c414f96bbb7bfa2cb112164c6df4185e123c`.
+- Real browser: local IDE's `firmverse-wasm-rgb565` display, page 0→1 via physical
+  button hit area, WebGL 3D canvas, artifacts/firmverse-live-{2d,3d}.png.
+- SaaS browser: real GitHub API authorization, shared Scene/Control, actual runtime
+  stop/start observed from WASM. Dark/light/390px screenshots + recording under artifacts/.
+  Offline controls and concurrent source version were specifically response-injected in
+  Playwright; local draft survives incoming version and explicit reload updates CodeMirror.
+- Authenticated HTTPS tunnel reads actual runtime; unauthenticated state returns 401,
+  source/deployment paths return 404. Cloud operator requires GitHub OAuth login.
+
+No physical MCU flashing, cloud vendor LCD factory distribution, CRDT cursors or durable
+per-user command audit is claimed. The temporary tunnel and simulator are a local demo;
+production reliability of hardware deployment remains an outstanding acceptance criterion.
