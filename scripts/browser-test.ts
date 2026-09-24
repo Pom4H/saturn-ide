@@ -22,6 +22,17 @@ try{
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
   const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(e.message));await page.goto(base);
   await page.locator('[data-equipment="P-01"] [data-rpm="1450"]').waitFor({timeout:30000});await page.locator('.cm-content').waitFor();
+  const activityNav=page.getByRole('navigation',{name:'Рабочие разделы'});
+  const captureSurface=async(name:string,file:string,ready?:()=>Promise<void>)=>{await activityNav.getByRole('button',{name,exact:true}).click();if(ready)await ready();await page.screenshot({path:`artifacts/${file}`});};
+  await page.screenshot({path:'artifacts/menu-diagram.png'});
+  await captureSurface('Исходник','menu-source.png',async()=>{await page.locator('.cm-content').waitFor();});
+  await captureSurface('Сигналы','menu-signals.png');
+  await captureSurface('Отчёты','menu-reports.png');
+  await captureSurface('HMI','menu-hmi.png',async()=>{await page.locator('.hmi-surface iframe').waitFor();});
+  await captureSurface('Среда','menu-environment.png');
+  await captureSurface('Git','menu-git.png');
+  await activityNav.getByRole('button',{name:'Схема',exact:true}).click();await page.locator('[data-equipment="P-01"]').waitFor();
+  checks.push('activity menu surfaces captured from the real shell');
   assert(await page.locator('[data-anatomy="saturn-pump"] circle').count()>=10,'original SVG anatomy lost');
   assert(await page.locator('[data-cable]').count()===2,'physical cables missing');assert(await page.locator('[data-route-valid="false"]').count()===0,'demo routing failed');
   assert(await page.locator('.resource-explorer [data-icon="pump"]').count()===1,'device class icon missing/duplicated');
