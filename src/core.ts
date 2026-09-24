@@ -126,18 +126,27 @@ export interface HmiCapability {readonly target:string;readonly width:number;rea
 export interface FirmwareCapability {readonly target:string;readonly languages:readonly string[];readonly sourceDir?:string}
 export interface EmulatorCapability {readonly runtime:string;readonly abi?:string}
 export interface DeviceCapabilities {readonly diagram?:DiagramCapability;readonly hmi?:HmiCapability;readonly firmware?:FirmwareCapability;readonly emulator?:EmulatorCapability}
+export interface EngineeringConstraint {readonly id:string;readonly severity:'info'|'warning'|'error';readonly label:Text;readonly description?:Text}
+export interface DeviceKnowledge {readonly summary?:Text;readonly commissioning?:readonly Text[];readonly constraints?:readonly EngineeringConstraint[]}
+export interface DeviceAlarmTemplate<S extends Readonly<Record<string,SignalSpec>>> {readonly label:Text;readonly signal:Extract<keyof S,string>;readonly above:number;readonly hysteresis?:number}
+type DeviceAlarmTemplates<S extends Readonly<Record<string,SignalSpec>>> = Readonly<Record<string,DeviceAlarmTemplate<S>>>;
 type DevicePorts<P extends Readonly<Record<string,Terminal>>,I extends string> = { readonly [K in keyof P]:Endpoint<P[K]['medium'],P[K]['family'],P[K]['role'],I>&{readonly port:Extract<K,string>;readonly terminal:P[K]} };
 type Merge<A,B> = Omit<A,keyof B>&B;
 type DeviceSignalOptions<S extends Readonly<Record<string,SignalSpec>>> = { readonly [K in keyof S]?: S[K] extends SignalSpec<infer T> ? Signal<T,string,boolean>|SignalSpec<T,boolean> : never };
-export type Equipment<K extends string=string,I extends string=string,O extends Position=Position,P extends Readonly<Record<string,Terminal>>=Readonly<Record<string,Terminal>>> = Materialized<O,I>&Position&{readonly id:I;readonly kind:K;readonly icon:string;readonly ports:DevicePorts<P,I>;readonly capabilities:DeviceCapabilities};
-export interface DeviceDefinition<K extends string,P extends Readonly<Record<string,Terminal>>,S extends Readonly<Record<string,SignalSpec>>=Record<never,never>> {readonly id:K;readonly icon:string;readonly ports:P;readonly signals?:S;readonly capabilities?:DeviceCapabilities}
+export type Equipment<K extends string=string,I extends string=string,O extends Position=Position,P extends Readonly<Record<string,Terminal>>=Readonly<Record<string,Terminal>>> = Materialized<O,I>&Position&{readonly id:I;readonly kind:K;readonly icon:string;readonly ports:DevicePorts<P,I>;readonly capabilities:DeviceCapabilities;readonly knowledge:DeviceKnowledge;readonly alarms:readonly Alarm[]};
+export interface DeviceDefinition<K extends string,P extends Readonly<Record<string,Terminal>>,S extends Readonly<Record<string,SignalSpec>>=Record<never,never>> {readonly id:K;readonly icon:string;readonly ports:P;readonly signals?:S;readonly capabilities?:DeviceCapabilities;readonly knowledge?:DeviceKnowledge;readonly alarms?:DeviceAlarmTemplates<S>}
 /** @ru Единственный конструктор класса оборудования. Наше и vendor-оборудование используют один путь.
  * @en The only equipment-class constructor. Built-in and vendor equipment use the same path. */
 export function device<const K extends string,const P extends Readonly<Record<string,Terminal>>,const S extends Readonly<Record<string,SignalSpec>>=Record<never,never>>(definition:DeviceDefinition<K,P,S>) {
   return function<const I extends string,const O extends Position&DeviceSignalOptions<S>>(id:I,options:O):Equipment<K,I,Merge<S,O>,P> {
     const ports=Object.fromEntries(Object.entries(definition.ports).map(([port,terminal])=>[port,{device:id,port,terminal}])) as DevicePorts<P,I>;
-    const authored={...(definition.signals??{}),...options} as Merge<S,O>;
-    return {...ownSignals(id,authored),id,kind:definition.id,icon:definition.icon,ports,capabilities:definition.capabilities??{}} as Equipment<K,I,Merge<S,O>,P>;
+    const authored={...(definition.signals??{}),...options} as Merge<S,O>,materialized=ownSignals(id,authored);
+    const alarms=Object.entries(definition.alarms??{}).map(([name,template])=>{
+      const candidate=(materialized as Record<string,unknown>)[template.signal];
+      if(!signalLike(candidate)||!('id' in candidate)||typeof candidate.id!=='string'||typeof candidate.initial!=='number')throw new ProjectError('EQUIPMENT_ALARM_SIGNAL',{en:`Alarm ${name} requires numeric signal ${template.signal}`,ru:`Тревоге ${name} нужен числовой сигнал ${template.signal}`});
+      return {id:`${id}.${name}`,label:template.label,signal:candidate as Signal<number>,above:template.above,hysteresis:template.hysteresis};
+    });
+    return {...materialized,id,kind:definition.id,icon:definition.icon,ports,capabilities:definition.capabilities??{},knowledge:definition.knowledge??{},alarms} as Equipment<K,I,Merge<S,O>,P>;
   };
 }
 export function equipmentSignal<T extends Value>(equipment:Equipment,field:string,type:'number'|'boolean'|'string'):Signal<T>|undefined {
@@ -145,22 +154,24 @@ export function equipmentSignal<T extends Value>(equipment:Equipment,field:strin
   return signalLike(value)&&'id' in value&&typeof value.id==='string'&&typeof value.initial===type?value as Signal<T>:undefined;
 }
 export function equipmentSignals(equipment:Equipment):Signal[] {return Object.values(equipment).filter((value):value is Signal=>signalLike(value)&&'id' in value&&typeof value.id==='string');}
+/** Writable signals are commands; no separate command registry is authored. */
+export function equipmentCommands(equipment:Equipment):Signal[] {return equipmentSignals(equipment).filter(signal=>signal.writable);}
 const tankPorts={inlet:terminal({x:79,y:3,z:195,side:'up',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:170,y:184,z:24,side:'right',medium:'fluid',family:'water',role:'source'})} as const;
 const pumpPorts={inlet:terminal({x:0,y:96,z:60,side:'left',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:76,y:0,z:105,side:'up',medium:'fluid',family:'water',role:'source'}),run:terminal({x:170,y:40,z:85,side:'up',medium:'control',family:'digital',role:'sink'})} as const;
 const valvePorts={inlet:terminal({x:0,y:102,z:60,side:'left',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:160,y:102,z:60,side:'right',medium:'fluid',family:'water',role:'source'}),command:terminal({x:80,y:6,z:105,side:'up',medium:'control',family:'analog',role:'sink'})} as const;
 const plcPorts={DO1:terminal({x:35,y:0,z:70,side:'up',medium:'control',family:'digital',role:'source'}),AO1:terminal({x:80,y:0,z:70,side:'up',medium:'control',family:'analog',role:'source'}),RS485:terminal({x:145,y:130,z:35,side:'down',medium:'bus',family:'rs485',role:'passive',max:2})} as const;
 /** Built-ins are ordinary device() declarations, not a privileged registry. */
 /** @ru Резервуар с измеряемым уровнем. @en Tank with measured level. */
-export const tank=device({id:'tank',icon:'tank',ports:tankPorts,signals:{level:signal({initial:0})},capabilities:{diagram:{width:170,height:230}}});
+export const tank=device({id:'tank',icon:'tank',ports:tankPorts,signals:{level:signal({initial:0})},capabilities:{diagram:{width:170,height:230}},knowledge:{summary:{ru:'Резервуар с измеряемым уровнем жидкости.',en:'Tank with measured liquid level.'}}});
 /** @ru Насос. rpm — измеренная скорость вращения; run — команда пуска.
  * @en Pump. rpm is measured speed; run is the start command. */
-export const pump=device({id:'pump',icon:'pump',ports:pumpPorts,signals:{rpm:signal({initial:0}),run:signal({initial:true,writable:true})},capabilities:{diagram:{width:220,height:170}}});
+export const pump=device({id:'pump',icon:'pump',ports:pumpPorts,signals:{rpm:signal({initial:0}),run:signal({initial:true,writable:true})},capabilities:{diagram:{width:220,height:170}},knowledge:{summary:{ru:'Насос: измеренные обороты и команда пуска принадлежат экземпляру.',en:'Pump: measured speed and start command belong to the instance.'},commissioning:[{ru:'Проверить направление вращения и подтверждение оборотов.',en:'Verify rotation direction and measured-speed feedback.'}]}});
 /** @ru Клапан с измеряемым/управляемым положением открытия.
  * @en Valve with measured/commanded opening. */
-export const valve=device({id:'valve',icon:'valve',ports:valvePorts,signals:{opening:signal({initial:0,writable:true})},capabilities:{diagram:{width:160,height:164}}});
+export const valve=device({id:'valve',icon:'valve',ports:valvePorts,signals:{opening:signal({initial:0,writable:true})},capabilities:{diagram:{width:160,height:164}},knowledge:{summary:{ru:'Клапан с управляемым положением открытия.',en:'Valve with commanded opening position.'}}});
 /** @ru Базовый ПЛК без vendor-specific toolchain.
  * @en Generic PLC without a vendor-specific toolchain. */
-export const plc=device({id:'plc',icon:'plc',ports:plcPorts,signals:{online:signal({initial:false})},capabilities:{diagram:{width:160,height:150}}});
+export const plc=device({id:'plc',icon:'plc',ports:plcPorts,signals:{online:signal({initial:false})},capabilities:{diagram:{width:160,height:150}},knowledge:{summary:{ru:'Базовый ПЛК без vendor-specific toolchain.',en:'Generic PLC without a vendor-specific toolchain.'}}});
 interface Connection { id:string; from:Endpoint; to:Endpoint; via?:readonly {x:number;y:number}[] }
 export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number> }
 export interface Cable extends Connection { kind:'cable'; signal?:Signal }
@@ -195,7 +206,7 @@ export interface Project {
   id:string; label:Text; signals:Record<string,Signal>; equipment:Equipment[]; pipes:Pipe[]; cables?:Cable[];
   alarms:Alarm[]; hmi?:Hmi; reports?:Report[];
 }
-export type ProjectDefinition = Omit<Project,'signals'|'hmi'> & {signals?:Record<string,Signal>;hmi?:Hmi|AutoHmi};
+export type ProjectDefinition = Omit<Project,'signals'|'hmi'|'alarms'> & {signals?:Record<string,Signal>;hmi?:Hmi|AutoHmi;alarms?:Alarm[]};
 /** @ru Производный индекс всех сигналов. Он не является вторым authored-файлом и не требует ручных строковых путей.
  * @en Derived index of every signal. It is not a second authored file and requires no manually duplicated string paths. */
 export function collectSignals(definition:ProjectDefinition):Record<string,Signal> {
@@ -216,9 +227,10 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
 /** @ru Единая модель. Сигналы выводятся из владельцев и ссылок; явный registry — только совместимый escape hatch.
  * @en One model. Signals are derived from owners/references; an explicit registry is only a compatibility escape hatch. */
 type ProjectSignals<P extends ProjectDefinition> = P extends {signals:infer S extends Record<string,Signal>} ? S : Record<string,Signal>;
-export function project<const P extends ProjectDefinition>(definition:P):Omit<P,'signals'|'hmi'> & {signals:ProjectSignals<P>;hmi?:Hmi} {
+export function project<const P extends ProjectDefinition>(definition:P):Omit<P,'signals'|'hmi'|'alarms'> & {signals:ProjectSignals<P>;hmi?:Hmi;alarms:Alarm[]} {
   const hmi=definition.hmi&&'mode' in definition.hmi&&definition.hmi.mode==='topology'?resolveAutoHmi(definition,definition.hmi):definition.hmi;
-  const model={...definition,hmi,signals:collectSignals(definition)} as unknown as Omit<P,'signals'|'hmi'> & {signals:ProjectSignals<P>;hmi?:Hmi};
+  const alarms=[...(definition.alarms??[]),...definition.equipment.flatMap(e=>e.alarms??[])];
+  const model={...definition,hmi,alarms,signals:collectSignals(definition)} as unknown as Omit<P,'signals'|'hmi'|'alarms'> & {signals:ProjectSignals<P>;hmi?:Hmi;alarms:Alarm[]};
   validateProject(model as Project);return model;
 }
 export interface Problem { code:string; message:Record<Locale,string>; path?:string; from?:number; to?:number }
