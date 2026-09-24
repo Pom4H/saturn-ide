@@ -10,8 +10,9 @@ export async function reportResponse(store: Store, project: Project, revision: s
   const series = new Map<string, Sample[]>();
   type Row = { signal: string; semantic: string | null; at: number | string; value: string; quality: Sample['quality'] };
   let count = 0;
-  for (const column of Object.values(definition.columns)) {
-    const id=column.signal.id,identity=column.signal.semanticId??id;
+  const signals=new Map(Object.values(definition.columns).map(column=>[column.signal.semanticId??column.signal.id,column.signal]));
+  for (const [identity,signal] of signals) {
+    const id=signal.id;
     const before: Row[] = await store.sql`SELECT signal,semantic,at,value,quality FROM samples WHERE semantic=${identity} AND at<${from} ORDER BY at DESC,id DESC LIMIT 1`;
     const rows: Row[] = await store.sql`SELECT signal,semantic,at,value,quality FROM samples WHERE semantic=${identity} AND at>=${from} AND at<${to} ORDER BY at,id LIMIT 50001`;
     count += rows.length;
