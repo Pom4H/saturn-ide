@@ -35,9 +35,9 @@ export class Language {
   }
   signalHints(path:string,source:string,project:Project) {
     const file=this.set(path,source),program=this.service.getProgram(),tree=program?.getSourceFile(file);if(!program||!tree)return [];
-    const checker=program.getTypeChecker(),known=new Set(Object.values(project.signals).map(signal=>signal.id));
-    const hints=new Map<string,{signal:string;at:number}>();
-    const add=(signal:string,at:number)=>{if(known.has(signal))hints.set(`${signal}:${at}`,{signal,at});};
+    const checker=program.getTypeChecker(),known=new Map(Object.values(project.signals).map(signal=>[signal.id,signal]));
+    const hints=new Map<string,{signal:string;semantic?:string;unit?:string;at:number}>();
+    const add=(signal:string,at:number)=>{const definition=known.get(signal);if(definition)hints.set(`${signal}:${at}`,{signal,semantic:definition.semanticId,unit:definition.unit,at});};
     const signalId=(node:ts.Node)=>{
       const type=checker.getTypeAtLocation(node),property=type.getProperty('id');if(!property)return;
       const value=checker.getTypeOfSymbolAtLocation(property,node);return value.isStringLiteral()?value.value:undefined;
