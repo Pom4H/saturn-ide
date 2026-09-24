@@ -52,3 +52,6 @@ jobs:
         # Bound native SDK/socket cleanup so a leaked connection cannot occupy the runner.
         run: timeout --kill-after=10s 180s bun test tests
         working-directory: saturn-ide
+      - name: Vendor importer browser acceptance
+        run: bun scripts/importer-browser-test.ts
+        working-directory: saturn-ide
