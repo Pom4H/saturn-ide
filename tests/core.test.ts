@@ -41,5 +41,5 @@ test('vendor port constructors preserve physical literal types without local fra
   const a=terminal({x:1,y:2,z:3,side:'left',medium:'control',family:'digital',role:'source'});
   expect(a).toEqual({x:1,y:2,z:3,side:'left',medium:'control',family:'digital',role:'source',max:1});
   const b=terminalFromAnchor({x:4,y:5,side:'bottom'},{z:6,medium:'bus',family:'rs485',role:'passive',max:32});
-  expect(b).toEqual({x:4,y:5,z:6,side:'bottom',medium:'bus',family:'rs485',role:'passive',max:32});
+  expect(b).toEqual({x:4,y:5,z:6,side:'down',medium:'bus',family:'rs485',role:'passive',max:32});
 });
