@@ -27,7 +27,7 @@ try{
   const activityNav=page.getByRole('navigation',{name:'Рабочие разделы'});
   const captureSurface=async(name:string,file:string,ready?:()=>Promise<void>)=>{await activityNav.getByRole('button',{name,exact:true}).click();if(ready)await ready();await screenshot(page,`artifacts/${file}`);};
   await screenshot(page,'artifacts/menu-diagram.png');
-  await captureSurface('Исходник','menu-source.png',async()=>{await page.locator('.cm-content').waitFor();});
+  await captureSurface('Исходник','menu-source.png',async()=>{await page.locator('.cm-content').waitFor();await page.locator('.cm-live-value').filter({hasText:'1450 rpm'}).first().waitFor({timeout:15000});});checks.push('source editor renders live runtime values as virtual comments');
   await captureSurface('Сигналы','menu-signals.png');
   await captureSurface('Отчёты','menu-reports.png');
   await captureSurface('HMI','menu-hmi.png',async()=>{await page.locator('.hmi-surface iframe').waitFor();});
