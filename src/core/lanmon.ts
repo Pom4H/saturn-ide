@@ -5,7 +5,7 @@ export function inspectLanmon(name:string,sha256:string,files:readonly {path:str
   const warnings=new Set<string>();
   const result:MigrationFile[]=files.map(file=>{
     const lower=file.path.toLowerCase(),ext=lower.split('.').at(-1);
-    const kind:MigrationFile['kind']=['ini','cfg','xml','json','csv','dat'].includes(ext??'')?'configuration':['lm2','map','lm4'].includes(ext??'')?'screen':['pas','bas','cpp','js','vbs'].includes(ext??'')?'script':['fr3','frf'].includes(ext??'')?'report':['bmp','png','jpg','ico','wav','avi'].includes(ext??'')?'asset':'unsupported';
+    const kind:MigrationFile['kind']=['ini','cfg','xml','json','csv','dat'].includes(ext??'')?'configuration':['lm2','map','lm4'].includes(ext??'')?'screen':['pas','bas','vb','cpp','js','vbs'].includes(ext??'')?'script':['fr3','frf'].includes(ext??'')?'report':['bmp','png','jpg','ico','wav','avi'].includes(ext??'')?'asset':'unsupported';
     if(kind==='script')warnings.add('Скрипты требуют переноса логики и сценарных тестов. Они не исполнялись.');
     if(kind==='screen')warnings.add('Геометрия и привязки карт требуют отдельного преобразования; наличие файла не означает перенос экрана.');
     if(kind==='report')warnings.add('Отчёты требуют сопоставления полей, расписаний и правил пропусков данных.');

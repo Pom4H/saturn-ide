@@ -455,7 +455,7 @@ The official Lanmon 4 distribution at
 https://www.mnppsaturn.ru/ftp/public/soft/lanmon4/last_stable/lanmon4.zip
 contains lanmonsetup.exe dated 2026-09-08. Extracted with innoextract (not executed).
 Its “Домовой тепло-водо учет” example was packed locally and read by the actual loader:
-367 files, 90 configuration, 11 screens, 100 scripts, 41 reports, 44 assets and 81
+367 files, 90 configuration, 11 screens, 130 scripts (including .vb), 41 reports, 44 assets and 51
 unsupported. Input ~8.97 MB, expanded ~57.1 MB. Inventory saved under artifacts/.
 No vendor distribution is committed. No claim of migrated behavior, signal dimensions,
 script semantics or HMI visual equivalence follows from this inventory check.
