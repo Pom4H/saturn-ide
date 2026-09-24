@@ -25,30 +25,3 @@
 /* Keep selection readable while zooming; physical pipe thickness still scales with its geometry. */
 .selection{vector-effect:non-scaling-stroke}
 @media print{.resource-tabs{display:none!important}}
-
-/* Codex-like project-first shell: the left rail selects projects, not editor modes. */
-.project-sidebar{width:248px;flex-shrink:0;display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--border);min-height:0}
-.project-sidebar-head{height:49px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--border)}
-.project-sidebar-head strong{font-size:13px}.project-sidebar-head button{border:0;background:transparent;font-size:18px;padding:2px 6px}
-.project-filters{display:flex;gap:4px;padding:9px 8px 4px;overflow:auto}.project-filters button{border:0;background:transparent;padding:4px 7px;font-size:10px;color:var(--muted);white-space:nowrap}
-.project-filters button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent)}
-.project-sort{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 10px 9px;color:var(--muted);font-size:10px;border-bottom:1px solid var(--border)}
-.project-sort select{border:0;background:transparent;padding:2px 3px;font-size:10px}
-.project-list{padding:7px;overflow:auto}.project-list>button{width:100%;display:grid;grid-template-columns:10px minmax(0,1fr) auto;align-items:center;gap:8px;text-align:left;border:0;background:transparent;padding:9px 8px;border-radius:5px}
-.project-list>button:hover{background:var(--hover)}.project-list>button.active{background:var(--accent-soft)}
-.project-dot{width:8px;height:8px;border-radius:50%;background:var(--warn)}.project-dot.production{background:var(--good)}.project-dot.offline{background:var(--muted)}
-.project-copy{display:flex;flex-direction:column;min-width:0}.project-copy strong{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.project-copy small{font-size:9px;color:var(--muted)}
-.project-events{min-width:19px;text-align:center;border-radius:9px;padding:1px 5px;background:var(--bad);color:white;font-size:9px}.project-empty{padding:12px}
-.project-home{height:100%;overflow:auto;padding:34px clamp(22px,5vw,72px);background:var(--editor)}
-.project-home-header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;max-width:1120px;margin:0 auto 22px}
-.project-home-header h1{font-size:28px;margin:2px 0 3px}.project-home-header p{color:var(--muted);font:11px var(--mono);margin:0}.eyebrow{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-.project-health{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:11px}.project-health strong{font-weight:500}
-.project-actions{max-width:1120px;margin:0 auto 22px;display:flex;gap:7px;flex-wrap:wrap}.project-actions button{display:flex;align-items:center;gap:7px}
-.project-overview-grid{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.overview-card{min-height:180px;background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:16px;overflow:hidden}.overview-card>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.overview-card>header>strong{font-size:12px}.overview-card>header>span{font-size:10px;color:var(--muted)}.overview-card>header>button{border:0;background:transparent;color:var(--accent);font-size:10px;padding:0}
-.attention>button,.activity-card>button{width:100%;border:0;background:transparent;display:grid;grid-template-columns:12px minmax(0,1fr);gap:8px;text-align:left;padding:7px 0}.attention>button{grid-template-columns:12px minmax(0,1fr) auto}.attention small,.activity-card small{color:var(--muted)}
-.revision-line{display:flex;justify-content:space-between;gap:15px;padding:9px 0;border-bottom:1px solid var(--border);font-size:11px}.revision-line:last-child{border-bottom:0}.revision-line span{color:var(--muted)}
-.equipment-quick-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.equipment-quick-list button{display:flex;align-items:center;gap:8px;text-align:left;border:0;background:transparent;padding:7px}.equipment-quick-list button:hover{background:var(--hover)}.equipment-quick-list button>span{display:flex;flex-direction:column;min-width:0}.equipment-quick-list small{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.activity-mark{width:7px;height:7px;border-radius:50%;background:var(--accent);margin-top:5px}.activity-card>button>span:last-child{display:flex;flex-direction:column}
-@media(max-width:850px){.project-sidebar{width:190px}.project-overview-grid{grid-template-columns:1fr}.project-home{padding:20px 14px}.project-home-header{flex-direction:column}.project-health{align-items:flex-start}}
-@media(max-width:620px){.project-sidebar{width:100px}.project-sidebar-head strong,.project-sort span,.project-copy small,.project-filters button:not([aria-pressed=true]){display:none}.project-filters{padding:6px}.project-list>button{grid-template-columns:10px minmax(0,1fr)}.project-events{display:none}}
