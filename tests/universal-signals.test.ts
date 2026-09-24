@@ -29,6 +29,13 @@ test('semantic graph exposes blast radius and stable rename identity',()=>{
   expect(semanticDiff(demo,renamed as typeof demo).some(change=>change.type==='renamed'&&change.semanticId==='equipment:booster-primary')).toBe(true);
 });
 
+test('semantic diff includes engineering attributes, not only graph edges',()=>{
+  const moved={...demo,equipment:demo.equipment.map(e=>e.id==='P-01'?{...e,x:e.x+25}:e)};
+  expect(semanticDiff(demo,moved as typeof demo)).toContainEqual(expect.objectContaining({semanticId:'equipment:booster-primary',type:'changed'}));
+  const changedPressure={...demo,signals:{...demo.signals,[booster.pressure.id]:{...booster.pressure,unit:'kPa'}}};
+  expect(semanticDiff(demo,changedPressure as typeof demo).some(change=>change.semanticId===booster.pressure.semanticId&&change.type==='changed')).toBe(true);
+});
+
 test('compact runtime quality has a richer canonical interpretation',()=>{
   expect(qualityState('good')).toEqual({validity:'good',connection:'online',freshness:'fresh'});
   expect(qualityState('stale').freshness).toBe('stale');expect(qualityState('bad').validity).toBe('bad');
