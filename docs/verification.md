@@ -459,3 +459,10 @@ Its “Домовой тепло-водо учет” example was packed locally
 unsupported. Input ~8.97 MB, expanded ~57.1 MB. Inventory saved under artifacts/.
 No vendor distribution is committed. No claim of migrated behavior, signal dimensions,
 script semantics or HMI visual equivalence follows from this inventory check.
+
+The external SaaS-composed local host exposed an unresolved `@saturn/core/acquisition`
+import in retained driver code. Compiler and language service now share the package's
+public export map. `bun run check` passed (83 modules); `bun test tests/protocol-build.test.ts`
+passed 1 test / 6 assertions: the current public acquisition import is bundled and the
+retained driver performs actual Modbus TCP reads/writes into Runtime/SQLite from an
+external workspace. Native protocol SDK imports remain external.

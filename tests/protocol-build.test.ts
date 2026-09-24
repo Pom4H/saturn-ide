@@ -43,12 +43,13 @@ test('compiled Modbus project retains lazy SDK imports and executes through the 
   const address = server.address(); if (!address || typeof address === 'string') throw new Error('Missing fixture port');
   writeFileSync(join(workspace, 'connections.ts'), `import {modbusTcp} from './plugins/modbus';export const source=modbusTcp('mb',{host:'127.0.0.1',port:${address.port}},{pollMs:20});`);
   writeFileSync(join(workspace, 'project.ts'), `import {project,signal} from '@saturn/core';import {source} from './connections';export default project({id:'p',label:'P',equipment:[],pipes:[],alarms:[],signals:{pressure:source.bind(signal('pressure',{initial:0,writable:true}),{unit:1,area:'holding',offset:0,format:'uint16'})}});`);
-  writeFileSync(join(workspace, 'server.ts'), `import {acquire} from '@saturn/scada/acquisition';import {source} from './connections';export default acquire(source);`);
+  writeFileSync(join(workspace, 'server.ts'), `import {acquire} from '@saturn/core/acquisition';import {source} from './connections';export default acquire(source);`);
   const builder = new Builder(new Workspace(workspace), appRoot, dataDir), store = new Store(':memory:'), events = new Events();
   let installation: ProjectInstallation | undefined;
   try {
     const result = await builder.build(); expect(requests).toBe(0);
     expect(result.artifact.driver?.code).toContain('modbus-serial');
+    expect(result.artifact.driver?.code).not.toContain("from \"@saturn/core/acquisition\"");
     expect(result.artifact.driver!.code.length).toBeLessThan(1000000);
     await store.init(); const runtime = new Runtime(result.project, store, events, () => {}); await runtime.init();
     installation = await ProjectInstallation.prepare(result.artifact, runtime, dataDir); expect(requests).toBe(0);
