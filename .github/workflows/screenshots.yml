@@ -1,0 +1,54 @@
+name: Capture screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to capture and update
+        required: true
+        default: main
+        type: string
+
+concurrency:
+  group: saturn-ide-screenshots-${{ inputs.branch }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+
+      - name: Install
+        run: |
+          if test -f bun.lock; then bun install --frozen-lockfile; else bun install; fi
+
+      - name: Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Capture repository screenshots
+        run: bun scripts/screenshots.ts
+
+      - name: Store screenshots in selected branch
+        env:
+          TARGET_BRANCH: ${{ inputs.branch }}
+        run: |
+          git add docs/screenshots
+          if git diff --cached --quiet; then
+            echo "Screenshots unchanged"
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'docs: refresh Saturn screenshots'
+            git push origin "HEAD:$TARGET_BRANCH"
+          fi
