@@ -12,6 +12,7 @@
     "test": "bun test tests",
     "test:browser": "bun scripts/browser-test.ts",
     "scaffold": "bun scripts/scaffold.ts",
+    "docs:project": "bun scripts/project-docs.ts",
     "firmware": "bun scripts/firmware.ts",
     "deps:update": "bun update --latest"
   },
