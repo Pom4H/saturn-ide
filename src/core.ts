@@ -57,9 +57,10 @@ type OwnedSignal<S,I extends string,K extends string> =
   S extends SignalSpec<infer T,infer W> ? Signal<T,`${I}.${K}`,W> : S;
 type Materialized<O,I extends string> = {[K in keyof O]:OwnedSignal<O[K],I,Extract<K,string>>};
 function ownSignals<const I extends string,O extends object>(id:I,options:O):Materialized<O,I> {
+  const declared=(options as {semanticId?:unknown}).semanticId,ownerIdentity=typeof declared==='string'?declared:`equipment:${id}`;
   return Object.fromEntries(Object.entries(options).map(([field,value])=>{
     if(!signalLike(value)||('id' in value&&typeof value.id==='string'))return [field,value];
-    return [field,{...value,id:`${id}.${field}`,owner:{kind:'equipment',id,field},semanticId:`signal:${id}:${field}`}];
+    return [field,{...value,id:`${id}.${field}`,owner:{kind:'equipment',id,field},semanticId:`signal:${ownerIdentity}:${field}`}];
   })) as Materialized<O,I>;
 }
 /** Bind transport addressing without changing the domain signal ID/type. */
@@ -188,7 +189,7 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
  * @en One model. Signals are derived from owners/references; an explicit registry is only a compatibility escape hatch. */
 type ProjectSignals<P extends ProjectDefinition> = P extends {signals:infer S extends Record<string,Signal>} ? S : Record<string,Signal>;
 export function project<const P extends ProjectDefinition>(definition:P):Omit<P,'signals'> & {signals:ProjectSignals<P>} {
-  const model={...definition,signals:collectSignals(definition)} as Omit<P,'signals'> & {signals:ProjectSignals<P>};
+  const model={...definition,signals:collectSignals(definition)} as unknown as Omit<P,'signals'> & {signals:ProjectSignals<P>};
   validateProject(model);return model;
 }
 export interface Problem { code:string; message:Record<Locale,string>; path?:string; from?:number; to?:number }

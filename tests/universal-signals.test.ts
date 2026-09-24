@@ -7,6 +7,7 @@ import { impact, semanticDiff, semanticGraph } from '../src/semantic';
 test('equipment owns anonymous signals without duplicated string paths',()=>{
   expect(booster.rpm.id).toBe('P-01.rpm');
   expect(booster.rpm.owner).toEqual({kind:'equipment',id:'P-01',field:'rpm'});
+  expect(booster.rpm.semanticId).toBe('signal:equipment:booster-primary:rpm');
   expect(demo.signals[booster.rpm.id]).toBe(booster.rpm);
   expect(demo.signals[booster.pressure.id]).toBe(booster.pressure);
 });
@@ -22,7 +23,7 @@ test('transport binding does not change explicit signal identity or value type',
 
 test('semantic graph exposes blast radius and stable rename identity',()=>{
   const graph=semanticGraph(demo),pump=graph.bySemanticId.get('equipment:booster-primary');
-  expect(pump?.id).toBe('P-01');expect(pump?.uses).toContain('signal:P-01:rpm');
+  expect(pump?.id).toBe('P-01');expect(pump?.uses).toContain('signal:equipment:booster-primary:rpm');
   expect(impact(demo,booster.pressure.id)?.transitive.some(node=>node.id==='high-pressure')).toBe(true);
   const renamed={...demo,equipment:demo.equipment.map(e=>e.id==='P-01'?{...e,id:'P-201'}:e)};
   expect(semanticDiff(demo,renamed as typeof demo).some(change=>change.type==='renamed'&&change.semanticId==='equipment:booster-primary')).toBe(true);
