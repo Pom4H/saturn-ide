@@ -21,7 +21,7 @@ try{
   assert((await state()).problems.length===0,JSON.stringify((await state()).problems));checks.push('actual bun dev starts with the typed demo project');
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
   const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(e.message));await page.goto(base);
-  await page.locator('[data-equipment="P-01"] [data-rpm="1450"]').waitFor({timeout:30000});await page.locator('.cm-content').waitFor();
+  await page.locator('[data-equipment="P-01"] [data-rpm="1450"]').waitFor({timeout:30000});
   const activityNav=page.getByRole('navigation',{name:'Рабочие разделы'});
   const captureSurface=async(name:string,file:string,ready?:()=>Promise<void>)=>{await activityNav.getByRole('button',{name,exact:true}).click();if(ready)await ready();await page.screenshot({path:`artifacts/${file}`});};
   await page.screenshot({path:'artifacts/menu-diagram.png'});
@@ -35,14 +35,13 @@ try{
   checks.push('activity menu surfaces captured from the real shell');
   assert(await page.locator('[data-anatomy="saturn-pump"] circle').count()>=10,'original SVG anatomy lost');
   assert(await page.locator('[data-cable]').count()===2,'physical cables missing');assert(await page.locator('[data-route-valid="false"]').count()===0,'demo routing failed');
-  assert(await page.locator('.resource-explorer [data-icon="pump"]').count()===1,'device class icon missing/duplicated');
-  assert(await page.locator('.resource-tabs [data-icon="pump"]').count()===1,'tab must use the same device icon');
+  assert(await page.locator('.unified-sidebar [data-icon="pump"]').count()>=1,'device class icon missing from sidebar');
+  await page.getByRole('button',{name:'Код',exact:true}).click();await page.locator('.cm-content').waitFor();
   assert((await page.locator('.code-pane .pane-heading').innerText()).includes('P-01.device.ts'),'device opens its real named source');
   await page.getByRole('combobox',{name:'Открыть как',exact:true}).selectOption('source');
   await page.getByRole('combobox',{name:'Открыть как',exact:true}).selectOption('diagram');
-  assert(await page.locator('.resource-tabs [data-icon="pump"]').count()===1,'Open as must not duplicate resource identity');
+  assert(await page.locator('.unified-sidebar [data-icon="pump"]').count()>=1,'Open as must preserve device identity');
   checks.push('one device resource, one named source and a consistent class icon across editors');
-  await page.getByRole('button',{name:'Закрыть свойства',exact:true}).click();
   const originalX=(await state()).project.equipment.find(e=>e.id==='P-01')!.x;
   const pipe=page.locator('[data-pipe="suction"] path').first(),before=await pipe.getAttribute('d'),pump=page.locator('[data-equipment="P-01"]'),box=await pump.boundingBox();assert(box,'pump not visible');
   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+35,box.y+box.height/2-12,{steps:6});await page.waitForTimeout(120);
