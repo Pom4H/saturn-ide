@@ -4,7 +4,6 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { Equipment, Point } from '../core';
 import { advancePhase, flowOf, numeric, rpmOf } from '../motion';
-import { routeConnections } from '../topology';
 import type { SceneProps } from './scene';
 // Diagram x/y maps to world x/z; port elevation maps to world y. No independent 3D topology.
 const vector=(p:Point)=>new T.Vector3(p.x,p.z,p.y);
@@ -84,7 +83,7 @@ export default function Scene3D(props:SceneProps){
     rebuild.current=()=>{
       for(const g of geometries)g.dispose();geometries=new Set();world.clear();roots.clear();updaters=[];
       const p=current.current;for(const e of p.project.equipment)buildEquipment(e);
-      const routes=routeConnections(p.project);node.dataset.routeCount=String(routes.length);node.dataset.invalidRoutes=String(routes.filter(r=>!r.valid).length);
+      const routes=p.routes;node.dataset.routeCount=String(routes.length);node.dataset.invalidRoutes=String(routes.filter(r=>!r.valid).length);
       for(const route of routes){
         const points=route.points.map(vector),m=route.valid?(route.kind==='pipe'?pipeShell:wire):invalid;
         for(let i=1;i<points.length;i++)tube(world,points[i-1]!,points[i]!,route.kind==='pipe'?5:1.5,m);
@@ -98,7 +97,11 @@ export default function Scene3D(props:SceneProps){
         });
       }
     };
-    fit.current=()=>{const box=new T.Box3().setFromObject(world);if(box.isEmpty())return;const center=box.getCenter(new T.Vector3()),size=box.getSize(new T.Vector3()).length();controls.target.copy(center);controls.maxDistance=Math.max(40,size*3);camera.position.copy(center).add(new T.Vector3(-.55,.85,1).normalize().multiplyScalar(Math.max(5,size*.95)));camera.near=.01;camera.far=Math.max(200,size*10);camera.updateProjectionMatrix();controls.update();};
+    fit.current=()=>{const box=new T.Box3().setFromObject(world);if(box.isEmpty())return;const center=box.getCenter(new T.Vector3()),radius=box.getSize(new T.Vector3()).length()/2;
+      if(node.clientWidth&&node.clientHeight)camera.aspect=node.clientWidth/node.clientHeight;
+      const vertical=T.MathUtils.degToRad(camera.fov),horizontal=2*Math.atan(Math.tan(vertical/2)*camera.aspect);
+      const distance=Math.max(5,radius/Math.sin(Math.min(vertical,horizontal)/2)*1.05);
+      controls.target.copy(center);controls.maxDistance=Math.max(40,distance*2);camera.position.copy(center).add(new T.Vector3(-.55,.85,1).normalize().multiplyScalar(distance));camera.near=.01;camera.far=Math.max(200,distance+radius*5);camera.updateProjectionMatrix();controls.update();};
     rebuild.current();fit.current();
     const resize=new ResizeObserver(()=>{const w=node.clientWidth,h=node.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();});resize.observe(node);
     const ray=new T.Raycaster();let down=[0,0];

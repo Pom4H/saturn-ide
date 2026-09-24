@@ -12,14 +12,14 @@ export class Language {
     const host: ts.LanguageServiceHost = {
       getCompilationSettings: () => options,
       getScriptFileNames: () => workspace.list().filter(p => /\.tsx?$/.test(p)).map(p => workspace.file(p)),
-      getScriptVersion: file => { const overlay = this.overlays.get(file); if (overlay) return `overlay-${overlay.version}`; try { const stat = statSync(file); return `${stat.mtimeMs}:${stat.size}:${this.revision}`; } catch { return 'missing'; } },
+      getScriptVersion: file => { const overlay = this.overlays.get(file); if (overlay) return `overlay-${overlay.version}`; try { const stat = statSync(file); return `${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}`; } catch { return 'missing'; } },
       getScriptSnapshot: file => { const overlay = this.overlays.get(file); if (overlay) return ts.ScriptSnapshot.fromString(overlay.text); const value = ts.sys.readFile(file); return value === undefined ? undefined : ts.ScriptSnapshot.fromString(value); },
       getCurrentDirectory: () => appRoot, getDefaultLibFileName: ts.getDefaultLibFilePath,
       fileExists: ts.sys.fileExists, readFile: ts.sys.readFile, readDirectory: ts.sys.readDirectory, directoryExists: ts.sys.directoryExists, getDirectories: ts.sys.getDirectories,
     };
     this.service = ts.createLanguageService(host);
   }
-  clear() { this.overlays.clear(); this.revision++; }
+  clear() { this.overlays.clear(); }
   dispose() { this.service.dispose(); }
   private set(path: string, source: string) { const file = this.workspace.file(path), previous = this.overlays.get(file); if (previous?.text !== source) this.overlays.set(file, { text: source, version: ++this.revision }); return file; }
   diagnostics(path?: string, source?: string): Problem[] {
