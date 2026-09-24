@@ -153,7 +153,7 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
         const body: unknown = await request.json(); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected an object'); const b = body as Record<string, unknown>;
         if(path==='/api/deployment/preview'||path==='/api/deployment/create'){
           if(!b.plan||typeof b.plan!=='object')throw new HttpError(400,'Expected deployment plan');
-          const plan=b.plan as DeploymentPlan,workflow=deploymentWorkflow(plan);
+          const plan=b.plan as DeploymentPlan;let workflow:string;try{workflow=deploymentWorkflow(plan);}catch(error){throw new HttpError(400,String(error));}
           if(path.endsWith('/preview'))return json({workflow});
           const file=createDeployment(workspace,plan);return json({file,workflow});
         }

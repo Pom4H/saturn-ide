@@ -34,6 +34,8 @@ jobs:
         working-directory: saturn-ide
       - name: Share test toolchain with external integration fixtures
         run: |
+          mkdir -p saturn-ide/node_modules/@saturn
+          ln -s ../.. saturn-ide/node_modules/@saturn/core
           ln -s ../saturn-ide/node_modules saturn-examples/node_modules
           ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
       - run: bun run check
