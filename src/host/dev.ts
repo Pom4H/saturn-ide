@@ -18,7 +18,8 @@ import { decodeProject } from '../runtime/decode-project';
 import { HASH } from '../core/artifact';
 import { reportResponse } from './report-api';
 import { projectDocumentation } from '../documentation';
-import { impact, semanticGraph } from '../semantic';
+import { impact, semanticDiff, semanticGraph } from '../semantic';
+import { previewEquipmentRename } from '../workspace/refactor';
 
 const appRoot = resolve(import.meta.dir, '../..');
 const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 'Проект не загружен' }, signals: {}, equipment: [], pipes: [], alarms: [] };
@@ -45,6 +46,7 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
   let releaseState = await revisions.state();
   const active = () => manager.installation instanceof ProjectInstallation ? manager.installation : undefined;
   const mode = (): Driver['mode'] | 'offline' => manager.phase === 'running' ? active()?.driver?.mode ?? 'offline' : 'offline';
+  const authoringProject = () => draft?.project ?? runtime.project;
   const state = (): IDEState => ({ project: runtime.project, snapshot: runtime.snapshot, revision: manager.applied?.slice(7) ?? '',
     positions: draft?.artifact.hash === manager.applied ? draft.positions : {}, problems, mode: mode(), adapter: store.adapter, key, pushPublicKey: push.publicKey });
   function reportError(error: unknown) {
@@ -108,10 +110,11 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
         if (request.method === 'GET') {
           if (path === '/api/state') return json(state());
           if (path === '/api/events') return events.response(request, state());
-          if (path === '/api/resources') return json(indexResources(workspace, runtime.project, manager.applied ?? ''));
-          if (path === '/api/documentation') { const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ru'; return new Response(projectDocumentation(runtime.project,{locale}), { headers:{'Content-Type':'text/markdown; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'} }); }
-          if (path === '/api/semantic') return json(semanticGraph(runtime.project).nodes);
-          if (path === '/api/impact') { const id=url.searchParams.get('id')??''; const result=impact(runtime.project,id); if(!result) throw new HttpError(404,'Unknown semantic entity'); return json(result); }
+          if (path === '/api/resources') return json(indexResources(workspace, authoringProject(), draft?.artifact.hash ?? manager.applied ?? ''));
+          if (path === '/api/documentation') { const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ru'; return new Response(projectDocumentation(authoringProject(),{locale}), { headers:{'Content-Type':'text/markdown; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'} }); }
+          if (path === '/api/semantic') return json(semanticGraph(authoringProject()).nodes);
+          if (path === '/api/semantic/diff') return json(draft ? semanticDiff(runtime.project,draft.project) : []);
+          if (path === '/api/impact') { const id=url.searchParams.get('id')??''; const result=impact(authoringProject(),id); if(!result) throw new HttpError(404,'Unknown semantic entity'); return json(result); }
           if (path === '/api/releases') return json({ key, source: draft?.artifact.provenance ?? null, checked: draft?.artifact.hash ?? null, ...await revisions.state(), phase: manager.phase, error: manager.error });
           if (path === '/api/files') return json(workspace.list());
           if (path === '/api/file') return json(workspace.read(url.searchParams.get('path') ?? 'project.ts'));
@@ -129,6 +132,15 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
         if (request.headers.get('X-Saturn-Key') !== key || !request.headers.get('content-type')?.includes('application/json')) throw new HttpError(403, 'Missing session key or JSON content type');
         const body: unknown = await request.json(); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected an object'); const b = body as Record<string, unknown>;
         if (path === '/api/file') { const file = workspace.save(field(b, 'path'), field(b, 'source'), field(b, 'version')); savedVersions.set(file.path, file.version); await reload(); return json({ file, state: state() }); }
+        if (path === '/api/refactor/rename') {
+          const uri=field(b,'uri'),nextId=field(b,'nextId'),catalog=indexResources(workspace,authoringProject(),draft?.artifact.hash??manager.applied??'');
+          const resource=catalog.resources.find(item=>item.uri===uri); if(!resource?.source) throw new HttpError(404,'Unknown source-backed resource');
+          const file=workspace.read(resource.source.path),preview=previewEquipmentRename(authoringProject(),resource,file.source,nextId);
+          if(b.apply!==true) return json({preview,version:file.version});
+          if(typeof b.version!=='string'||b.version!==file.version) throw new HttpError(409,'Source changed after rename preview');
+          const saved=workspace.save(file.path,preview.source,file.version); savedVersions.set(saved.path,saved.version); await reload();
+          return json({preview,file:saved,state:state()});
+        }
         if (path === '/api/publish') {
           const hash = field(b, 'hash'); if (hash !== draft?.artifact.hash || problems.length) throw new HttpError(409, 'Only the current checked draft can be published');
           await revisions.publish(hash, expected(b, 'expectedPublished')); releaseState = await revisions.state(); return json(releaseState);
