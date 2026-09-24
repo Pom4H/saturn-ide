@@ -15,11 +15,12 @@ const fail=(code:string,en:string,ru:string):never=>{throw new ProjectError(code
  * semantic identity and references remain domain entities rather than text-search matches.
  */
 export function previewEquipmentRename(project:Project,resource:ProjectResource,source:string,nextId:string):RenamePreview {
-  if(resource.kind!=='device'||!resource.entityId||!resource.source)fail('REFACTOR_TARGET','Rename requires a source-backed equipment resource','Для переименования нужно устройство с исходником');
+  const current=resource.entityId,location=resource.source;
+  if(resource.kind!=='device'||!current||!location)fail('REFACTOR_TARGET','Rename requires a source-backed equipment resource','Для переименования нужно устройство с исходником');
   if(!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(nextId))fail('REFACTOR_ID',`Invalid equipment ID ${nextId}`,`Неверный ID оборудования ${nextId}`);
-  const current=resource.entityId,tree=ts.createSourceFile(resource.source.path,source,ts.ScriptTarget.Latest,true);
+  const tree=ts.createSourceFile(location.path,source,ts.ScriptTarget.Latest,true);
   const matches:ts.StringLiteral[]=[];
-  const from=resource.source.from??0,to=resource.source.to??source.length;
+  const from=location.from??0,to=location.to??source.length;
   const visit=(node:ts.Node)=>{
     if(ts.isCallExpression(node)&&node.getStart(tree)>=from&&node.end<=to){
       const first=node.arguments[0];
