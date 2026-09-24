@@ -220,7 +220,7 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
   for(const item of Object.values(definition.signals??{}))add(item);
   for(const equipment of definition.equipment)for(const value of Object.values(equipment))add(value);
   for(const edge of [...definition.pipes,...definition.cables??[]])add(edge.kind==='pipe'?edge.flow:edge.signal);
-  for(const alarm of definition.alarms)add(alarm.signal);
+  for(const alarm of definition.alarms??[])add(alarm.signal);
   for(const report of definition.reports??[])for(const column of Object.values(report.columns))add(column.signal);
   return Object.fromEntries(found);
 }
