@@ -5,7 +5,7 @@ import { ResourceIcon } from './icons';
 export function UnifiedSidebar({ locale, project, mode, surface, surfaces, context, active, selectSurface, open }: {
   locale: Locale;
   project: { label: Parameters<typeof text>[0] };
-  mode: 'simulation' | 'live' | 'none';
+  mode: 'simulation' | 'live' | 'offline';
   surface: EditorId;
   surfaces: readonly EditorId[];
   context: readonly ProjectResource[];
