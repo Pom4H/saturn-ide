@@ -1,7 +1,8 @@
 import ts from 'typescript';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Locale, Problem } from '../core';
+import { equipmentSignals, type Locale, type Problem, type Project } from '../core';
+import { deviceCalls } from './ast';
 import { Workspace } from './files';
 export class Language {
   private overlays = new Map<string, { text: string; version: number }>();
@@ -31,6 +32,31 @@ export class Language {
     const file = this.set(path, source), info = this.service.getQuickInfoAtPosition(file, position); if (!info) return null;
     const tag = info.tags?.find(t => t.name === locale);
     return { from: info.textSpan.start, to: info.textSpan.start + info.textSpan.length, signature: ts.displayPartsToString(info.displayParts), documentation: tag?.text ? ts.displayPartsToString(tag.text) : ts.displayPartsToString(info.documentation) };
+  }
+  signalHints(path:string,source:string,project:Project) {
+    const file=this.set(path,source),program=this.service.getProgram(),tree=program?.getSourceFile(file);if(!program||!tree)return [];
+    const checker=program.getTypeChecker(),known=new Set(Object.values(project.signals).map(signal=>signal.id));
+    const hints=new Map<string,{signal:string;at:number}>();
+    const add=(signal:string,at:number)=>{if(known.has(signal))hints.set(`${signal}:${at}`,{signal,at});};
+    const signalId=(node:ts.Node)=>{
+      const type=checker.getTypeAtLocation(node),property=type.getProperty('id');if(!property)return;
+      const value=checker.getTypeOfSymbolAtLocation(property,node);return value.isStringLiteral()?value.value:undefined;
+    };
+    const visit=(node:ts.Node)=>{
+      if(ts.isPropertyAccessExpression(node)){const id=signalId(node);if(id)add(id,node.end);}
+      ts.forEachChild(node,visit);
+    };
+    visit(tree);
+    const equipment=new Map(project.equipment.map(item=>[item.id,item]));
+    for(const call of deviceCalls(tree,new Set(equipment.keys()))){
+      const instance=equipment.get(call.id);if(!instance)continue;
+      const fields=new Map(equipmentSignals(instance).map(signal=>[signal.owner?.field??signal.id.split('.').at(-1)??'',signal.id]));
+      for(const property of call.options.properties){
+        if(!ts.isPropertyAssignment(property)&&!ts.isShorthandPropertyAssignment(property))continue;
+        const name=property.name?.getText(tree).replace(/^['"]|['"]$/g,'')??'' ,id=fields.get(name);if(id)add(id,property.end);
+      }
+    }
+    return [...hints.values()].sort((a,b)=>a.at-b.at);
   }
   complete(path: string, source: string, position: number) {
     const file = this.set(path, source);
