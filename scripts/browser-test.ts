@@ -52,7 +52,7 @@ try{
   const rotor=page.locator('[data-equipment="P-01"] [data-part="rotor"]');
   const phase=await rotor.getAttribute('data-phase');await page.waitForTimeout(150);assert(await rotor.getAttribute('data-phase')!==phase,'measured rotor must animate');
   await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(50);const still=await rotor.getAttribute('data-phase');await page.waitForTimeout(100);assert(await rotor.getAttribute('data-phase')===still,'reduced motion must freeze phase');await page.emulateMedia({reducedMotion:'no-preference'});
-  await page.getByRole('button',{name:'Inspector',exact:true}).click();
+  await page.getByRole('button',{name:'Свойства',exact:true}).click();
   await page.getByRole('button',{name:'Stop',exact:true}).click();await page.locator('[data-rpm="0"]').waitFor();await page.getByRole('button',{name:'Start',exact:true}).click();await page.locator('[data-rpm="1450"]').waitFor();
   await page.locator('[data-equipment="V-01"]').click();await page.getByRole('spinbutton',{name:'valve.opening'}).fill('0');await page.getByRole('button',{name:'Send',exact:true}).click();await until(async()=>!!(await state()).snapshot.alarms['high-pressure']?.active,'alarm not activated');
   await page.getByRole('button',{name:/^Alarms/}).click();await page.getByRole('button',{name:'Acknowledge',exact:true}).click();await until(async()=>!!(await state()).snapshot.alarms['high-pressure']?.acknowledged,'ack not persisted');
