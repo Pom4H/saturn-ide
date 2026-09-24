@@ -71,6 +71,7 @@ export const mqtt = defineProtocol({
     const url = new URL(config.url), secure = url.protocol === 'mqtts:' || url.protocol === 'wss:';
     if (!['mqtt:', 'mqtts:', 'ws:', 'wss:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Invalid MQTT URL; credentials belong in a runtime provider');
     if (!secure && !config.allowInsecure) throw new Error('MQTT requires TLS or explicit allowInsecure');
+    if (config.version !== undefined && config.version !== 4 && config.version !== 5) throw new Error('Unsupported MQTT version');
     const limit = int(config.maxPayloadBytes ?? 1048576, 64, 1048576, 'maxPayloadBytes');
     const qos = int(config.qos ?? 1, 0, 2, 'qos') as 0 | 1 | 2;
     lifetime.throwIfAborted();
@@ -100,8 +101,9 @@ export const mqtt = defineProtocol({
         // MQTT.js waits for this callback: no unbounded Promise queue behind EventEmitter.message.
         client.handleMessage = (packet, done) => {
           if (signal.aborted) { done(); return; }
-          if (packet.payload.length > limit) { const error = new Error('MQTT payload exceeds limit'); rejectEnd(error); done(error); return; }
-          const batch = (byTopic.get(packet.topic) ?? []).map(c => mqttObservation(c, packet.payload, packet.retain)).filter((v): v is Observation => !!v);
+          const payload = typeof packet.payload === 'string' ? Buffer.from(packet.payload) : packet.payload;
+          if (payload.length > limit) { const error = new Error('MQTT payload exceeds limit'); rejectEnd(error); done(error); return; }
+          const batch = (byTopic.get(packet.topic) ?? []).map(c => mqttObservation(c, payload, !!packet.retain)).filter((v): v is Observation => !!v);
           void abortable(emit(batch), signal).then(() => done(), error => { const e = error instanceof Error ? error : new Error(String(error)); rejectEnd(e); done(e); });
         };
         const grants = await abortable(Promise.race([client.subscribeAsync([...byTopic.keys()], { qos }), ended]), signal);

@@ -49,9 +49,10 @@ function validateWrite(type: OpcUaType, value: unknown) {
 export const opcua = defineProtocol({
   id: 'opcua', address, validate,
   async connect(config: OpcUaConfig, lifetime) {
-    if (!config.endpoint.startsWith('opc.tcp://') || !config.pkiDir) throw new Error('OPC UA endpoint and runtime PKI directory required');
+    const endpoint = new URL(config.endpoint);
+    if (endpoint.protocol !== 'opc.tcp:' || endpoint.username || endpoint.password || !config.pkiDir) throw new Error('OPC UA endpoint and runtime PKI directory required');
     if (!config.security && !config.allowInsecure) throw new Error('OPC UA security required; plaintext needs explicit allowInsecure');
-    if (!config.security && config.credentials) throw new Error('Username/password requires an encrypted OPC UA channel');
+    if (config.security && (!['Sign', 'SignAndEncrypt'].includes(config.security.mode) || !['Basic256Sha256', 'Aes128_Sha256_RsaOaep', 'Aes256_Sha256_RsaPss'].includes(config.security.policy ?? 'Basic256Sha256'))) throw new Error('Invalid OPC UA security policy');
     if (config.credentials && config.security?.mode !== 'SignAndEncrypt') throw new Error('Credentials require SignAndEncrypt');
     const batchSize = int(config.batchSize ?? 64, 1, 500, 'batchSize');
     lifetime.throwIfAborted(); const sdk = await import('node-opcua-client');
@@ -84,8 +85,9 @@ export const opcua = defineProtocol({
     try {
       lifetime.throwIfAborted();
       await abortable(client.connect(config.endpoint), lifetime);
-      const creating = client.createSession(config.credentials?.());
-      session = await abortable(creating, lifetime); lifetime.throwIfAborted();
+      const credentials = config.credentials?.();
+      session = await abortable(credentials ? client.createSession({ type: sdk.UserTokenType.UserName, ...credentials }) : client.createSession(), lifetime);
+      lifetime.throwIfAborted();
     } catch (error) { await close(); throw error; }
     const active = session;
     return {

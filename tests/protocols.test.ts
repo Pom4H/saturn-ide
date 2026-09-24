@@ -65,7 +65,7 @@ async function modbusServer() {
     sockets.add(socket); socket.on('close', () => sockets.delete(socket)); socket.on('error', () => {});
     let input: Buffer = Buffer.alloc(0);
     socket.on('data', data => {
-      input = Buffer.concat([input, data]);
+      input = Buffer.concat([input, typeof data === 'string' ? Buffer.from(data) : data]);
       while (input.length >= 7 && input.length >= 6 + input.readUInt16BE(4)) {
         const length = 6 + input.readUInt16BE(4), frame = input.subarray(0, length); input = input.subarray(length);
         const fn = frame[7]!, offset = frame.readUInt16BE(8), count = frame.readUInt16BE(10); requests.push({ fn, offset, count });
@@ -105,7 +105,8 @@ test('real Modbus TCP: fragmented frames, batching, writes, exceptions and recon
     for (const socket of server.sockets) socket.destroy();
     await until(() => r.driver.status()[0]!.attempts > attempts && r.driver.status()[0]!.phase === 'online');
     await until(() => r.received.some(s => s.signal === 'pressure' && s.value === 5));
-  } finally { await running?.stop(); await server.close(); }
+  } catch (error) { console.error('Modbus status', running?.driver.status()); throw error; }
+  finally { await running?.stop(); await server.close(); }
 }, 20000);
 
 test.skipIf(process.platform !== 'linux')('real Modbus RTU serial adapter over PTY: CRC, read, write and close', async () => {
@@ -117,7 +118,8 @@ test.skipIf(process.platform !== 'linux')('real Modbus RTU serial adapter over P
     running = await start(source, [source.bind(signal('register', { initial: 0, writable: true }), { unit: 1, area: 'holding', offset: 0, format: 'uint16' })]);
     const r = running; await until(() => r.received.some(s => s.value === 1234));
     await r.driver.write!('register', 2468); await until(() => r.received.some(s => s.value === 2468));
-  } finally { try { await running?.stop(); } finally { const exited = once(child, 'exit'); child.kill(); await exited; } }
+  } catch (error) { console.error('RTU status', running?.driver.status()); throw error; }
+  finally { try { await running?.stop(); } finally { if (child.exitCode === null && child.signalCode === null) { const exited = once(child, 'exit'); child.kill(); await exited; } } }
 }, 20000);
 
 test('MQTT parsing keeps retained stale, rejects malformed values and preserves sample metadata', () => {
@@ -128,8 +130,8 @@ test('MQTT parsing keeps retained stale, rejects malformed values and preserves 
 });
 
 test('real MQTT broker: retained state, subscriptions, commands, malformed payload and reconnect', async () => {
-  const { default: createBroker } = await import('aedes'); const { connectAsync } = await import('mqtt');
-  const broker = createBroker(), server = createServer(broker.handle), sockets = new Set<Socket>();
+  const { default: Aedes } = await import('aedes'); const { connectAsync } = await import('mqtt');
+  const broker = new Aedes(), server = createServer(broker.handle), sockets = new Set<Socket>();
   server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
   server.listen(0, '127.0.0.1'); await once(server, 'listening'); const a = server.address(); if (!a || typeof a === 'string') throw new Error('No port');
   const url = `mqtt://127.0.0.1:${a.port}`, publisher = await connectAsync(url, { reconnectPeriod: 0 });
@@ -148,7 +150,8 @@ test('real MQTT broker: retained state, subscriptions, commands, malformed paylo
     broker.clients['saturn-protocol-test']!.close();
     await until(() => r.driver.status()[0]!.attempts > attempts && r.received.filter(s => s.value === 100 && s.quality === 'stale').length >= 2);
     expect(commands).toEqual(['true']);
-  } finally {
+  } catch (error) { console.error('MQTT status', running?.driver.status()); throw error; }
+  finally {
     await running?.stop(); await publisher.endAsync(true);
     const closing = new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); for (const socket of sockets) socket.destroy(); await closing;
     await new Promise<void>(resolve => broker.close(() => resolve()));
@@ -157,14 +160,16 @@ test('real MQTT broker: retained state, subscriptions, commands, malformed paylo
 
 test('real OPC UA server: batched values, source timestamps, unknown nodes, typed write and secure channel', async () => {
   const sdk = await import('node-opcua'), root = mkdtempSync(join(tmpdir(), 'saturn-opcua-'));
+  // The disposable test server accepts the generated test client. The actual client pins its server explicitly.
   const server = new sdk.OPCUAServer({ port: 0, resourcePath: '/saturn', nodeset_filename: sdk.nodesets.standard,
+    serverCertificateManager: new sdk.OPCUACertificateManager({ rootFolder: join(root, 'server'), automaticallyAcceptUnknownCertificate: true }),
     securityModes: [sdk.MessageSecurityMode.None, sdk.MessageSecurityMode.SignAndEncrypt], securityPolicies: [sdk.SecurityPolicy.None, sdk.SecurityPolicy.Basic256Sha256] });
   let running: Awaited<ReturnType<typeof start>> | undefined;
   try {
     await server.initialize(); const ns = server.engine.addressSpace!.getOwnNamespace(); let value = 12.5;
     ns.addVariable({ organizedBy: server.engine.addressSpace!.rootFolder.objects, nodeId: 's=temperature', browseName: 'Temperature', dataType: 'Double',
       minimumSamplingInterval: 0, value: { timestamped_get: () => new sdk.DataValue({ value: new sdk.Variant({ dataType: sdk.DataType.Double, value }), sourceTimestamp: new Date(1700000000000), statusCode: sdk.StatusCodes.Good }),
-        set: variant => { value = Number(variant.value); return sdk.StatusCodes.Good; } } });
+        timestamped_set: async data => { value = Number(data.value.value); return sdk.StatusCodes.Good; } } });
     await server.start();
     const source = opcua('ua', { endpoint: server.getEndpointUrl(), pkiDir: join(root, 'client'),
       security: { mode: 'SignAndEncrypt', serverCertificate: () => server.getCertificate() } }, { ...options, timeoutMs: 20000 });
@@ -175,5 +180,6 @@ test('real OPC UA server: batched values, source timestamps, unknown nodes, type
     expect(r.received.find(s => s.signal === 'temperature')?.sourceAt).toBe(1700000000000);
     expect(r.received.some(s => s.signal === 'missing' && s.quality === 'bad')).toBe(true);
     await r.driver.write!('temperature', 42); await until(() => r.received.some(s => s.value === 42));
-  } finally { try { await running?.stop(); } finally { await server.shutdown(0); rmSync(root, { recursive: true, force: true }); } }
+  } catch (error) { console.error('OPC UA status', running?.driver.status()); throw error; }
+  finally { try { await running?.stop(); } finally { await server.shutdown(0); rmSync(root, { recursive: true, force: true }); } }
 }, 45000);
