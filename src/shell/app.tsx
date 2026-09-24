@@ -9,7 +9,7 @@ import { useShell } from './use-shell';
 import type { DocumentBuffer } from './model/documents';
 import { ResourceIcon } from './icons';
 import { ResourceExplorer } from './resource-explorer';
-import { ProjectRail } from './project-rail';
+import { UnifiedSidebar } from './unified-sidebar';
 import { Editor } from './editor';
 import { Scene } from './scene';
 import { Reports } from './reports';
@@ -30,8 +30,8 @@ function App() {
   const { surface, selected, source: active } = nav;
   const [locale, setLocale] = useState<Locale>(() => localStorage.getItem('saturn.locale') === 'en' ? 'en' : 'ru'), ru = locale === 'ru';
   const [now, setNow] = useState(Date.now()), [operator, setOperator] = useState(false);
-  const [tree, setTree] = useState(true), [inspect, setInspect] = useState(innerWidth >= 1000), [dock, setDock] = useState(false);
-  const [code, setCode] = useState(innerWidth >= 1250), [dimension, setDimension] = useState<'2d' | '3d'>('2d'), [ports, setPorts] = useState(false), [fit, setFit] = useState(0);
+  const [tree, setTree] = useState(true), [inspect, setInspect] = useState(false), [dock, setDock] = useState(false);
+  const [code, setCode] = useState(false), [dimension, setDimension] = useState<'2d' | '3d'>('2d'), [ports, setPorts] = useState(false), [fit, setFit] = useState(0);
   const [git, setGit] = useState<GitState | null>(null), [message, setMessage] = useState(''), [gitBusy, setGitBusy] = useState(false), [audit, setAudit] = useState<AlarmEvent[]>([]);
   const [releases, setReleases] = useState<Releases | null>(null);
   const [palette, setPalette] = useState(false), [query, setQuery] = useState(''), [choice, setChoice] = useState(0);
@@ -148,24 +148,21 @@ function App() {
     {error && <div className="message error" role="alert"><span>{error}</span><button onClick={() => setError('')} aria-label="Close">×</button></div>}
     {!!state.problems.length && <div className="problems" role="alert"><strong>{ru ? 'Ошибка проекта или сервиса. Применённая ревизия показана отдельно.' : 'Project or service error. Applied revision is shown separately.'}</strong>{state.problems.map((p, i) => <div key={i}>{p.code} {p.path} {p.message[locale]}</div>)}</div>}
     <div className="shell-body">
-      {!operator && <ProjectRail projects={[{ id: state.project.id, label: state.project.label, stage: state.mode === 'live' ? 'production' : 'engineering', connected, events: activeAlarms.length + state.problems.length, recentAt: Math.max(0, ...Object.values(snapshot.samples).map(sample => sample.at)) }]} current={state.project.id} locale={locale} open={() => {}}/>}
-      <nav className="activity" aria-label={ru ? 'Рабочие разделы' : 'Workspaces'}>{surfaces.filter(s => !operator || ['diagram', 'signals', 'reports', 'hmi'].includes(s)).map(s => <button key={s} aria-current={surface === s ? 'page' : undefined} className={surface === s ? 'active' : ''} onClick={() => chooseSurface(s)}><ResourceIcon icon={s}/><span>{editorNames[s][locale]}</span></button>)}</nav>
-      {!operator && tree && <aside className="explorer context-explorer"><div className="pane-heading"><strong>{contextTitle}</strong><button aria-label={ru ? 'Скрыть дерево' : 'Hide explorer'} onClick={() => setTree(false)}>×</button></div>
-        <ResourceExplorer catalog={contextCatalog} locale={locale} active={nav.active?.uri} open={r => void openResource(r)}/><div className="explorer-footer"><button onClick={() => chooseSurface('git')}>⑂ {git?.branch || '—'}</button><span>{state.adapter}</span></div></aside>}
+      {!operator && <UnifiedSidebar locale={locale} project={state.project} mode={state.mode} surface={surface} surfaces={surfaces} context={contextCatalog.resources} active={nav.active?.uri} selectSurface={chooseSurface} open={resource => void openResource(resource)}/>} 
       <main className="workbench">
         {!operator && <nav className="resource-tabs" aria-label={ru ? 'Открытые объекты' : 'Open resources'}>{nav.tabs.map(tab => {
           const r = catalog.resources.find(r => r.uri === tab.uri); if (!r) return <span key={tab.uri}>{ru ? 'Объект удалён из модели' : 'Resource removed from model'}</span>;
           const b = r.source ? documents.get(r.source.path) : undefined;
           return <div key={r.uri} className={nav.active?.uri === r.uri ? 'active' : ''}><button onClick={() => void openResource(r, tab.editor)} title={r.source?.path}><ResourceIcon icon={r.icon} size={16}/>{r.name[locale]}{b && b.draft !== b.source && <span className="modified">●</span>}</button><button aria-label={`Close ${r.name[locale]}`} onClick={() => void session.execute({ type: 'close', uri: r.uri }).catch(fail)}>×</button></div>;
         })}</nav>}
-        <div className="surface-toolbar"><strong>{editorNames[surface][locale]}</strong>{!operator && <button aria-label={ru ? 'Показать дерево' : 'Show explorer'} aria-pressed={tree} onClick={() => setTree(!tree)}>☷</button>}
+        <div className="surface-toolbar"><strong>{surface==='diagram'?(ru?'Схема насосной станции':'Pump station diagram'):editorNames[surface][locale]}</strong>
           {surface === 'diagram' && <><div className="segmented"><button aria-pressed={dimension === '2d'} onClick={() => setDimension('2d')}>2D</button><button aria-pressed={dimension === '3d'} onClick={() => setDimension('3d')}>3D</button></div><button onClick={() => setFit(f => f + 1)}>{ru ? 'Вписать' : 'Fit'}</button><button aria-pressed={ports} disabled={dimension === '3d'} onClick={() => setPorts(!ports)}>{ru ? 'Порты' : 'Ports'}</button>{!operator && <button aria-pressed={code} onClick={() => setCode(!code)}>{ru ? 'Код' : 'Code'}</button>}</>}
           <span className="spacer"/>{activeResource && !operator && <select aria-label={ru ? 'Открыть как' : 'Open as'} value={availableEditors(activeResource, 'browser').includes(surface) ? surface : ''} onChange={e => void openResource(activeResource, e.target.value as EditorId)}><option value="" disabled>{ru ? 'Открыть как…' : 'Open as…'}</option>{availableEditors(activeResource, 'browser').map(editor => <option key={editor} value={editor}>{editorNames[editor][locale]}</option>)}</select>}
           {surface === 'diagram' && <button aria-pressed={inspect} onClick={() => { setInspect(!inspect); if (!inspect && innerWidth < 950) setCode(false); }}>{ru ? 'Свойства' : 'Inspector'}</button>}
           <button className={activeAlarms.length ? 'alarm-button' : ''} onClick={() => { setDock(!dock); void api<AlarmEvent[]>('alarms').then(setAudit).catch(fail); }}>{ru ? 'Тревоги' : 'Alarms'}{activeAlarms.length > 0 && <b>{activeAlarms.length}</b>}</button>
         </div>
         <div className="surface-content">
-          {surface === 'diagram' && <div className="diagram-workspace">{code && !operator && sourcePanel}<section className="diagram-pane">{dimension === '2d' ? <Scene {...scene}/> : <Suspense fallback={<p className="empty-state">3D…</p>}><Scene3D {...scene}/></Suspense>}<div className="canvas-footer"><span>{dimension === '3d' ? (ru ? 'Мышь — камера. Колесо — масштаб.' : 'Drag to orbit. Scroll to zoom.') : (ru ? 'Перемещение меняет исходник. Сохранение не означает live apply.' : 'Drag edits source. Saving is not live application.')}</span></div></section>
+          {surface === 'diagram' && <div className="diagram-workspace">{code && !operator && sourcePanel}<section className="diagram-pane"><div className="diagram-canvas">{dimension === '2d' ? <Scene {...scene}/> : <Suspense fallback={<p className="empty-state">3D…</p>}><Scene3D {...scene}/></Suspense>}</div>{equipment && <div className="equipment-strip"><div className="equipment-strip-title"><ResourceIcon icon={equipment.kind} size={28}/><div><strong>{equipment.id}</strong><span>{text(equipment.label,locale)}</span><small className={snapshot.samples[control?.id ?? '']?.quality==='good'?'good':'stale'}>● {connected?(ru?'В сети':'Online'):(ru?'Нет связи':'Offline')}</small></div></div><div className="equipment-metrics">{references?.signals.slice(0,6).map(sig=><div key={sig.id}><span>{sig.id.split('.').at(-1)}</span><strong>{snapshot.samples[sig.id]?.quality==='good'?fmt(snapshot.samples[sig.id]?.value):'—'} <small>{sig.unit}</small></strong></div>)}</div><button onClick={()=>setInspect(true)}>{ru?'Открыть в инспекторе':'Open inspector'} ↗</button></div>}</section>
             {inspect && equipment && <aside className="inspector"><div className="pane-heading"><strong>{equipment.id}</strong><button aria-label={ru ? 'Закрыть свойства' : 'Close inspector'} onClick={() => setInspect(false)}>×</button></div><div className="inspector-body"><h2><ResourceIcon icon={equipment.kind}/> {text(equipment.label, locale)}</h2><p className="muted">x {equipment.x}, y {equipment.y}</p>
               {control && <Control signal={control} sample={snapshot.samples[control.id]} locale={locale} enabled={connected} send={send}/>}
               {!operator && <button className="text-button" onClick={() => { const r = catalog.resources.find(r => r.kind === 'device' && r.entityId === equipment.id); if (r) void openResource(r, 'source'); }}>{ru ? 'Открыть исходник' : 'Open source'} ↗</button>}
