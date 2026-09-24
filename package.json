@@ -14,7 +14,9 @@
     "scaffold": "bun scripts/scaffold.ts",
     "docs:project": "bun scripts/project-docs.ts",
     "firmware": "bun scripts/firmware.ts",
-    "deps:update": "bun update --latest"
+    "deps:update": "bun update --latest",
+    "release:build": "bun scripts/build-release.ts",
+    "release:deploy": "bun scripts/deploy-release.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.1",
@@ -56,6 +58,10 @@
     "./core": "./src/core.ts",
     "./artifact": "./src/core/artifact.ts",
     "./shell": "./src/shell/app.tsx",
-    "./host": "./src/host/dev.ts"
+    "./host": "./src/host/dev.ts",
+    "./acquisition": "./src/runtime/acquisition.ts",
+    "./runtime-host": "./src/host/runtime.ts",
+    "./release/build": "./scripts/build-release.ts",
+    "./release/deploy": "./scripts/deploy-release.ts"
   }
 }

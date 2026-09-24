@@ -375,3 +375,23 @@ This is merge and runtime integration evidence, not physical PLC flashing,
 remote deployment, or a new browser/GPU acceptance run. The protocol source
 kits imported from main still reside at `project/plugins` and need migration
 to the external plugins repository before completing the repository split.
+
+## Portable runtime release and external protocols, 2026-09-24
+
+On macOS arm64 / Bun 1.4.2, `bun run check` passed both TypeScript checks
+and 75 architecture modules; `bun test tests` passed 125 tests, with 3 skips
+(PostgreSQL twice, Linux-only RTU PTY) and no failures. Protocol implementations
+were moved unchanged to saturn-plugins `5822474`; their existing wire/SQLite tests
+now use the external checkout.
+
+The new runtime acceptance test builds an actual external project and host bundle,
+deletes authored source, starts a separate Bun process, checks read/control/deploy
+permissions and lock mismatch rejection, deploys through the HTTP CAS path, observes
+continued simulator readings while another process spins its CPU, and restarts
+the runtime to verify the applied identity and SQLite history are retained.
+It does not simulate hardware flashing or claim a fault-tolerant cluster.
+No renderer was changed; no new browser/GPU parity claim is made by this test.
+
+The external protocol catalog revision is pinned in IDE CI so later kit changes
+cannot silently alter the acceptance input. No vendor-specific module is
+imported by the production runtime host.

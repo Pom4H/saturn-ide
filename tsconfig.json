@@ -33,6 +33,9 @@
       ],
       "@saturn/scada/acquisition": [
         "./src/runtime/acquisition.ts"
+      ],
+      "@saturn/protocols/*": [
+        "../saturn-plugins/protocols/*"
       ]
     }
   },

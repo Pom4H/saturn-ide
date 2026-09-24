@@ -6,7 +6,7 @@
 
 ## Использование
 
-Скопировать `project/plugins/json-http.ts` в свой проект. Это небольшой работающий пример
+Скопировать `saturn-plugins/protocols/json-http.ts` в свой проект. Это небольшой работающий пример
 **прикладного JSON/HTTP протокола**, не реализация штатного API Saturn PLC-500, Modbus или OPC UA.
 
 ```ts

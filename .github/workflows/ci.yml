@@ -25,6 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Pom4H/saturn-plugins
+          ref: 5822474bd10bfad8653d5de16a670f4a40de53e0
           path: saturn-plugins
           ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
       - uses: oven-sh/setup-bun@v2

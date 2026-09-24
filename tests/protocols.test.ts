@@ -9,9 +9,9 @@ import { join } from 'node:path';
 import type { DataValue } from 'node-opcua';
 import { project, signal, type Observation, type ProtocolSource, type Signal } from '../src/core';
 import { acquire } from '../src/runtime/acquisition';
-import { modbusTcp, modbusRtu, modbusAddress, decodeRegisters, encodeRegisters, planModbus } from '../project/plugins/protocols/modbus';
-import { mqtt, mqttObservation } from '../project/plugins/protocols/mqtt';
-import { opcua } from '../project/plugins/protocols/opcua';
+import { modbusTcp, modbusRtu, modbusAddress, decodeRegisters, encodeRegisters, planModbus } from '@saturn/protocols/modbus';
+import { mqtt, mqttObservation } from '@saturn/protocols/mqtt';
+import { opcua } from '@saturn/protocols/opcua';
 
 const options = { mode: 'simulation' as const, pollMs: 20, timeoutMs: 10000, reconnectMs: 20, maxReconnectMs: 100 };
 async function until(predicate: () => boolean, ms = 8000) {

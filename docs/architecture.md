@@ -237,7 +237,7 @@ Project-owned equipment extends the model through `device()`. Every definition o
 topology, so connectivity is not authored twice. Firmware remains source-owned and target-defined:
 C23, C/C++, Rust, Zig or another language are valid when the target supplies the corresponding toolchain.
 
-The first reference kit is `project/plugins/saturn-plc500`: the real Saturn PLC SVG, pinned
+The first reference kit is `saturn-plugins/saturn-plc500`: the real Saturn PLC SVG, pinned
 Firmverse compiler/runtime WASM and the 320×240 React HMI projection are carried with provenance
 and licenses from the previous Saturn implementation.
 
@@ -272,3 +272,8 @@ local engineering project; the development convenience default is the sibling
 Cloud source authoring does not run an arbitrary repository in the OAuth server.
 Remote runtime execution and physical PLC flashing remain separate acceptance
 criteria; a deployment plan alone does not fulfill them.
+
+Standalone runtime deployment is described in [runtime-deployment.md](runtime-deployment.md).
+Industrial protocol kits are owned by `saturn-plugins/protocols`; the IDE tests
+use that repository as an external fixture. `src/host/runtime.ts` composes only
+runtime and core modules and accepts checked artifacts through role-scoped APIs.
