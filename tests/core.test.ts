@@ -22,6 +22,6 @@ if(false){
   pump('invalid',{label:'Invalid',x:0,y:0,rpm:signal('flag',{initial:false})});
   // @ts-expect-error A string is not a bounded numeric signal.
   signal('invalid',{initial:'text',max:3});
-  // @ts-expect-error project() must preserve signal keys rather than return Record<string, Signal>.
-  demo.signals.misspelled;
+  // @ts-expect-error boolean anonymous signal cannot satisfy measured shaft speed.
+  pump('invalid-anon',{label:'Invalid',x:0,y:0,rpm:signal({initial:false})});
 }

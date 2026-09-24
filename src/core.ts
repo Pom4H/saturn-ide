@@ -186,8 +186,9 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
 }
 /** @ru Единая модель. Сигналы выводятся из владельцев и ссылок; явный registry — только совместимый escape hatch.
  * @en One model. Signals are derived from owners/references; an explicit registry is only a compatibility escape hatch. */
-export function project<const P extends ProjectDefinition>(definition:P):P & {signals:Record<string,Signal>} {
-  const model={...definition,signals:collectSignals(definition)} as P & {signals:Record<string,Signal>};
+type ProjectSignals<P extends ProjectDefinition> = P extends {signals:infer S extends Record<string,Signal>} ? S : Record<string,Signal>;
+export function project<const P extends ProjectDefinition>(definition:P):Omit<P,'signals'> & {signals:ProjectSignals<P>} {
+  const model={...definition,signals:collectSignals(definition)} as Omit<P,'signals'> & {signals:ProjectSignals<P>};
   validateProject(model);return model;
 }
 export interface Problem { code:string; message:Record<Locale,string>; path?:string; from?:number; to?:number }
