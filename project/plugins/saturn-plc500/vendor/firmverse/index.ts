@@ -45,15 +45,15 @@ function cp1251(e:Wasm,ptr:number):string {
 function checkExecutionCapabilities(program:Uint8Array):void {
  const stop=program.indexOf(0x94);if(stop<1||stop>256)throw new Error('Saturn execution requires 1..256 blocks');
  const unsupported=new Set([14,16,33,34,36,37]);
- for(let i=0;i<stop;i++)if(unsupported.has(program[i]&63))throw new Error('Saturn block requires an unavailable environment capability');
+ for(let i=0;i<stop;i++)if(unsupported.has(program[i]!&63))throw new Error('Saturn block requires an unavailable environment capability');
  const arities=[1,0,1,2,2,2,2,2,2,2,2,2,2,2,1,0,0,4,3,3,5,1,1,0,2,2,2,3,2,2,2,2,2,0,1,2,0,1,5,1,5];
  let at=stop+1;const graph:number[][]=[];
- for(let i=0;i<stop;i++){const refs:number[]=[];for(let n=0;n<arities[program[i]&63];n++){refs.push(program[at]|program[at+1]<<8);at+=2;}graph.push(refs);}
+ for(let i=0;i<stop;i++){const refs:number[]=[];for(let n=0;n<arities[program[i]!&63]!;n++){refs.push(program[at]!|program[at+1]!<<8);at+=2;}graph.push(refs);}
  // Mirror the upstream evaluation stack bound. Cycles are marked before descent.
  for(let root=0;root<stop;root++){
   const visited=new Set<number>();const walk=(index:number,depth:number):void=>{
    if(visited.has(index))return;if(depth>120)throw new Error('Saturn graph exceeds the runtime stack budget');visited.add(index);
-   for(const ref of graph[index])walk(ref,depth+1);
+   for(const ref of graph[index]!)walk(ref,depth+1);
   };walk(root,0);
  }
 

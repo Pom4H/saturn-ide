@@ -16,7 +16,7 @@ const ports={
   AI1:terminal('AI1','analog','sink'),AI2:terminal('AI2','analog','sink'),
   AO1:terminal('AO1','analog','source'),AO2:terminal('AO2','analog','source'),
   T1:terminal('T1','temperature','sink'),
-  RS485:{x:121,y:325,z:35,side:'down',medium:'bus',family:'rs485',role:'passive',max:32} satisfies Terminal,
+  RS485:{x:121,y:325,z:35,side:'down',medium:'bus',family:'rs485',role:'passive',max:32} satisfies Terminal<'bus','rs485','passive'>,
 } as const;
 const panel=renderSaturnPlcSvg({defsPrefix:'saturn-plc500'}).replace('<svg ','<svg width="620" height="340" ');
 const define=deviceClass({
