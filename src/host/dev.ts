@@ -121,8 +121,9 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
           if (path === '/api/git') return json(await git.status());
           if (path === '/api/report') return await reportResponse(store, runtime.project, manager.applied ?? '', url);
           if (path === '/api/history') {
-            const id = url.searchParams.get('signal') ?? ''; if (!Object.values(runtime.project.signals).some(s => s.id === id)) throw new HttpError(404, 'Unknown signal');
-            return json(await store.history(id));
+            const id=url.searchParams.get('signal')??'',definition=Object.values(authoringProject().signals).find(signal=>signal.id===id);
+            if(!definition)throw new HttpError(404,'Unknown signal');
+            return json(await store.history(definition.semanticId??definition.id));
           }
           if (path === '/api/alarms') return json(await store.events());
           if (path === '/sw.js') return new Response(Bun.file(join(appRoot, 'src/shell/sw.js')), { headers: { 'Content-Type': 'application/javascript', 'Cache-Control': 'no-cache' } });
