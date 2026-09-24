@@ -1,32 +1,41 @@
 import { expect, test } from 'bun:test';
-import demo from '../project/project';
+import demo, { booster } from '../project/project';
 import { bind, protocol, qualityState, signal } from '../src/core';
 import { projectDocumentation } from '../src/documentation';
+import { impact, semanticDiff, semanticGraph } from '../src/semantic';
 
-test('transport binding does not change signal identity or value type',()=>{
+test('equipment owns anonymous signals without duplicated string paths',()=>{
+  expect(booster.rpm.id).toBe('P-01.rpm');
+  expect(booster.rpm.owner).toEqual({kind:'equipment',id:'P-01',field:'rpm'});
+  expect(demo.signals[booster.rpm.id]).toBe(booster.rpm);
+  expect(demo.signals[booster.pressure.id]).toBe(booster.pressure);
+});
+
+test('transport binding does not change explicit signal identity or value type',()=>{
   const pressure=signal('P-101.pressure',{initial:0,unit:'bar',dimension:'pressure',origin:{kind:'hardware',device:'PT-101'}});
   const modbus=bind(pressure,protocol.modbus('PLC-01',40124,{codec:'float32be'}));
   const opcua=bind(pressure,protocol.opcua('opc.tcp://plant','ns=4;s=P101.Pressure'));
-  expect(modbus.id).toBe(pressure.id);
-  expect(opcua.id).toBe(pressure.id);
-  expect(modbus.binding?.protocol).toBe('modbus');
-  expect(opcua.binding?.protocol).toBe('opcua');
-  const value:number=modbus.initial;
-  expect(value).toBe(0);
+  expect(modbus.id).toBe(pressure.id);expect(opcua.id).toBe(pressure.id);
+  expect(modbus.binding?.protocol).toBe('modbus');expect(opcua.binding?.protocol).toBe('opcua');
+  const value:number=modbus.initial;expect(value).toBe(0);
+});
+
+test('semantic graph exposes blast radius and stable rename identity',()=>{
+  const graph=semanticGraph(demo),pump=graph.bySemanticId.get('equipment:booster-primary');
+  expect(pump?.id).toBe('P-01');expect(pump?.uses).toContain('signal:P-01:rpm');
+  expect(impact(demo,booster.pressure.id)?.transitive.some(node=>node.id==='high-pressure')).toBe(true);
+  const renamed={...demo,equipment:demo.equipment.map(e=>e.id==='P-01'?{...e,id:'P-201'}:e)};
+  expect(semanticDiff(demo,renamed as typeof demo).some(change=>change.type==='renamed'&&change.semanticId==='equipment:booster-primary')).toBe(true);
 });
 
 test('compact runtime quality has a richer canonical interpretation',()=>{
   expect(qualityState('good')).toEqual({validity:'good',connection:'online',freshness:'fresh'});
-  expect(qualityState('stale').freshness).toBe('stale');
-  expect(qualityState('bad').validity).toBe('bad');
+  expect(qualityState('stale').freshness).toBe('stale');expect(qualityState('bad').validity).toBe('bad');
 });
 
-test('documentation is derived from the same project object',()=>{
-  const markdown=projectDocumentation(demo,{locale:'en'});
-  expect(markdown).toContain('# Pumping station');
-  expect(markdown).toContain('pump.rpm');
-  expect(markdown).toContain('P-01');
-  expect(markdown).toContain('high-pressure');
-  expect(markdown).toContain('hourly-water');
-  expect(markdown).toContain('typed Signal<T>');
+test('documentation is bilingual traceability derived from the same project object',()=>{
+  const en=projectDocumentation(demo,{locale:'en'}),ru=projectDocumentation(demo,{locale:'ru'});
+  expect(en).toContain('# Pumping station');expect(en).toContain('P-01.rpm');expect(en).toContain('equipment:booster-primary');
+  expect(en).toContain('Traceability');expect(en).toContain('high-pressure');expect(en).toContain('hourly-water');
+  expect(ru).toContain('Трассировка');expect(ru).toContain('Повысительный насос');
 });
