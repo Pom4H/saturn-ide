@@ -10,6 +10,8 @@ export interface ProjectResource {
   /** Semantic icon ID, not SVG markup, an emoji or a host component. */
   icon: string;
   entityId?: string;
+  /** Stable domain identity; unlike entityId it survives human tag/name changes. */
+  semanticId?: string;
   source?: SourceLocation;
   parent?: string;
   editors: readonly EditorId[];
@@ -36,7 +38,7 @@ export function availableEditors(resource: ProjectResource, host: ShellHost): Ed
 export function findResources(catalog: ResourceCatalog, query: string, locale: ShellLocale): ProjectResource[] {
   const words = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
   return catalog.resources.filter(r => words.every(word =>
-    `${r.name[locale]} ${r.name.en} ${r.name.ru} ${r.entityId ?? ''} ${r.source?.path ?? ''} ${r.kind}`.toLocaleLowerCase().includes(word)));
+    `${r.name[locale]} ${r.name.en} ${r.name.ru} ${r.entityId ?? ''} ${r.semanticId ?? ''} ${r.source?.path ?? ''} ${r.kind}`.toLocaleLowerCase().includes(word)));
 }
 /** No private-use font required in SSH, CI or plain terminals. */
 export const terminalIcon = (icon: string): string => ({ pump: 'PMP', tank: 'TNK', valve: 'VLV', plc: 'PLC',
