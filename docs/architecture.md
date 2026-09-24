@@ -27,7 +27,6 @@ Shell связывает работу с ними, а не дублирует и
 src/
   core.ts                 # публичный DSL и контракты; стабильный @saturn/core
   core/artifact.ts        # проверяемый неизменяемый результат сборки
-  geometry.ts             # текущие встроенные профили геометрии/портов
   topology.ts             # физические связи и общая маршрутизация
   motion.ts               # состояние визуального движения по наблюдениям
   reports.ts              # вычисление отчётов, независимое от UI/SQL
@@ -115,12 +114,7 @@ project/
 Импорты явные: директория не сканируется для скрытой активации плагинов. Секреты поступают
 из окружения runtime, не попадают в Git или артефакт.
 
-**Обязательный ещё не завершённый перенос:** тип оборудования должен определяться внутри проекта,
-а не добавлением ветки в ядро IDE. Текущие четыре встроенных типа остаются совместимым MVP;
-они не объявляются окончательной моделью расширяемости. При выделении equipment definitions
-сохраняются существующие функции `pump/tank/valve/plc`, конкретные типы сигналов, имена портов
-и геометрия. Внешняя дефиниция проверяется тем же контрактом, что встроенная. Регистрировать
-глобальный plugin manager ради этого запрещено.
+Тип оборудования определяется через один `device()` contract. `pump/tank/valve/plc` — обычные definitions, созданные тем же `device()`, что и vendor equipment; отдельного built-in registry нет. Порты, signal schema и diagram bounds принадлежат declaration и не дублируются в `geometry.ts`. Глобальный plugin manager для этого запрещён.
 
 ## Source, checked, published, applied
 
@@ -198,11 +192,9 @@ Shell владеет навигацией, открытыми буферами �
 проверок, а не только зелёный typecheck или меньшее число файлов.
 
 
-## Vendor device classes
+## Equipment definitions
 
-Project-owned equipment extends the model through `deviceClass()`. A class owns typed ports and
-declarative Diagram/HMI/Firmware/Emulator capabilities; instances remain ordinary Project equipment.
-There is no global plugin registry or activation lifecycle and the IDE must not branch on vendor IDs.
+Project-owned equipment extends the model through `device()`. Every definition owns typed ports, signal defaults and declarative Diagram/HMI/Firmware/Emulator capabilities; instances remain ordinary Project equipment. Built-in and vendor definitions are indistinguishable to the core. There is no global plugin registry or activation lifecycle and the IDE must not branch on vendor IDs.
 
 `autoHmi(controller)` stores intent only. `project()` derives the HMI equipment set from physical
 topology, so connectivity is not authored twice. Firmware remains source-owned and target-defined:
@@ -211,3 +203,8 @@ C23, C/C++, Rust, Zig or another language are valid when the target supplies the
 The first reference kit is `project/plugins/saturn-plc500`: the real Saturn PLC SVG, pinned
 Firmverse compiler/runtime WASM and the 320×240 React HMI projection are carried with provenance
 and licenses from the previous Saturn implementation.
+
+
+### AST as one source projection
+
+Source tooling does not identify equipment by helper names such as `pump()` or `saturnPlc500()`. The shared parser recognizes the structural authored form `factory("ID", { x, y, ... })`. Resource indexing, two-way drag ranges and rename consume that same AST projection. It is derived from source and is never persisted as a second model.

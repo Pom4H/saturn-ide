@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { project, pump, signal, terminal, terminalFromAnchor, validateValue } from '../src/core';
+import { device, project, pump, signal, terminal, terminalFromAnchor, validateValue } from '../src/core';
 import demo from '../project/project';
 import { routeConnection, related } from '../src/topology';
 test('one inferred engineering model, explicit ports and report relationships',()=>{
@@ -42,4 +42,13 @@ test('vendor port constructors preserve physical literal types without local fra
   expect(a).toEqual({x:1,y:2,z:3,side:'left',medium:'control',family:'digital',role:'source',max:1});
   const b=terminalFromAnchor({x:4,y:5,side:'bottom'},{z:6,medium:'bus',family:'rs485',role:'passive',max:32});
   expect(b).toEqual({x:4,y:5,z:6,side:'down',medium:'bus',family:'rs485',role:'passive',max:32});
+});
+
+
+test('device() is the only class constructor for built-in and project-owned equipment',()=>{
+  const custom=device({id:'acme.sensor',icon:'sensor',ports:{},signals:{value:signal({initial:0})},capabilities:{diagram:{width:40,height:40}}});
+  const sensor=custom('S-1',{label:'Sensor',x:1,y:2});
+  expect(sensor.kind).toBe('acme.sensor');
+  expect(sensor.value.id).toBe('S-1.value');
+  expect(demo.equipment.every(e=>typeof e.kind==='string'&&typeof e.icon==='string'&&!!e.capabilities)).toBe(true);
 });

@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-const pure = new Set(['core.ts','geometry.ts','topology.ts','motion.ts','reports.ts','protocol.ts','source-edits.ts','semantic.ts','documentation.ts']);
+const pure = new Set(['core.ts','topology.ts','motion.ts','reports.ts','protocol.ts','source-edits.ts','semantic.ts','documentation.ts']);
 const layer = file => {
   const path = file.replaceAll('\\','/').replace(/^src\//,'');
   if (pure.has(path) || path.startsWith('core/')) return 'core';
@@ -36,6 +36,7 @@ export function violations(sources) {
       ts.forEachChild(node, visit);
     };
     visit(tree);
+    for(const forbidden of ['deviceClass','BuiltinEquipment','VendorEquipment','isVendorEquipment','classId']) if(source.includes(forbidden)) errors.push(`${file}: obsolete equipment split token ${forbidden}`);
   }
   return errors;
 }

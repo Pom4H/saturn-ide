@@ -119,7 +119,6 @@ OpenTUI testRender проверяет реальный renderer с тестов�
 
 ## Vendor equipment
 
-`deviceClass()` adds vendor equipment through normal TypeScript imports. The reference
-`project/plugins/saturn-plc500` kit carries the Saturn PLC SVG, Firmverse WASM compiler/runtime and
-320×240 React HMI projection. `autoHmi(controller)` derives the HMI equipment set from project
-topology. Firmware language is a target/toolchain concern, not a TypeScript restriction.
+`device()` is the only equipment-class constructor. Built-in `pump/tank/valve/plc` and copied vendor definitions use the same typed path; there is no built-in/vendor registry split. The reference `project/plugins/saturn-plc500` kit carries the Saturn PLC SVG, Firmverse WASM compiler/runtime and 320×240 React HMI projection. `autoHmi(controller)` derives the HMI equipment set from project topology. Firmware language is a target/toolchain concern, not a TypeScript restriction.
+
+AST tooling identifies an equipment instance structurally as `factory("ID", { x, y, ... })`. The factory identifier is deliberately irrelevant, so custom/vendor names do not become a hidden registry. Resource indexing, drag coordinates and semantic rename share the same parser.
