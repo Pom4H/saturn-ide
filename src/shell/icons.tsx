@@ -24,7 +24,7 @@ const icons: Readonly<Record<string, IconDef>> = {
   '3d': () => <><path {...common} d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9"/></>,
 };
 
-const fallback = icons.file;
+const fallback: IconDef = icons.file!;
 export function ResourceIcon({ icon, size = 18 }: { icon: string; size?: number }) {
   const draw = icons[icon] ?? fallback;
   return <svg className="resource-icon codex-icon" data-icon={icon} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">{draw({ s: size })}</svg>;
