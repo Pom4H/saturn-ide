@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import type { Equipment, Point } from '../core';
+import { equipmentSignal, type Equipment, type Point } from '../core';
 import { advancePhase, flowOf, numeric, rpmOf } from '../motion';
 import type { SceneProps } from './scene';
 // Diagram x/y maps to world x/z; port elevation maps to world y. No independent 3D topology.
@@ -49,6 +49,7 @@ export default function Scene3D(props:SceneProps){
     const buildEquipment=(e:Equipment)=>{
       const root=new T.Group();root.position.set(e.x,e.z??0,e.y);root.userData.equipment=e.id;roots.set(e.id,root);world.add(root);
       if(e.kind==='tank'){
+        const levelSignal=equipmentSignal<number>(e,'level','number');if(!levelSignal)return;
         box(root,140,7,150,79,5,116);for(const x of [28,120])box(root,10,25,10,x,17,130);
         const shell=mesh(root,new T.CylinderGeometry(61,61,185,64,1,true,.6,Math.PI*2-1.2),casing,79,117,120);shell.rotation.y=Math.PI;
         for(const y of [24,210]){const rim=mesh(root,new T.TorusGeometry(61,2,12,64),metal,79,y,120);rim.rotation.x=Math.PI/2;}
@@ -57,7 +58,7 @@ export default function Scene3D(props:SceneProps){
         for(let i=0;i<=10;i++)box(root,i%5===0?13:8,1.3,2,35,24+i*18.5,65,paint);
         tube(root,new T.Vector3(135,24,120),new T.Vector3(170,24,120),9);tube(root,new T.Vector3(170,24,120),new T.Vector3(170,24,184),9);
         tube(root,new T.Vector3(79,195,120),new T.Vector3(79,195,3),9);
-        let level=0;updaters.push(dt=>{const v=numeric(current.current.snapshot,e.level.id,Date.now(),e.level.staleAfter);liquid.visible=surface.visible=v!==null&&v>0;if(v!==null){level+=(Math.max(0,Math.min(100,v))-level)*(dt===0?1:1-Math.exp(-dt*8));const h=185*level/100;liquid.scale.y=Math.max(.001,h);liquid.position.y=24+h/2;surface.position.y=24+h+.1;}});
+        let level=0;updaters.push(dt=>{const v=numeric(current.current.snapshot,levelSignal.id,Date.now(),levelSignal.staleAfter);liquid.visible=surface.visible=v!==null&&v>0;if(v!==null){level+=(Math.max(0,Math.min(100,v))-level)*(dt===0?1:1-Math.exp(-dt*8));const h=185*level/100;liquid.scale.y=Math.max(.001,h);liquid.position.y=24+h/2;surface.position.y=24+h+.1;}});
       }else if(e.kind==='pump'){
         box(root,205,7,78,112,6,96);box(root,40,20,56,76,20,96,metal);box(root,72,20,54,171,20,96,metal);
         tube(root,new T.Vector3(130,60,96),new T.Vector3(210,60,96),29,paint);
@@ -71,10 +72,11 @@ export default function Scene3D(props:SceneProps){
         tube(root,new T.Vector3(0,60,96),new T.Vector3(55,60,96),10);tube(root,new T.Vector3(76,100,96),new T.Vector3(76,105,96),10);tube(root,new T.Vector3(76,105,96),new T.Vector3(76,105,0),10);
         let phase=phases.get(e.id)??0;updaters.push(dt=>{const rpm=rpmOf(e,current.current.snapshot);phase=advancePhase(phase,rpm===null?0:rpm/1450*.35,dt);rotor.rotation.x=phase*Math.PI*2;rotor.visible=rpm!==null;rotor.userData.phase=phase;phases.set(e.id,phase);});
       }else if(e.kind==='valve'){
+        const openingSignal=equipmentSignal<number>(e,'opening','number');if(!openingSignal)return;
         tube(root,new T.Vector3(0,60,102),new T.Vector3(160,60,102),11);
         mesh(root,new T.SphereGeometry(26,32,24),paint,80,60,102);tube(root,new T.Vector3(80,78,102),new T.Vector3(80,113,102),5);box(root,54,24,35,80,125,102);
         tube(root,new T.Vector3(80,105,102),new T.Vector3(80,105,6),2,wire);
-        const indicator=box(root,34,3,4,80,140,102,amber);let value=0;updaters.push(dt=>{const v=numeric(current.current.snapshot,e.opening.id,Date.now(),e.opening.staleAfter);indicator.visible=v!==null;if(v!==null)value+=(v-value)*(dt===0?1:1-Math.exp(-dt*8));indicator.rotation.y=value*Math.PI/200;});
+        const indicator=box(root,34,3,4,80,140,102,amber);let value=0;updaters.push(dt=>{const v=numeric(current.current.snapshot,openingSignal.id,Date.now(),openingSignal.staleAfter);indicator.visible=v!==null;if(v!==null)value+=(v-value)*(dt===0?1:1-Math.exp(-dt*8));indicator.rotation.y=value*Math.PI/200;});
       }else{
         box(root,155,68,145,80,35,75,paint);box(root,106,2,65,80,70,75,metal);for(let i=0;i<8;i++){box(root,11,8,13,15+i*18,70,8,amber);box(root,11,8,13,15+i*18,70,135,amber);}
       }

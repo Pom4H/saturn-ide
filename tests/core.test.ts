@@ -27,9 +27,9 @@ if(false){
 }
 
 
-test('vendor PLC is a project-owned device class and auto HMI follows topology',()=>{
+test('vendor PLC uses the same device model as built-ins and auto HMI follows topology',()=>{
   const controller=demo.equipment.find(e=>e.id==='PLC-01')!;
-  expect(controller.kind).toBe('device:saturn.plc500');
+  expect(controller.kind).toBe('saturn.plc500');
   expect('icon' in controller && controller.icon).toBe('plc');
   expect(demo.hmi?.source).toBe('topology');
   expect(demo.hmi?.controller).toBe('PLC-01');

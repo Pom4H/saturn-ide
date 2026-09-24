@@ -128,7 +128,7 @@ export interface EmulatorCapability {readonly runtime:string;readonly abi?:strin
 export interface DeviceCapabilities {readonly diagram?:DiagramCapability;readonly hmi?:HmiCapability;readonly firmware?:FirmwareCapability;readonly emulator?:EmulatorCapability}
 type DevicePorts<P extends Readonly<Record<string,Terminal>>,I extends string> = { readonly [K in keyof P]:Endpoint<P[K]['medium'],P[K]['family'],P[K]['role'],I>&{readonly port:Extract<K,string>;readonly terminal:P[K]} };
 type Merge<A,B> = Omit<A,keyof B>&B;
-type DeviceSignalOptions<S extends Readonly<Record<string,SignalSpec>>> = { readonly [K in keyof S]?: S[K] extends SignalSpec<infer T,infer W> ? Signal<T,string,W>|SignalSpec<T,W> : never };
+type DeviceSignalOptions<S extends Readonly<Record<string,SignalSpec>>> = { readonly [K in keyof S]?: S[K] extends SignalSpec<infer T> ? Signal<T,string,boolean>|SignalSpec<T,boolean> : never };
 export type Equipment<K extends string=string,I extends string=string,O extends Position=Position,P extends Readonly<Record<string,Terminal>>=Readonly<Record<string,Terminal>>> = Materialized<O,I>&Position&{readonly id:I;readonly kind:K;readonly icon:string;readonly ports:DevicePorts<P,I>;readonly capabilities:DeviceCapabilities};
 export interface DeviceDefinition<K extends string,P extends Readonly<Record<string,Terminal>>,S extends Readonly<Record<string,SignalSpec>>=Record<never,never>> {readonly id:K;readonly icon:string;readonly ports:P;readonly signals?:S;readonly capabilities?:DeviceCapabilities}
 /** @ru Единственный конструктор класса оборудования. Наше и vendor-оборудование используют один путь.
