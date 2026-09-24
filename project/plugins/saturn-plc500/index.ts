@@ -6,7 +6,7 @@ export { SaturnRuntime, compileControlIR, runtimeHash, compilerHash, STATE_ABI }
 export { SaturnHmi320, renderHmiReact, renderHmiReactCanvas } from './hmi/react';
 export type { SaturnHmiFrame, SaturnHmiCommand, SaturnHmiScene } from './hmi/frame';
 
-const terminal=(id:string,family:string,role:'source'|'sink'):Terminal=>{
+const terminal=<const F extends string,const R extends 'source'|'sink'>(id:string,family:F,role:R):Terminal<'control',F,R>=>{
   const a=saturnTerminalAnchor(id);if(!a)throw new Error(`Missing Saturn terminal ${id}`);
   return {x:a.x,y:a.y,z:70,side:a.side==='top'?'up':'down',medium:'control',family,role,max:1};
 };
