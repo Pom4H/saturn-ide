@@ -15,6 +15,6 @@ test('actual SQLite stores builds, separates published/applied, and compare-and-
     await expect(revisions.publish(b.hash,null)).rejects.toThrow('changed');await revisions.publish(b.hash,a.hash);
     await expect(revisions.apply(b.hash,null)).rejects.toThrow('changed');expect((await revisions.state()).applied).toBe(a.hash);
     await revisions.apply(b.hash,a.hash);const restored=new RevisionStore(store.sql);expect((await restored.state()).applied).toBe(b.hash);
-    const model=decodeProject((await restored.get(b.hash)).model);expect(model.equipment).toHaveLength(4);expect(model.pipes[0]?.flow).toBe(model.signals.flow as Signal<number>);
+    const model=decodeProject((await restored.get(b.hash)).model);expect(model.equipment).toHaveLength(4);const flow=model.pipes[0]?.flow;expect(flow).toBe(model.signals[flow!.id] as Signal<number>);
   } finally {await store.close();}
 });
