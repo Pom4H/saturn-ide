@@ -10,6 +10,8 @@ test('legacy inventory decodes CP1251, keeps source/passwords local and rejects 
 });
 test('oversized archive entries and empty archives are rejected',async()=>{
  await expect(inspectUpload(new File([zipSync({'bomb.ini':new Uint8Array(9*1024*1024)})],'bomb.zip'))).rejects.toThrow('8 МБ');
+ const forged=zipSync({'x.ini':new Uint8Array(9*1024*1024)});new DataView(forged.buffer).setUint32(22,0,true);
+ await expect(inspectUpload(new File([forged],'forged.zip'))).rejects.toThrow();
  await expect(inspectUpload(new File([zipSync({})],'empty.zip'))).rejects.toThrow('не содержит');
 });
 test('assistant uses existing persistent panel with usable initial height',()=>{

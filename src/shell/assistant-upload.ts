@@ -26,7 +26,10 @@ export async function inspectUpload(file:File):Promise<MigrationInventory>{
       const chunks:Uint8Array[]=[];let size=0;
       entry.ondata=(error,chunk,final)=>{if(error)throw new Error('Повреждённый или неподдержанный ZIP');total+=chunk.length;size+=chunk.length;if(total>64*1024*1024||size>max){entry.terminate();throw new Error('Слишком большой распакованный архив');}chunks.push(chunk);if(final){const data=new Uint8Array(size);let at=0;for(const c of chunks){data.set(c,at);at+=c.length;}add(path,data);}};
       entry.start();
-    });unzip.register(UnzipInflate);unzip.push(bytes,true);
+    });unzip.register(UnzipInflate);
+    // Bound inflate input chunks: an archive with forged size headers must not allocate
+    // its entire expanded payload before the ondata limits get a chance to stop it.
+    for(let offset=0;offset<bytes.length;offset+=4096)unzip.push(bytes.subarray(offset,offset+4096),offset+4096>=bytes.length);
   }else add(file.name,bytes);
   if(!files.length)throw new Error('Архив не содержит файлов');
   return inspectLanmon(file.name,sha256,files);
