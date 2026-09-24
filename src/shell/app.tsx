@@ -9,6 +9,7 @@ import { useShell } from './use-shell';
 import type { DocumentBuffer } from './model/documents';
 import { ResourceIcon } from './icons';
 import { ResourceExplorer } from './resource-explorer';
+import { ProjectRail } from './project-rail';
 import { Editor } from './editor';
 import { Scene } from './scene';
 import { Reports } from './reports';
@@ -111,6 +112,17 @@ function App() {
   const activeResource = catalog.resources.find(r => r.uri === nav.active?.uri);
   const signal = Object.values(state.project.signals).find(s => s.id === nav.signal) ?? Object.values(state.project.signals)[0];
   const activeAlarms = Object.values(snapshot.alarms).filter(a => a.active), file = documents.get(active);
+  const contextKinds: Record<EditorId, readonly string[]> = {
+    diagram: ['device'], source: ['project','device','plugin','file'], signals: ['device'],
+    reports: ['report'], hmi: ['hmi','device'], targets: ['target','hmi'], git: ['project','file','plugin'],
+  };
+  const contextResources = catalog.resources.filter(resource => contextKinds[surface].includes(resource.kind));
+  const contextUris = new Set(contextResources.map(resource => resource.uri));
+  const contextCatalog = { ...catalog, resources: contextResources.map(resource => resource.parent && !contextUris.has(resource.parent) ? { ...resource, parent: catalog.project } : resource) };
+  const contextTitle = ({
+    diagram: ru ? 'Оборудование' : 'Equipment', source: ru ? 'Исходники' : 'Sources', signals: ru ? 'Сигналы объекта' : 'Signal sources',
+    reports: ru ? 'Отчёты' : 'Reports', hmi: 'HMI', targets: ru ? 'Среда' : 'Environment', git: 'Git',
+  } satisfies Record<EditorId,string>)[surface];
   const mode = state.mode === 'simulation' ? (ru ? 'Симуляция' : 'Simulation') : state.mode === 'live' ? (ru ? 'Реальный драйвер' : 'Live driver') : (ru ? 'Нет драйвера' : 'No driver');
   const scene = { project: previewProject, snapshot, locale, selected, select: selectEquipment, fit, ports, begin, move, end };
   const controlFor = (e?: Equipment) => e?.kind === 'pump' ? e.run : e?.kind === 'valve' ? e.opening : undefined;
@@ -135,9 +147,11 @@ function App() {
       <button onClick={() => { setOperator(!operator); if (!operator) { chooseSurface('diagram'); setDock(false); } }}>{operator ? (ru ? 'Инженер' : 'Engineer') : (ru ? 'Оператор' : 'Operator')}</button><select aria-label="Language" value={locale} onChange={e => setLocale(e.target.value as Locale)}><option value="ru">RU</option><option value="en">EN</option></select></header>
     {error && <div className="message error" role="alert"><span>{error}</span><button onClick={() => setError('')} aria-label="Close">×</button></div>}
     {!!state.problems.length && <div className="problems" role="alert"><strong>{ru ? 'Ошибка проекта или сервиса. Применённая ревизия показана отдельно.' : 'Project or service error. Applied revision is shown separately.'}</strong>{state.problems.map((p, i) => <div key={i}>{p.code} {p.path} {p.message[locale]}</div>)}</div>}
-    <div className="shell-body"><nav className="activity" aria-label={ru ? 'Рабочие разделы' : 'Workspaces'}>{surfaces.filter(s => !operator || ['diagram', 'signals', 'reports', 'hmi'].includes(s)).map(s => <button key={s} aria-current={surface === s ? 'page' : undefined} className={surface === s ? 'active' : ''} onClick={() => chooseSurface(s)}><ResourceIcon icon={s}/><span>{editorNames[s][locale]}</span></button>)}</nav>
-      {!operator && tree && <aside className="explorer"><div className="pane-heading"><strong>{ru ? 'Проект' : 'Project'}</strong><button aria-label={ru ? 'Скрыть дерево' : 'Hide explorer'} onClick={() => setTree(false)}>×</button></div>
-        <ResourceExplorer catalog={catalog} locale={locale} active={nav.active?.uri} open={r => void openResource(r)}/><div className="explorer-footer"><button onClick={() => chooseSurface('git')}>⑂ {git?.branch || '—'}</button><span>{state.adapter}</span></div></aside>}
+    <div className="shell-body">
+      {!operator && <ProjectRail projects={[{ id: state.project.id, label: state.project.label, stage: state.mode === 'live' ? 'production' : 'engineering', connected, events: activeAlarms.length + state.problems.length, recentAt: Math.max(0, ...Object.values(snapshot.samples).map(sample => sample.at)) }]} current={state.project.id} locale={locale} open={() => {}}/>}
+      <nav className="activity" aria-label={ru ? 'Рабочие разделы' : 'Workspaces'}>{surfaces.filter(s => !operator || ['diagram', 'signals', 'reports', 'hmi'].includes(s)).map(s => <button key={s} aria-current={surface === s ? 'page' : undefined} className={surface === s ? 'active' : ''} onClick={() => chooseSurface(s)}><ResourceIcon icon={s}/><span>{editorNames[s][locale]}</span></button>)}</nav>
+      {!operator && tree && <aside className="explorer context-explorer"><div className="pane-heading"><strong>{contextTitle}</strong><button aria-label={ru ? 'Скрыть дерево' : 'Hide explorer'} onClick={() => setTree(false)}>×</button></div>
+        <ResourceExplorer catalog={contextCatalog} locale={locale} active={nav.active?.uri} open={r => void openResource(r)}/><div className="explorer-footer"><button onClick={() => chooseSurface('git')}>⑂ {git?.branch || '—'}</button><span>{state.adapter}</span></div></aside>}
       <main className="workbench">
         {!operator && <nav className="resource-tabs" aria-label={ru ? 'Открытые объекты' : 'Open resources'}>{nav.tabs.map(tab => {
           const r = catalog.resources.find(r => r.uri === tab.uri); if (!r) return <span key={tab.uri}>{ru ? 'Объект удалён из модели' : 'Resource removed from model'}</span>;
