@@ -44,6 +44,6 @@ test('compact runtime quality has a richer canonical interpretation',()=>{
 test('documentation is bilingual traceability derived from the same project object',()=>{
   const en=projectDocumentation(demo,{locale:'en'}),ru=projectDocumentation(demo,{locale:'ru'});
   expect(en).toContain('# Pumping station');expect(en).toContain('P-01.rpm');expect(en).toContain('equipment:booster-primary');
-  expect(en).toContain('Traceability');expect(en).toContain('high-pressure');expect(en).toContain('hourly-water');
+  expect(en).toContain('Traceability');expect(en).toContain('Commissioning');expect(en).toContain('Verify rotation direction');expect(en).toContain('high-pressure');expect(en).toContain('hourly-water');
   expect(ru).toContain('Трассировка');expect(ru).toContain('Повысительный насос');
 });
