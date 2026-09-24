@@ -48,14 +48,15 @@ export class ProjectInstallation implements Installation {
     // Stage candidate state privately. Until the durable apply succeeds, HTTP/SSE
     // continue to describe the previous model with its previous applied identity.
     const previous = this.checkpoint ?? this.engine.snapshot;
+    const previousByIdentity=new Map(Object.values(previous.samples).map(sample=>[sample.semantic??sample.signal,sample]));
     const snapshot: Snapshot = { samples: {}, alarms: {} };
     for (const definition of Object.values(this.project.signals)) {
-      const old = previous.samples[definition.id];
+      const identity=definition.semanticId??definition.id,old=previousByIdentity.get(identity)??previous.samples[definition.id];
       let value = definition.initial;
       let at = 0;
       try { if (old) { validateValue(definition, old.value); value = old.value; at = old.at; } }
       catch { /* A new signal contract must not inherit an incompatible value. */ }
-      snapshot.samples[definition.id] = { signal: definition.id, value, at, quality: 'stale' };
+      snapshot.samples[definition.id] = { signal: definition.id, semantic:identity, value, at, quality: 'stale' };
     }
     for (const rule of this.project.alarms) {
       const old = previous.alarms[rule.id];
