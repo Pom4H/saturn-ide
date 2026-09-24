@@ -114,7 +114,7 @@ export type Equipment<K extends Kind = Kind, I extends string = string> = {
 type Options<K extends Kind> = Position & EquipmentSignalInputs[K];
 type MaterializedEquipment<K extends Kind,I extends string,O extends Options<K>> = Materialized<O,I> & {id:I;kind:K;ports:Ports<K,I>};
 /** @ru Насос владеет своими сигналами. Безымянные signal({...}) получают ID от экземпляра: P-101.rpm.
- * @en A pump owns its signals. Anonymous signal({...}) declarations get IDs from the instance: P-101.rpm. */
+ * @en A pump owns its signals. rpm is measured speed; anonymous signal({...}) declarations get IDs from the instance: P-101.rpm. */
 export function pump<const I extends string, O extends Options<'pump'>>(id:I, options:O):MaterializedEquipment<'pump',I,O> { return {...ownSignals(id,options),id,kind:'pump',ports:portsFor('pump',id)}; }
 /** @ru Резервуар владеет уровнем и локальными сигналами. @en Tank owns level and local signals. */
 export function tank<const I extends string, O extends Options<'tank'>>(id:I, options:O):MaterializedEquipment<'tank',I,O> { return {...ownSignals(id,options),id,kind:'tank',ports:portsFor('tank',id)}; }
