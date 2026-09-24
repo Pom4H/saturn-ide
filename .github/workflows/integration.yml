@@ -1,0 +1,57 @@
+name: Integration checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to test
+        required: true
+        default: main
+        type: string
+
+concurrency:
+  group: saturn-ide-integration-${{ inputs.branch }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: saturn
+          POSTGRES_PASSWORD: saturn
+          POSTGRES_DB: saturn
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U saturn -d saturn" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      TEST_POSTGRES_URL: postgres://saturn:saturn@127.0.0.1:5432/saturn
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+
+      - name: Cache Bun packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-1.4.2-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-1.4.2-
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: PostgreSQL integration tests
+        run: bun test tests
