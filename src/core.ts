@@ -143,15 +143,15 @@ type DevicePorts<P extends Readonly<Record<string,Terminal>>,I extends string> =
   readonly [K in keyof P]:Endpoint<P[K]['medium'],P[K]['family'],P[K]['role'],I>&{readonly port:Extract<K,string>;readonly terminal:P[K]}
 };
 export type VendorEquipment<C extends string=string,I extends string=string,O extends Position=Position,P extends Readonly<Record<string,Terminal>>=Readonly<Record<string,Terminal>>> =
-  Materialized<O,I>&Position&{readonly id:I;readonly kind:VendorDeviceKind<C>;readonly classId:C;readonly ports:DevicePorts<P,I>;readonly capabilities:DeviceCapabilities};
+  Materialized<O,I>&Position&{readonly id:I;readonly kind:VendorDeviceKind<C>;readonly classId:C;readonly icon:string;readonly ports:DevicePorts<P,I>;readonly capabilities:DeviceCapabilities};
 export type Equipment = BuiltinEquipment|VendorEquipment;
-export interface DeviceClassDefinition<C extends string,P extends Readonly<Record<string,Terminal>>> {readonly id:C;readonly ports:P;readonly capabilities?:DeviceCapabilities}
+export interface DeviceClassDefinition<C extends string,P extends Readonly<Record<string,Terminal>>> {readonly id:C;readonly icon:string;readonly ports:P;readonly capabilities?:DeviceCapabilities}
 /** @ru Vendor-класс оборудования — project-owned TypeScript factory без глобальной регистрации.
  * @en A vendor device class is a project-owned TypeScript factory with no global plugin registry. */
 export function deviceClass<const C extends string,const P extends Readonly<Record<string,Terminal>>>(definition:DeviceClassDefinition<C,P>) {
   return function<const I extends string,const O extends Position>(id:I,options:O):VendorEquipment<C,I,O,P> {
     const ports=Object.fromEntries(Object.entries(definition.ports).map(([port,terminal])=>[port,{device:id,port,terminal}])) as DevicePorts<P,I>;
-    return {...ownSignals(id,options),id,kind:`device:${definition.id}`,classId:definition.id,ports,capabilities:definition.capabilities??{}} as VendorEquipment<C,I,O,P>;
+    return {...ownSignals(id,options),id,kind:`device:${definition.id}`,classId:definition.id,icon:definition.icon,ports,capabilities:definition.capabilities??{}} as VendorEquipment<C,I,O,P>;
   };
 }
 export function isVendorEquipment(e:Equipment):e is VendorEquipment {return e.kind.startsWith('device:');}

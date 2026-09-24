@@ -20,7 +20,7 @@ const ports={
 } as const;
 const panel=renderSaturnPlcSvg({defsPrefix:'saturn-plc500'}).replace('<svg ','<svg width="620" height="340" ');
 const define=deviceClass({
-  id:'saturn.plc500',ports,
+  id:'saturn.plc500',icon:'plc',ports,
   capabilities:{
     diagram:{width:620,height:340,svg:panel},
     hmi:{target:'saturn-plc-320',width:320,height:240,auto:'topology'},
