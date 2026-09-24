@@ -10,6 +10,7 @@ const icons:Readonly<Record<string,IconDef>>={
   reports:()=> <><path {...p} d="M6 2h8l4 4v16H6zM14 2v5h5"/><path {...p} d="M9 17v-3M12 17v-6M15 17v-4"/></>,
   report:()=> <><path {...p} d="M6 2h8l4 4v16H6zM14 2v5h5"/><path {...p} d="M9 17v-3M12 17v-6M15 17v-4"/></>,
   hmi:()=> <><rect {...p} x="3" y="4" width="18" height="13" rx="2"/><path {...p} d="M8 21h8M12 17v4"/></>,
+  docs:()=> <><path {...p} d="M5 3h10l4 4v14H5zM15 3v5h5"/><path {...p} d="M8 12h8M8 16h8"/></>,
   targets:()=> <><rect {...p} x="3" y="4" width="18" height="16" rx="2"/><path {...p} d="m7 9 3 3-3 3M13 15h4"/></>,
   target:()=> <><rect {...p} x="3" y="4" width="18" height="16" rx="2"/><path {...p} d="m7 9 3 3-3 3M13 15h4"/></>,
   git:()=> <><circle {...p} cx="6" cy="4" r="2"/><circle {...p} cx="18" cy="6" r="2"/><circle {...p} cx="6" cy="20" r="2"/><path {...p} d="M6 6v12M8 5h4a4 4 0 0 1 4 4v5M13 11l3 3 3-3"/></>,
