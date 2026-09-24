@@ -130,6 +130,22 @@ export interface Point { x:number; y:number; z:number }
 export interface Terminal<M extends Medium=Medium,F extends string=string,R extends Role=Role> extends Point {
   medium:M; family:F; role:R; side:Side; max:number;
 }
+/** @ru Типизированный конструктор физического порта для project-owned equipment.
+ * @en Typed physical-port constructor for project-owned equipment. */
+export function terminal<const M extends Medium,const F extends string,const R extends Role>(
+  point:Point&{side:Side;medium:M;family:F;role:R;max?:number},
+):Terminal<M,F,R> { return {...point,max:point.max??1}; }
+
+export interface VisualAnchor {readonly x:number;readonly y:number;readonly side:'top'|'bottom'|'left'|'right'}
+/** @ru Преобразует координату из vendor SVG в канонический Terminal, сохраняя literal-типы среды/семейства/роли.
+ * @en Maps a vendor SVG anchor to a canonical Terminal while preserving literal medium/family/role types. */
+export function terminalFromAnchor<const M extends Medium,const F extends string,const R extends Role>(
+  anchor:VisualAnchor|undefined,
+  spec:{z:number;medium:M;family:F;role:R;max?:number},
+):Terminal<M,F,R> {
+  if(!anchor)throw new Error('Missing equipment terminal anchor');
+  return terminal({x:anchor.x,y:anchor.y,z:spec.z,side:anchor.side,medium:spec.medium,family:spec.family,role:spec.role,max:spec.max});
+}
 export interface Endpoint<M extends Medium=Medium,F extends string=string,R extends Role=Role,I extends string=string> {
   readonly device:I; readonly port:string; readonly terminal:Terminal<M,F,R>;
 }

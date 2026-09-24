@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { project, pump, signal, validateValue } from '../src/core';
+import { project, pump, signal, terminal, terminalFromAnchor, validateValue } from '../src/core';
 import demo from '../project/project';
 import { routeConnection, related } from '../src/topology';
 test('one inferred engineering model, explicit ports and report relationships',()=>{
@@ -34,4 +34,12 @@ test('vendor PLC is a project-owned device class and auto HMI follows topology',
   expect(demo.hmi?.source).toBe('topology');
   expect(demo.hmi?.controller).toBe('PLC-01');
   expect(demo.hmi?.equipment.map(e=>e.id).sort()).toEqual(['P-01','TK-01','V-01']);
+});
+
+
+test('vendor port constructors preserve physical literal types without local framework code',()=>{
+  const a=terminal({x:1,y:2,z:3,side:'left',medium:'control',family:'digital',role:'source'});
+  expect(a).toEqual({x:1,y:2,z:3,side:'left',medium:'control',family:'digital',role:'source',max:1});
+  const b=terminalFromAnchor({x:4,y:5,side:'bottom'},{z:6,medium:'bus',family:'rs485',role:'passive',max:32});
+  expect(b).toEqual({x:4,y:5,z:6,side:'bottom',medium:'bus',family:'rs485',role:'passive',max:32});
 });
