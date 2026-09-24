@@ -1,20 +1,42 @@
 import { useEffect, useRef } from 'react';
 import { basicSetup } from 'codemirror';
-import { EditorView, hoverTooltip, keymap } from '@codemirror/view';
-import { EditorState, Transaction } from '@codemirror/state';
+import { Decoration, EditorView, WidgetType, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
+import { EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { autocompletion } from '@codemirror/autocomplete';
 import { javascript } from '@codemirror/lang-javascript';
 import { linter } from '@codemirror/lint';
 import { indentWithTab, isolateHistory } from '@codemirror/commands';
 import { api } from './api';
-import type { Locale, Problem } from '../core';
-interface Props {path:string;source:string;locale:Locale;change:(source:string)=>void;save:()=>void;dragging:boolean}
+import type { Locale, Problem, Signal, Snapshot } from '../core';
+interface SignalHint {signal:string;at:number}
+interface LiveDecoration {at:number;text:string;quality:string}
+const setLiveDecorations=StateEffect.define<readonly LiveDecoration[]>();
+class LiveValueWidget extends WidgetType {
+  constructor(readonly value:LiveDecoration){super();}
+  eq(other:LiveValueWidget){return this.value.text===other.value.text&&this.value.quality===other.value.quality;}
+  toDOM(){const span=document.createElement('span');span.className=`cm-live-value ${this.value.quality}`;span.textContent=`// ${this.value.text}`;span.title='Runtime value / Текущее значение';return span;}
+}
+const liveValues=StateField.define<DecorationSet>({
+  create:()=>Decoration.none,
+  update(value,transaction){
+    value=value.map(transaction.changes);
+    for(const effect of transaction.effects)if(effect.is(setLiveDecorations)){
+      const byLine=new Map<number,LiveDecoration[]>();
+      for(const item of effect.value){const at=Math.max(0,Math.min(item.at,transaction.state.doc.length)),line=transaction.state.doc.lineAt(at),list=byLine.get(line.number)??[];list.push({...item,at:line.to});byLine.set(line.number,list);}
+      const ranges=[...byLine.values()].map(items=>{const at=items[0]!.at,text=items.map(item=>item.text).join(' · '),quality=items.some(item=>item.quality==='bad'||item.quality==='offline')?'bad':items.some(item=>item.quality==='stale')?'stale':'good';return Decoration.widget({widget:new LiveValueWidget({at,text,quality}),side:1}).range(at);});
+      value=Decoration.set(ranges,true);
+    }
+    return value;
+  },
+  provide:field=>EditorView.decorations.from(field),
+});
+interface Props {path:string;source:string;locale:Locale;change:(source:string)=>void;save:()=>void;dragging:boolean;snapshot:Snapshot;signals:Record<string,Signal>;now:number}
 export function Editor(props:Props){
-  const host=useRef<HTMLDivElement>(null),editor=useRef<EditorView|null>(null),current=useRef(props),dragSource=useRef<string|null>(null);current.current=props;
+  const host=useRef<HTMLDivElement>(null),editor=useRef<EditorView|null>(null),current=useRef(props),dragSource=useRef<string|null>(null),hints=useRef<SignalHint[]>([]);current.current=props;
   useEffect(()=>{
     const request=<T,>(operation:string,source:string,position=0)=>api<T>('language',{operation,path:current.current.path,source,position,locale:current.current.locale});
     const view=new EditorView({parent:host.current!,state:EditorState.create({doc:props.source,extensions:[
-      basicSetup,javascript({typescript:true,jsx:props.path.endsWith('tsx')}),
+      basicSetup,javascript({typescript:true,jsx:props.path.endsWith('tsx')}),liveValues,
       keymap.of([indentWithTab,{key:'Mod-s',run:()=>{current.current.save();return true;}}]),
       EditorView.updateListener.of(update=>{if(update.docChanged&&!update.transactions.some(t=>t.annotation(Transaction.userEvent)==='external'))current.current.change(update.state.doc.toString());}),
       autocompletion({override:[async context=>{
@@ -27,7 +49,7 @@ export function Editor(props:Props){
         return {pos:info.from,end:info.to,above:true,create:()=>{const dom=document.createElement('div'),signature=document.createElement('pre'),documentation=document.createElement('p');dom.className='jsdoc';signature.textContent=info.signature;documentation.textContent=info.documentation;dom.append(signature,documentation);return {dom};}};
       }catch{return null;}},{hoverTime:300}),
       linter(async view=>{try{const doc=view.state.doc,problems=await request<Problem[]>('diagnostics',doc.toString());if(doc!==view.state.doc)return [];return problems.map(p=>({from:Math.min(p.from??0,doc.length),to:Math.min(p.to??0,doc.length),severity:'error' as const,message:`${p.code}: ${p.message[current.current.locale]}`}));}catch{return [];}},{delay:650}),
-      EditorView.theme({'&':{height:'100%',fontSize:'13px',backgroundColor:'var(--editor)',color:'var(--text)'},'.cm-scroller':{fontFamily:'var(--mono)'},'.cm-gutters':{backgroundColor:'var(--editor)',color:'var(--muted)',borderRight:'0'},'.cm-activeLine, .cm-activeLineGutter':{backgroundColor:'var(--hover)'},'.cm-tooltip':{backgroundColor:'var(--raised)',borderColor:'var(--border)',color:'var(--text)'},'.cm-content':{caretColor:'var(--text)'},'&.cm-focused .cm-cursor':{borderLeftColor:'var(--text)'}}),
+      EditorView.theme({'&':{height:'100%',fontSize:'13px',backgroundColor:'var(--editor)',color:'var(--text)'},'.cm-scroller':{fontFamily:'var(--mono)'},'.cm-gutters':{backgroundColor:'var(--editor)',color:'var(--muted)',borderRight:'0'},'.cm-activeLine, .cm-activeLineGutter':{backgroundColor:'var(--hover)'},'.cm-tooltip':{backgroundColor:'var(--raised)',borderColor:'var(--border)',color:'var(--text)'},'.cm-content':{caretColor:'var(--text)'},'&.cm-focused .cm-cursor':{borderLeftColor:'var(--text)'},'.cm-live-value':{marginLeft:'1.5ch',fontStyle:'italic',color:'var(--muted)',opacity:'.82',pointerEvents:'none'},'.cm-live-value.good':{color:'var(--good)'},'.cm-live-value.stale':{color:'var(--warn)'},'.cm-live-value.bad':{color:'var(--bad)'}}),
     ]})});editor.current=view;dragSource.current=null;
     return()=>{view.destroy();editor.current=null;};
   },[props.path]);
@@ -46,5 +68,13 @@ export function Editor(props:Props){
       const original=dragSource.current;dragSource.current=null;replace(original,false);replace(props.source,true);
     }else replace(props.source,!props.dragging);
   },[props.source,props.dragging]);
+  useEffect(()=>{
+    const view=editor.current;if(!view)return;const source=props.source;let cancelled=false;
+    void api<SignalHint[]>('language',{operation:'signal-hints',path:props.path,source,position:0,locale:props.locale}).then(next=>{if(cancelled||editor.current?.state.doc.toString()!==source)return;hints.current=next;const live=next.map(hint=>{const definition=props.signals[hint.signal],sample=props.snapshot.samples[hint.signal];const value=sample?.value;const formatted=typeof value==='number'?new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(value):value===undefined?'—':String(value);const unit=definition?.unit?` ${definition.unit}`:'';const quality=sample?.quality??'stale';const age=sample?.at?Math.max(0,props.now-sample.at):0;const ageText=sample?.at?(age<1000?`${age} ms`:`${(age/1000).toFixed(age<10000?1:0)} s`):'no data';return {at:hint.at,text:`${formatted}${unit} · ${quality.toUpperCase()} · ${ageText}`,quality};});view.dispatch({effects:setLiveDecorations.of(live)});}).catch(()=>{});
+    return()=>{cancelled=true;};
+  },[props.path,props.source]);
+  useEffect(()=>{
+    const view=editor.current;if(!view||!hints.current.length)return;const live=hints.current.map(hint=>{const definition=props.signals[hint.signal],sample=props.snapshot.samples[hint.signal];const value=sample?.value;const formatted=typeof value==='number'?new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(value):value===undefined?'—':String(value);const unit=definition?.unit?` ${definition.unit}`:'';const quality=sample?.quality??'stale';const age=sample?.at?Math.max(0,props.now-sample.at):0;const ageText=sample?.at?(age<1000?`${age} ms`:`${(age/1000).toFixed(age<10000?1:0)} s`):'no data';return {at:hint.at,text:`${formatted}${unit} · ${quality.toUpperCase()} · ${ageText}`,quality};});view.dispatch({effects:setLiveDecorations.of(live)});
+  },[props.snapshot,props.signals,props.now]);
   return <div ref={host} className="editor" aria-label="TypeScript editor"/>;
 }
