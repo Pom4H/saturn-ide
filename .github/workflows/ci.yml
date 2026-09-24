@@ -47,7 +47,15 @@ jobs:
       - name: Unit and integration tests (SQLite and real PostgreSQL)
         run: bun test tests
 
-      - name: Chromium
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.63.0
+
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: bunx playwright install --with-deps chromium
 
       - name: Browser round trip
