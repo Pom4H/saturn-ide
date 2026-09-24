@@ -24,7 +24,7 @@ const define=deviceClass({
   capabilities:{
     diagram:{width:620,height:340,svg:panel},
     hmi:{target:'saturn-plc-320',width:320,height:240,auto:'topology'},
-    firmware:{target:'saturn-plc500',languages:['c23','c','cpp','rust','zig'],sourceDir:'firmware'},
+    firmware:{target:'saturn-plc500',languages:['c23'],sourceDir:'firmware'},
     emulator:{runtime:'firmverse-wasm',abi:STATE_ABI},
   },
 });

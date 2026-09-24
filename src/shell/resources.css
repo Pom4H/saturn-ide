@@ -253,3 +253,6 @@ html[data-theme=dark]{
   --accent:#62a8ff;--accent-soft:#26384c;--good:#63c59d;--warn:#d6ab62;--bad:#f08080;
   --pipe-rim:#597687;--pipe-fill:#345261;--flow:#7dd9e6;--cable:#c8ab76;
 }
+
+/* Floating inspector must never cover the operational alarm dock. */
+.runtime-dock{position:relative;z-index:6}
