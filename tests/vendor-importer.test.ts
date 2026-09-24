@@ -6,6 +6,7 @@ import type { ScadaImportSource } from '../src/core';
 import { Workspace } from '../src/workspace/files';
 import { applyImportPlan } from '../src/workspace/importers';
 import { Builder } from '../src/workspace/build';
+import { browserAssets } from '../src/host/browser-build';
 import { appRoot } from './helpers';
 
 const bytes=(value:string)=>new TextEncoder().encode(value);
@@ -33,5 +34,21 @@ test('external vendor importer lowers LanMon project into a buildable Saturn pro
       const element=built.project.hmis?.[0]?.elements?.find(item=>item.id==='obj1');
       expect(element).toMatchObject({kind:'text',x:60,y:50,width:100,height:30});
     }finally{builder.close();}
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('clean external migration workspace bundles its project-owned importer',async()=>{
+  const root=join(appRoot,'../saturn-examples/import-workspace'),dir=mkdtempSync(join(appRoot,'.saturn','vendor-browser-'));
+  try{
+    const workspace=new Workspace(root),builder=new Builder(workspace,appRoot,join(dir,'compiler'));
+    try{
+      const built=await builder.build();
+      expect(built.project.id).toBe('scada-import');
+      expect(built.project.equipment).toHaveLength(0);
+    }finally{builder.close();}
+    const assets=await browserAssets(appRoot,root,dir);
+    expect(assets.html).toContain('/assets/app.js');
+    expect([...assets.assets.keys()].some(path=>path.endsWith('app.js'))).toBe(true);
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
