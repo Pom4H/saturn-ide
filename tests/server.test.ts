@@ -14,6 +14,11 @@ test('real dev host: simulator preview, telemetry, safe writes and last-good app
     const catalog = await fetch(new URL('api/resources', base)).then(r => r.json()) as ResourceCatalog;
     const pump = catalog.resources.find(r => r.entityId === 'P-01')!;
     expect(pump.icon).toBe('pump'); expect(pump.source?.path).toBe('equipment/P-01.device.ts');
+    expect(pump.semanticId).toBe('equipment:booster-primary');
+    const semantic = await fetch(new URL('api/semantic', base)).then(r => r.json()) as {id:string;semanticId:string}[];
+    expect(semantic.some(node => node.semanticId === 'equipment:booster-primary' && node.id === 'P-01')).toBe(true);
+    const impact = await fetch(new URL('api/impact?id=P-01.pressure', base)).then(r => r.json()) as {transitive:{id:string}[]};
+    expect(impact.transitive.some(node => node.id === 'high-pressure')).toBe(true);
     expect(catalog.resources.filter(r => r.source?.path === pump.source?.path)).toHaveLength(1);
     const post = (path: string, body: unknown, headers: Record<string,string> = {}) => fetch(new URL(`api/${path}`, base), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Saturn-Key': state.key, ...headers }, body: JSON.stringify(body) });
     expect((await post('command', { signal:'P-01.run', value:false }, { 'X-Saturn-Key':'wrong' })).status).toBe(403);
