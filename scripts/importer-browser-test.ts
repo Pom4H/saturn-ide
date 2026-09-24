@@ -12,7 +12,7 @@ const dir=mkdtempSync(join(appRoot,'.saturn','import-browser-')),projectDir=join
 cpSync(source,projectDir,{recursive:true});
 const app=await createApp({projectDir,dataDir:join(dir,'data'),databaseUrl:':memory:',port:0});
 const browser=await chromium.launch({headless:true,channel:process.env.CI?'chrome':undefined,args:['--no-sandbox','--enable-unsafe-swiftshader']});
-const page=await browser.newPage({viewport:{width:1280,height:900}),errors:string[]=[];
+const page=await browser.newPage({viewport:{width:1280,height:900}}),errors:string[]=[];
 page.on('pageerror',error=>errors.push(error.message));
 try{
   await page.goto(app.server.url.toString());
