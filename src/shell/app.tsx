@@ -22,6 +22,8 @@ const surfaces = Object.keys(editorNames) as EditorId[];
 interface GitState { available: boolean; branch: string; status: string; log: string; remotes: string; diff: string }
 interface AlarmEvent { id: string; active: boolean; acknowledged: boolean; at: number; event: 'active' | 'clear' | 'ack' }
 interface Releases { checked: string | null; published: string | null; applied: string | null; phase: string; error: string }
+interface SemanticChange { semanticId:string; kind:string; type:'added'|'removed'|'renamed'|'changed'; before?:string; after?:string; message:Record<Locale,string> }
+interface RenamePreview { kind:'rename-equipment'; from:string; to:string; semanticId:string; source:string; affected:readonly {semanticId:string;id:string;kind:string}[] }
 const fmt = (v: Value | null | undefined) => v == null ? '—' : typeof v === 'number' ? Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(v) : String(v);
 const clock = (at?: number) => at ? new Date(at).toLocaleTimeString() : '—';
 
@@ -41,6 +43,8 @@ function App() {
   const [code, setCode] = useState(false), [dimension, setDimension] = useState<'2d' | '3d'>('2d'), [ports, setPorts] = useState(false), [fit, setFit] = useState(0);
   const [git, setGit] = useState<GitState | null>(null), [message, setMessage] = useState(''), [gitBusy, setGitBusy] = useState(false), [audit, setAudit] = useState<AlarmEvent[]>([]);
   const [releases, setReleases] = useState<Releases | null>(null);
+  const [documentation, setDocumentation] = useState(''), [semanticChanges, setSemanticChanges] = useState<SemanticChange[]>([]);
+  const [renameId, setRenameId] = useState(''), [renamePreview, setRenamePreview] = useState<RenamePreview | null>(null), [renameVersion, setRenameVersion] = useState(''), [renameBusy, setRenameBusy] = useState(false);
   const [palette, setPalette] = useState(false), [query, setQuery] = useState(''), [choice, setChoice] = useState(0);
   const [preview, setPreview] = useState<{ id: string; x: number; y: number } | null>(null), [dragging, setDragging] = useState(false);
   const drag = useRef<{ file: DocumentBuffer; position: PositionSource; next: string; token: number; target?: { id: string; x: number; y: number } } | null>(null);
@@ -69,7 +73,9 @@ function App() {
   }, [theme]);
   useEffect(() => { if (location.pathname !== '/hmi') void refreshGit(); }, []);
   useEffect(() => { if (dock) void api<AlarmEvent[]>('alarms').then(setAudit).catch(fail); }, [dock, shell.alarmVersion]);
-  useEffect(() => { if (surface === 'targets') void api<Releases>('releases').then(setReleases).catch(fail); }, [surface, state?.revision]);
+  useEffect(() => { if (surface === 'targets') void Promise.all([api<Releases>('releases'),api<SemanticChange[]>('semantic/diff')]).then(([next,changes])=>{setReleases(next);setSemanticChanges(changes);}).catch(fail); }, [surface, state?.revision, catalog.revision]);
+  useEffect(() => { if (surface === 'docs') void Promise.all([browserClient.requestText(`documentation?locale=${locale}`),api<SemanticChange[]>('semantic/diff')]).then(([markdown,changes])=>{setDocumentation(markdown);setSemanticChanges(changes);}).catch(fail); }, [surface, locale, catalog.revision]);
+  useEffect(() => { setRenameId(selected); setRenamePreview(null); setRenameVersion(''); }, [selected]);
   useEffect(() => {
     const before = (e: BeforeUnloadEvent) => { if (session.documents.dirty) e.preventDefault(); };
     addEventListener('beforeunload', before); return () => removeEventListener('beforeunload', before);
@@ -137,7 +143,15 @@ function App() {
   const gitAction = async (action: string) => {
     setGitBusy(true); try { setGit(await api<GitState>('git', { action, message })); setMessage(''); await refresh(); } catch (e) { fail(e); } finally { setGitBusy(false); }
   };
-  if (!state || !previewProject) return <main className="empty-state"><h1>Saturn IDE</h1><p>{error || (ru ? 'Подключение к рабочему проекту…' : 'Connecting to the workspace…')}</p></main>;
+
+  const previewRename = async () => {
+    const resource=catalog.resources.find(item=>item.kind==='device'&&item.entityId===selected);if(!resource||!renameId.trim()||renameId===selected)return;
+    setRenameBusy(true);try{const result=await api<{preview:RenamePreview;version:string}>('refactor/rename',{uri:resource.uri,nextId:renameId.trim()});setRenamePreview(result.preview);setRenameVersion(result.version);setError('');}catch(e){fail(e);}finally{setRenameBusy(false);}
+  };
+  const applyRename = async () => {
+    const resource=catalog.resources.find(item=>item.kind==='device'&&item.entityId===selected);if(!resource||!renamePreview)return;
+    setRenameBusy(true);try{await api('refactor/rename',{uri:resource.uri,nextId:renamePreview.to,version:renameVersion,apply:true});setRenamePreview(null);setRenameVersion('');await refresh();}catch(e){fail(e);}finally{setRenameBusy(false);}
+  };  if (!state || !previewProject) return <main className="empty-state"><h1>Saturn IDE</h1><p>{error || (ru ? 'Подключение к рабочему проекту…' : 'Connecting to the workspace…')}</p></main>;
   const definitions = new Map(Object.values(state.project.signals).map(s => [s.id, s]));
   const snapshot: Snapshot = { ...state.snapshot, samples: Object.fromEntries(Object.entries(state.snapshot.samples).map(([id, sample]) => [id,
     !connected || now - sample.at > (definitions.get(id)?.staleAfter ?? 5000) ? { ...sample, quality: 'stale' as const } : sample])) };
@@ -147,14 +161,14 @@ function App() {
   const activeAlarms = Object.values(snapshot.alarms).filter(a => a.active), file = documents.get(active);
   const contextKinds: Record<EditorId, readonly string[]> = {
     diagram: ['device'], source: ['project','device','plugin','file'], signals: ['device'],
-    reports: ['report'], hmi: ['hmi','device'], targets: ['target','hmi'], git: ['project','file','plugin'],
+    reports: ['report'], hmi: ['hmi','device'], docs: ['project','device','report'], targets: ['target','hmi'], git: ['project','file','plugin'],
   };
   const contextResources = catalog.resources.filter(resource => contextKinds[surface].includes(resource.kind));
   const contextUris = new Set(contextResources.map(resource => resource.uri));
   const contextCatalog = { ...catalog, resources: contextResources.map(resource => resource.parent && !contextUris.has(resource.parent) ? { ...resource, parent: catalog.project } : resource) };
   const contextTitle = ({
     diagram: ru ? 'Оборудование' : 'Equipment', source: ru ? 'Исходники' : 'Sources', signals: ru ? 'Сигналы объекта' : 'Signal sources',
-    reports: ru ? 'Отчёты' : 'Reports', hmi: 'HMI', targets: ru ? 'Среда' : 'Environment', git: 'Git',
+    reports: ru ? 'Отчёты' : 'Reports', hmi: 'HMI', docs: ru ? 'Документация' : 'Documentation', targets: ru ? 'Среда' : 'Environment', git: 'Git',
   } satisfies Record<EditorId,string>)[surface];
   const mode = state.mode === 'simulation' ? (ru ? 'Симуляция' : 'Simulation') : state.mode === 'live' ? (ru ? 'Реальный драйвер' : 'Live driver') : (ru ? 'Нет драйвера' : 'No driver');
   const scene = { project: previewProject, routes, snapshot, locale, selected, select: selectEquipment, fit, ports, begin, move, end };
