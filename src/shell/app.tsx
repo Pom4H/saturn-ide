@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { equipmentSignals, interfaceProfile, text, type Equipment, type Locale, type Project, type Snapshot, type Value } from '../core';
+import { equipmentSignals, interfaceProfile, text, type Equipment, type Locale, type Project, type Snapshot, type Text, type Value } from '../core';
 import { availableEditors, editorNames, findResources, type EditorId, type ProjectResource } from '../core/resources';
 import { related, routeConnections, type PhysicalRoute } from '../topology';
 import { api, browserClient } from './api';
@@ -193,7 +193,7 @@ function Workbench({displays,importers}:AppProps) {
   if (location.pathname === '/hmi') {
     const requested=new URLSearchParams(location.search).get('screen')??'default',screen=requested==='default'?state.project.hmi:state.project.hmis?.find(h=>h.id===requested);
     if(requested!=='default'&&!screen)return <main className="empty-state"><h1>HMI</h1><p>{ru?'Интерфейс не найден':'Interface not found'}</p></main>;
-    if(screen?.elements?.length){const screenLabel='label' in screen&&screen.label?text(screen.label,locale):requested;return <main className="hmi imported-presentation"><header><strong>{screenLabel}</strong><span className={`status ${state.mode === 'simulation' ? 'simulation' : ''}`}>{connected?mode:ru?'Нет связи':'Disconnected'}</span></header><PresentationView screen={screen} snapshot={snapshot} locale={locale}/></main>;}
+    if(screen?.elements?.length){const screenLabel='label' in screen?text((screen as {label?:Text}).label??requested,locale):requested;return <main className="hmi imported-presentation"><header><strong>{screenLabel}</strong><span className={`status ${state.mode === 'simulation' ? 'simulation' : ''}`}>{connected?mode:ru?'Нет связи':'Disconnected'}</span></header><PresentationView screen={screen} snapshot={snapshot} locale={locale}/></main>;}
     const configured = screen?.equipment.map(e => e.id), devices = state.project.equipment.filter(e => !configured || configured.includes(e.id));
     const index = Math.max(0, devices.findIndex(e => e.id === selected)), shown = devices[index], cmd = controlFor(shown);
     return <main className="hmi"><header><strong>{shown?.id ?? 'HMI'}</strong><span className={`status ${state.mode === 'simulation' ? 'simulation' : ''}`}>{connected ? mode : ru ? 'Нет связи' : 'Disconnected'}</span></header>
