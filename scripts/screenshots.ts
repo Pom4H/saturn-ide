@@ -50,7 +50,8 @@ try{
   await page.screenshot({path:'docs/screenshots/ide-3d.png'});
 
   await page.getByRole('button',{name:'2D',exact:true}).click();
-  await page.emulateMedia({colorScheme:'light',reducedMotion:'reduce'});
+  await page.getByRole('button',{name:'Светлая тема',exact:true}).click();
+  await page.waitForTimeout(100);
   await page.screenshot({path:'docs/screenshots/ide-light.png'});
 } finally {
   await browser?.close();
