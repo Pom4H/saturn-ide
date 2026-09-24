@@ -195,7 +195,7 @@ test('JSON/HTTP plugin makes real loopback requests and preserves metadata', asy
     }else{response.setHeader('Content-Type','application/json');response.end(JSON.stringify({speed:{value:1400,quality:'good',sourceAt:1234,sequence:7},run:{value:false,quality:'good'}}));}
   });
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
-  t.after(()=>new Promise<void>((resolve,reject)=>{server.closeAllConnections();server.close(error=>error?reject(error):resolve());}));
+  t.after(()=>new Promise<void>((resolve,reject)=>{server.close(error=>error?reject(error):resolve());server.closeAllConnections();}));
   const address=server.address();assert.ok(address&&typeof address!=='string');
   const source=jsonHttp('bench',{url:`http://127.0.0.1:${address.port}/io`},{...options,mode:'simulation'});
   const received:Observation[]=[];
