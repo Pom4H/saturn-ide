@@ -1,11 +1,41 @@
 {
   "compilerOptions": {
-    "target": "ESNext", "module": "Preserve", "moduleResolution": "Bundler",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"], "jsx": "react-jsx",
-    "strict": true, "noUncheckedIndexedAccess": true, "noEmit": true,
-    "allowImportingTsExtensions": true, "esModuleInterop": true,
-    "skipLibCheck": true, "types": ["bun"],
-    "paths": { "@saturn/core": ["./src/core.ts"] }
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": [
+      "bun"
+    ],
+    "paths": {
+      "@saturn/core": [
+        "./src/core.ts"
+      ],
+      "@saturn/example": [
+        "../saturn-examples/pumping-station/project.ts"
+      ],
+      "@saturn/plc500": [
+        "../saturn-plugins/saturn-plc500/index.ts"
+      ],
+      "@saturn/plc500/*": [
+        "../saturn-plugins/saturn-plc500/*"
+      ]
+    }
   },
-  "include": ["src", "project", "scripts", "tests"]
+  "include": [
+    "src",
+    "scripts",
+    "tests"
+  ]
 }

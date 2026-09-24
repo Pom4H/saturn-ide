@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, writeFileSync, cpSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, cpSync, readFileSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
-export function scaffold(kind: string, name: string, projectRoot = resolve(Bun.env.SATURN_PROJECT ?? 'project')) {
+export function scaffold(kind: string, name: string, projectRoot = resolve(Bun.env.SATURN_PROJECT ?? '../saturn-examples/pumping-station')) {
   if (!/^[a-z][a-z0-9-]{0,47}$/.test(name)) throw new Error('Use a lowercase name: plc-01');
   if (kind !== 'plc' && kind !== 'plugin') throw new Error('Usage: bun run scaffold <plc|plugin> <name>');
   const destination = join(projectRoot, kind === 'plc' ? 'equipment' : 'plugins', name);
@@ -21,9 +21,9 @@ export function create(destination: string) {
   const target = resolve(destination), appRoot = resolve(import.meta.dir, '..');
   if (existsSync(target)) throw new Error('Destination already exists');
   // Copy project source, NOT the IDE source, scripts, tests or infrastructure.
-  cpSync(join(appRoot, 'project'), target, { recursive: true, filter: path => !basename(path).startsWith('.') && basename(path) !== 'node_modules' });
-  writeFileSync(join(target, 'package.json'), JSON.stringify({ name: basename(target), private: true, type: 'module' }, null, 2) + '\n');
-  writeFileSync(join(target, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, module: 'Preserve', moduleResolution: 'Bundler', noEmit: true, paths: { '@saturn/core': ['./' + relative(target, join(appRoot, 'src/core.ts')).replaceAll('\\', '/')] } } }, null, 2) + '\n');
+  cpSync(resolve(Bun.env.SATURN_EXAMPLE ?? join(appRoot, '../saturn-examples/pumping-station')), target, { recursive: true, filter: path => !basename(path).startsWith('.') && basename(path) !== 'node_modules' });
+  writeFileSync(join(target, 'package.json'), JSON.stringify({ ...JSON.parse(readFileSync(join(target,'package.json'),'utf8')), name: basename(target), private: true }, null, 2) + '\n');
+  writeFileSync(join(target, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, module: 'Preserve', moduleResolution: 'Bundler', noEmit: true, target:'ESNext',jsx:'react-jsx',skipLibCheck:true } }, null, 2) + '\n');
   writeFileSync(join(target, '.gitignore'), 'node_modules/\n.saturn/\n.env\n.env.*\n');
   return target;
 }

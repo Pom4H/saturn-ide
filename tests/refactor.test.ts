@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import demo from '../project/project';
+import demo from '@saturn/example';
 import { previewEquipmentRename } from '../src/workspace/refactor';
 import type { ProjectResource } from '../src/core/resources';
 

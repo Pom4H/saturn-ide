@@ -95,16 +95,20 @@ export interface Position {
   description?:Text;
 }
 export type Medium = 'fluid' | 'control' | 'power' | 'bus';
+import { standardInterfaces, type CompatibleInterfaceId, type StandardInterfaceId } from './core/interfaces';
+export { standardInterfaces, interfaceProfile, cableAppearance, type StandardInterfaceId } from './core/interfaces';
 export type Role = 'source' | 'sink' | 'passive';
 export type Side = 'left' | 'right' | 'up' | 'down';
 export interface Point { x:number; y:number; z:number }
 export interface Terminal<M extends Medium=Medium,F extends string=string,R extends Role=Role> extends Point {
-  medium:M; family:F; role:R; side:Side; max:number;
+  medium:M; family:F; role:R; side:Side; max:number; interfaceId?:StandardInterfaceId;
+  /** Quantity carried by a signal cable, not the connector's electrical rating. */
+  unit?:string; valueType?:'number'|'boolean'|'string';
 }
 /** @ru Типизированный конструктор физического порта для project-owned equipment.
  * @en Typed physical-port constructor for project-owned equipment. */
 export function terminal<const M extends Medium,const F extends string,const R extends Role>(
-  point:Point&{side:Side;medium:M;family:F;role:R;max?:number},
+  point:Point&{side:Side;medium:M;family:F;role:R;max?:number;interfaceId?:CompatibleInterfaceId<NoInfer<M>,NoInfer<F>>;unit?:string;valueType?:'number'|'boolean'|'string'},
 ):Terminal<M,F,R> { return {...point,max:point.max??1}; }
 
 export interface VisualAnchor {readonly x:number;readonly y:number;readonly side:'top'|'bottom'|'left'|'right'}
@@ -112,20 +116,28 @@ export interface VisualAnchor {readonly x:number;readonly y:number;readonly side
  * @en Maps a vendor SVG anchor to a canonical Terminal while preserving literal medium/family/role types. */
 export function terminalFromAnchor<const M extends Medium,const F extends string,const R extends Role>(
   anchor:VisualAnchor|undefined,
-  spec:{z:number;medium:M;family:F;role:R;max?:number},
+  spec:{z:number;medium:M;family:F;role:R;max?:number;interfaceId?:CompatibleInterfaceId<NoInfer<M>,NoInfer<F>>;unit?:string;valueType?:'number'|'boolean'|'string'},
 ):Terminal<M,F,R> {
   if(!anchor)throw new Error('Missing equipment terminal anchor');
   const side:Side=anchor.side==='top'?'up':anchor.side==='bottom'?'down':anchor.side;
-  return terminal({x:anchor.x,y:anchor.y,z:spec.z,side,medium:spec.medium,family:spec.family,role:spec.role,max:spec.max});
+  return terminal({x:anchor.x,y:anchor.y,z:spec.z,side,medium:spec.medium,family:spec.family,role:spec.role,...(spec.max===undefined?{}:{max:spec.max}),...(spec.interfaceId===undefined?{}:{interfaceId:spec.interfaceId}),...(spec.unit===undefined?{}:{unit:spec.unit}),...(spec.valueType===undefined?{}:{valueType:spec.valueType})});
 }
 export interface Endpoint<M extends Medium=Medium,F extends string=string,R extends Role=Role,I extends string=string> {
   readonly device:I; readonly port:string; readonly terminal:Terminal<M,F,R>;
 }
 export interface DiagramCapability {readonly width:number;readonly height:number;readonly svg?:string}
+/** Authored front-panel parts in diagram coordinates; depth is illustrative, not a manufacturing dimension. */
+export interface Scene3DCapability {
+  readonly kind:'control-panel';readonly accuracyMode:'illustrative';readonly depth:number;readonly portElevation:number;
+  readonly title:string;readonly subtitle:string;
+  readonly screen:{readonly x:number;readonly y:number;readonly width:number;readonly height:number};
+  readonly buttons:readonly {readonly id:'up'|'down'|'left'|'right';readonly x:number;readonly y:number;readonly color:number}[];
+  readonly terminals:readonly {readonly id:string;readonly x:number;readonly y:number;readonly width:number;readonly count:number;readonly color:number;readonly socket?:boolean}[];
+}
 export interface HmiCapability {readonly target:string;readonly width:number;readonly height:number;readonly auto?:'topology'}
 export interface FirmwareCapability {readonly target:string;readonly languages:readonly string[];readonly sourceDir?:string}
 export interface EmulatorCapability {readonly runtime:string;readonly abi?:string}
-export interface DeviceCapabilities {readonly diagram?:DiagramCapability;readonly hmi?:HmiCapability;readonly firmware?:FirmwareCapability;readonly emulator?:EmulatorCapability}
+export interface DeviceCapabilities {readonly diagram?:DiagramCapability;readonly scene3d?:Scene3DCapability;readonly hmi?:HmiCapability;readonly firmware?:FirmwareCapability;readonly emulator?:EmulatorCapability}
 export interface EngineeringConstraint {readonly id:string;readonly severity:'info'|'warning'|'error';readonly label:Text;readonly description?:Text}
 export interface DeviceKnowledge {readonly summary?:Text;readonly commissioning?:readonly Text[];readonly constraints?:readonly EngineeringConstraint[]}
 export interface DeviceAlarmTemplate<S extends Readonly<Record<string,SignalSpec>>> {readonly label:Text;readonly signal:Extract<keyof S,string>;readonly above:number;readonly hysteresis?:number}
@@ -156,10 +168,10 @@ export function equipmentSignal<T extends Value>(equipment:Equipment,field:strin
 export function equipmentSignals(equipment:Equipment):Signal[] {return Object.values(equipment).filter((value):value is Signal=>signalLike(value)&&'id' in value&&typeof value.id==='string');}
 /** Writable signals are commands; no separate command registry is authored. */
 export function equipmentCommands(equipment:Equipment):Signal[] {return equipmentSignals(equipment).filter(signal=>signal.writable);}
-const tankPorts={inlet:terminal({x:79,y:3,z:195,side:'up',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:170,y:184,z:24,side:'right',medium:'fluid',family:'water',role:'source'})} as const;
-const pumpPorts={inlet:terminal({x:0,y:96,z:60,side:'left',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:76,y:0,z:105,side:'up',medium:'fluid',family:'water',role:'source'}),run:terminal({x:170,y:40,z:85,side:'up',medium:'control',family:'digital',role:'sink'})} as const;
-const valvePorts={inlet:terminal({x:0,y:102,z:60,side:'left',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:160,y:102,z:60,side:'right',medium:'fluid',family:'water',role:'source'}),command:terminal({x:80,y:6,z:105,side:'up',medium:'control',family:'analog',role:'sink'})} as const;
-const plcPorts={DO1:terminal({x:35,y:0,z:70,side:'up',medium:'control',family:'digital',role:'source'}),AO1:terminal({x:80,y:0,z:70,side:'up',medium:'control',family:'analog',role:'source'}),RS485:terminal({x:145,y:130,z:35,side:'down',medium:'bus',family:'rs485',role:'passive',max:2})} as const;
+const tankPorts={inlet:terminal({x:79,y:3,z:195,side:'up',medium:'fluid',family:'water',role:'sink',interfaceId:'fluid-flange'}),outlet:terminal({x:170,y:184,z:24,side:'right',medium:'fluid',family:'water',role:'source',interfaceId:'fluid-flange'})} as const;
+const pumpPorts={inlet:terminal({x:0,y:96,z:60,side:'left',medium:'fluid',family:'water',role:'sink',interfaceId:'fluid-flange'}),outlet:terminal({x:76,y:0,z:105,side:'up',medium:'fluid',family:'water',role:'source',interfaceId:'fluid-flange'}),run:terminal({x:170,y:40,z:85,side:'up',medium:'control',family:'digital',role:'sink',interfaceId:'control-screw',valueType:'boolean'})} as const;
+const valvePorts={inlet:terminal({x:0,y:102,z:60,side:'left',medium:'fluid',family:'water',role:'sink',interfaceId:'fluid-flange'}),outlet:terminal({x:160,y:102,z:60,side:'right',medium:'fluid',family:'water',role:'source',interfaceId:'fluid-flange'}),command:terminal({x:80,y:6,z:105,side:'up',medium:'control',family:'analog',role:'sink',interfaceId:'control-screw',unit:'%',valueType:'number'})} as const;
+const plcPorts={DO1:terminal({x:35,y:0,z:70,side:'up',medium:'control',family:'digital',role:'source',interfaceId:'control-screw',valueType:'boolean'}),AO1:terminal({x:80,y:0,z:70,side:'up',medium:'control',family:'analog',role:'source',interfaceId:'control-screw',unit:'%',valueType:'number'}),RS485:terminal({x:145,y:130,z:35,side:'down',medium:'bus',family:'rs485',role:'passive',max:2,interfaceId:'rs485-terminal'})} as const;
 /** Built-ins are ordinary device() declarations, not a privileged registry. */
 /** @ru Резервуар с измеряемым уровнем. @en Tank with measured level. */
 export const tank=device({id:'tank',icon:'tank',ports:tankPorts,signals:{level:signal({initial:0})},capabilities:{diagram:{width:170,height:230}},knowledge:{summary:{ru:'Резервуар с измеряемым уровнем жидкости.',en:'Tank with measured liquid level.'}}});
@@ -174,7 +186,7 @@ export const valve=device({id:'valve',icon:'valve',ports:valvePorts,signals:{ope
 export const plc=device({id:'plc',icon:'plc',ports:plcPorts,signals:{online:signal({initial:false})},capabilities:{diagram:{width:160,height:150}},knowledge:{summary:{ru:'Базовый ПЛК без vendor-specific toolchain.',en:'Generic PLC without a vendor-specific toolchain.'}}});
 interface Connection { id:string; from:Endpoint; to:Endpoint; via?:readonly {x:number;y:number}[] }
 export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number> }
-export interface Cable extends Connection { kind:'cable'; signal?:Signal }
+export interface Cable extends Connection { kind:'cable'; signal?:Signal; unplugged?:'from'|'to'; looseEnd?:Point }
 type FluidSource<F extends string=string> = Endpoint<'fluid',F,'source'>;
 type FluidSink<F extends string=string> = Endpoint<'fluid',F,'sink'>;
 /** @ru Труба с жидкостью. Соединяет совместимые выход и вход; направление и среда проверяются типами и runtime.
@@ -184,7 +196,7 @@ export function pipe<const F extends string>(id:string, options:{from:FluidSourc
 }
 /** @ru Кабель управления, питания или шины. Не труба и не зависимость вычисляемого сигнала.
  * @en Control, power or bus cable. Not a pipe and not a computed-signal dependency. */
-export function cable<const M extends Exclude<Medium,'fluid'>, const F extends string>(id:string, options:{from:Endpoint<M,F,'source'|'passive'>;to:Endpoint<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:Signal;via?:Connection['via']}):Cable {
+export function cable<const M extends Exclude<Medium,'fluid'>, const F extends string>(id:string, options:{from:Endpoint<M,F,'source'|'passive'>;to:Endpoint<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:Signal;via?:Connection['via'];unplugged?:'from'|'to';looseEnd?:Point}):Cable {
   return {...options,id,kind:'cable'};
 }
 export interface Alarm { id:string; label:Text; signal:Signal<number>; above:number; hysteresis?:number }
@@ -204,9 +216,9 @@ export type ReportRow<R extends Report> = {from:number;to:number;values:{[K in k
 export function report<const C extends Record<string,Column>>(id:string, options:Omit<Report<C>,'id'>):Report<C> { return {...options,id}; }
 export interface Project {
   id:string; label:Text; signals:Record<string,Signal>; equipment:Equipment[]; pipes:Pipe[]; cables?:Cable[];
-  alarms:Alarm[]; hmi?:Hmi; reports?:Report[];
+  alarms:Alarm[]; hmi?:Hmi; hmis?:HmiInterface[]; reports?:Report[];
 }
-export type ProjectDefinition = Omit<Project,'signals'|'hmi'|'alarms'> & {signals?:Record<string,Signal>;hmi?:Hmi|AutoHmi;alarms?:Alarm[]};
+export type ProjectDefinition = Omit<Project,'signals'|'hmi'|'hmis'|'alarms'> & {signals?:Record<string,Signal>;hmi?:Hmi|AutoHmi;hmis?:HmiIntent[];alarms?:Alarm[]};
 /** @ru Производный индекс всех сигналов. Он не является вторым authored-файлом и не требует ручных строковых путей.
  * @en Derived index of every signal. It is not a second authored file and requires no manually duplicated string paths. */
 export function collectSignals(definition:ProjectDefinition):Record<string,Signal> {
@@ -227,10 +239,11 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
 /** @ru Единая модель. Сигналы выводятся из владельцев и ссылок; явный registry — только совместимый escape hatch.
  * @en One model. Signals are derived from owners/references; an explicit registry is only a compatibility escape hatch. */
 type ProjectSignals<P extends ProjectDefinition> = P extends {signals:infer S extends Record<string,Signal>} ? S : Record<string,Signal>;
-export function project<const P extends ProjectDefinition>(definition:P):Omit<P,'signals'|'hmi'|'alarms'> & {signals:ProjectSignals<P>;hmi?:Hmi;alarms:Alarm[]} {
+export function project<const P extends ProjectDefinition>(definition:P):Omit<P,'signals'|'hmi'|'hmis'|'alarms'> & {signals:ProjectSignals<P>;hmi?:Hmi;hmis?:HmiInterface[];alarms:Alarm[]} {
   const hmi=definition.hmi&&'mode' in definition.hmi&&definition.hmi.mode==='topology'?resolveAutoHmi(definition,definition.hmi):definition.hmi;
+  const hmis=definition.hmis?.map(screen=>({...('mode' in screen&&screen.mode==='topology'?resolveAutoHmi(definition,screen):screen),id:screen.id,label:screen.label}));
   const alarms=[...(definition.alarms??[]),...definition.equipment.flatMap(e=>e.alarms??[])];
-  const model={...definition,hmi,alarms,signals:collectSignals(definition)} as unknown as Omit<P,'signals'|'hmi'|'alarms'> & {signals:ProjectSignals<P>;hmi?:Hmi;alarms:Alarm[]};
+  const model={...definition,hmi,hmis,alarms,signals:collectSignals(definition)} as unknown as Omit<P,'signals'|'hmi'|'hmis'|'alarms'> & {signals:ProjectSignals<P>;hmi?:Hmi;hmis?:HmiInterface[];alarms:Alarm[]};
   validateProject(model as Project);return model;
 }
 export interface Problem { code:string; message:Record<Locale,string>; path?:string; from?:number; to?:number }
@@ -258,26 +271,47 @@ export function validateProject(p:Project):void {
     requireThat([e.x,e.y,e.z??0].every(v=>Number.isFinite(v)&&Math.abs(v)<=15000),'POSITION',`Invalid position ${e.id}`,`Неверная позиция ${e.id}`);
     requireThat(/^[-a-zA-Z0-9_.]+$/.test(e.kind),'EQUIPMENT_CLASS',`Invalid equipment class ${e.kind}`,`Неверный класс оборудования ${e.kind}`);
     requireThat(typeof e.icon==='string'&&e.icon.length>0,'EQUIPMENT_ICON','Invalid equipment icon','Неверная иконка оборудования');
+    for(const port of Object.values(e.ports)){
+      const t=port.terminal;
+      requireThat(!!t&&[t.x,t.y,t.z].every(Number.isFinite)&&['fluid','control','power','bus'].includes(t.medium)&&typeof t.family==='string'&&t.family.length>0&&['source','sink','passive'].includes(t.role)&&['left','right','up','down'].includes(t.side)&&Number.isInteger(t.max)&&t.max>0&&t.max<=128&&(t.unit===undefined||typeof t.unit==='string'&&t.unit.length<=32)&&(t.valueType===undefined||['number','boolean','string'].includes(t.valueType)),'PORT_SHAPE',`Invalid port ${e.id}.${port.port}`,`Неверный порт ${e.id}.${port.port}`);
+      if(!t.interfaceId)continue;
+      const profile=standardInterfaces[t.interfaceId];
+      requireThat(!!profile&&profile.medium===t.medium&&(profile.family==='*'||profile.family===t.family),'PORT_INTERFACE',`Invalid interface ${e.id}.${port.port}`,`Неверный интерфейс ${e.id}.${port.port}`);
+    }
     for(const value of Object.values(e))if(signalLike(value)&&'id' in value)ref(value as Signal);
     const diagram=e.capabilities.diagram;if(diagram)requireThat(Number.isFinite(diagram.width)&&diagram.width>0&&Number.isFinite(diagram.height)&&diagram.height>0,'EQUIPMENT_VIEW','Invalid equipment diagram bounds','Неверные размеры схемы оборудования');
+    if(e.capabilities.scene3d){
+      const view=e.capabilities.scene3d;
+      const within=(x:number,y:number,w:number,h:number)=>!!diagram&&[x,y,w,h].every(Number.isFinite)&&x>=0&&y>=0&&w>0&&h>0&&x+w<=diagram.width&&y+h<=diagram.height;
+      const color=(value:number)=>Number.isInteger(value)&&value>=0&&value<=0xffffff;
+      requireThat(view.kind==='control-panel'&&view.accuracyMode==='illustrative'&&!!diagram&&Number.isFinite(view.depth)&&view.depth>0&&view.depth<=500&&Number.isFinite(view.portElevation)&&view.portElevation>view.depth&&view.portElevation<=view.depth+50&&Object.values(e.ports).every(port=>port.terminal.z===view.portElevation)&&view.title.length>0&&within(view.screen.x,view.screen.y,view.screen.width,view.screen.height)&&view.buttons.length===4&&new Set(view.buttons.map(button=>button.id)).size===4&&view.buttons.every(button=>within(button.x-23,button.y-23,46,46)&&color(button.color))&&view.terminals.length>0&&view.terminals.every(group=>within(group.x,group.y,group.width,36)&&Number.isInteger(group.count)&&group.count>0&&group.count<=32&&color(group.color)),'EQUIPMENT_3D','Invalid project-owned 3D panel','Неверная 3D-панель оборудования');
+    }
   }
   const degree=new Map<string,number>();
   for(const edge of [...p.pipes,...p.cables??[]]) {
     const resolve=(end:Endpoint)=>{const d=devices.get(end.device);const t=d && (d.ports as Record<string,Endpoint>)[end.port];requireThat(t,'PORT_UNKNOWN',`Unknown port ${end.device}.${end.port}`,`Неизвестный порт ${end.device}.${end.port}`);return t.terminal;};
     const a=resolve(edge.from),b=resolve(edge.to);
+    if(edge.kind==='cable')requireThat(edge.unplugged===undefined&&edge.looseEnd===undefined||(edge.unplugged==='from'||edge.unplugged==='to')&&!!edge.looseEnd&&[edge.looseEnd.x,edge.looseEnd.y,edge.looseEnd.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000),'CABLE_LOOSE_END',`Invalid loose cable end ${edge.id}`,`Неверный свободный конец кабеля ${edge.id}`);
     requireThat(edge.from.device!==edge.to.device,'CONNECTION_SELF','Cannot connect a device to itself','Нельзя соединять устройство само с собой');
     requireThat(a.medium===b.medium&&a.family===b.family&&(edge.kind==='pipe'?a.medium==='fluid':a.medium!=='fluid'),'PORT_MEDIUM',`Incompatible ports ${edge.id}`,`Несовместимые порты ${edge.id}`);
+    requireThat((!a.valueType||!b.valueType||a.valueType===b.valueType)&&(!a.unit||!b.unit||a.unit===b.unit),'PORT_QUANTITY',`Incompatible quantities ${edge.id}`,`Несовместимые величины ${edge.id}`);
     requireThat(a.role!=='sink'&&b.role!=='source','PORT_DIRECTION',`Wrong direction ${edge.id}`,`Неверное направление ${edge.id}`);
-    for(const [end,t] of [[edge.from,a],[edge.to,b]] as const){const key=`${end.device}.${end.port}`,n=(degree.get(key)??0)+1;degree.set(key,n);requireThat(n<=t.max,'PORT_OCCUPIED',`Port occupied ${key}`,`Порт занят ${key}`);}
+    for(const [which,end,t] of [['from',edge.from,a],['to',edge.to,b]] as const){if(edge.kind==='cable'&&edge.unplugged===which)continue;const key=`${end.device}.${end.port}`,n=(degree.get(key)??0)+1;degree.set(key,n);requireThat(n<=t.max,'PORT_OCCUPIED',`Port occupied ${key}`,`Порт занят ${key}`);}
     requireThat(!edge.via||edge.via.length<=16&&edge.via.every(v=>[v.x,v.y].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000)),'ROUTE_POINTS','Invalid routing points','Неверные точки трассы');
-    if(edge.kind==='pipe')ref(edge.flow,'number');else if(edge.signal)ref(edge.signal);
+    if(edge.kind==='pipe')ref(edge.flow,'number');else if(edge.signal){
+      ref(edge.signal);
+      requireThat((!a.valueType||a.valueType===typeof edge.signal.initial)&&(!b.valueType||b.valueType===typeof edge.signal.initial),'PORT_VALUE_TYPE',`Wrong signal type on ${edge.id}`,`Неверный тип сигнала на ${edge.id}`);
+      requireThat((!a.unit||a.unit===edge.signal.unit)&&(!b.unit||b.unit===edge.signal.unit)&&(!a.unit||!b.unit||a.unit===b.unit),'PORT_UNIT',`Wrong signal unit on ${edge.id}`,`Неверная единица сигнала на ${edge.id}`);
+    }
   }
   for(const a of p.alarms){ref(a.signal,'number');requireThat(Number.isFinite(a.above)&&(a.hysteresis===undefined||Number.isFinite(a.hysteresis)&&a.hysteresis>=0),'ALARM_LIMIT','Invalid alarm threshold','Неверный порог тревоги');}
   for(const r of p.reports??[]){
     requireThat(Number.isInteger(r.bucketMs)&&r.bucketMs>=1000&&Object.keys(r.columns).length>0,'REPORT_WINDOW','Invalid report window/columns','Неверное окно/колонки отчёта');
     for(const c of Object.values(r.columns)){ref(c.signal,c.aggregate==='last'?undefined:'number');requireThat(['mean','min','max','integral','last'].includes(c.aggregate),'REPORT_AGGREGATE','Invalid aggregation','Неверная агрегация');}
   }
-  if(p.hmi)requireThat(p.hmi.width>0&&p.hmi.height>0&&p.hmi.equipment.every(e=>devices.has(e.id)),'HMI_TARGET','Invalid HMI configuration','Неверная конфигурация HMI');
+  const screens=[...(p.hmi?[p.hmi]:[]),...(p.hmis??[])];
+  for(const screen of screens)requireThat(Number.isInteger(screen.width)&&Number.isInteger(screen.height)&&screen.width>0&&screen.height>0&&screen.width<=8192&&screen.height<=8192&&screen.equipment.every(e=>devices.has(e.id)),'HMI_TARGET','Invalid HMI configuration','Неверная конфигурация HMI');
+  requireThat(new Set((p.hmis??[]).map(h=>h.id)).size===(p.hmis??[]).length&&(p.hmis??[]).every(h=>/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(h.id)&&h.id!=='default'),'HMI_ID','Invalid or duplicate HMI ID','Неверный или повторяющийся ID HMI');
 }
 export interface Sample<T extends Value=Value> {
   signal:string; semantic?:string; value:T; quality:Quality; at:number;
@@ -297,6 +331,10 @@ export interface Driver {
   write?:(signal:string,value:Value)=>Promise<void>;
 }
 export interface Hmi {width:number;height:number;equipment:readonly Equipment[];source?:'explicit'|'topology';controller?:string}
+export interface HmiInterface extends Hmi {id:string;label?:Text}
+export type HmiIntent=(Hmi|AutoHmi)&{id:string;label?:Text};
+/** A named operator interface authored in TS and backed by the same equipment references. */
+export function hmi(id:string,options:(Hmi|AutoHmi)&{label?:Text}):HmiIntent{return {...options,id};}
 export interface AutoHmi {readonly mode:'topology';readonly controller:string;readonly width:number;readonly height:number}
 /** @ru HMI выводится из физической топологии контроллера, а не поддерживает второй список вручную.
  * @en HMI is derived from controller topology instead of maintaining a second authored equipment list. */
@@ -307,8 +345,10 @@ export function autoHmi(controller:Equipment,options:{width?:number;height?:numb
 function resolveAutoHmi(definition:ProjectDefinition,intent:AutoHmi):Hmi {
   requireThat(definition.equipment.some(e=>e.id===intent.controller),'HMI_CONTROLLER',`Unknown HMI controller ${intent.controller}`,`Неизвестный HMI-контроллер ${intent.controller}`);
   const reached=new Set([intent.controller]),edges=[...definition.pipes,...definition.cables??[]];
-  let changed=true;while(changed){changed=false;for(const edge of edges){if(reached.has(edge.from.device)&&!reached.has(edge.to.device)){reached.add(edge.to.device);changed=true;}if(reached.has(edge.to.device)&&!reached.has(edge.from.device)){reached.add(edge.from.device);changed=true;}}}
+  let changed=true;while(changed){changed=false;for(const edge of edges){if(edge.kind==='cable'&&edge.unplugged)continue;if(reached.has(edge.from.device)&&!reached.has(edge.to.device)){reached.add(edge.to.device);changed=true;}if(reached.has(edge.to.device)&&!reached.has(edge.from.device)){reached.add(edge.from.device);changed=true;}}}
   return {width:intent.width,height:intent.height,controller:intent.controller,source:'topology',equipment:definition.equipment.filter(e=>e.id!==intent.controller&&reached.has(e.id))};
 }
 export interface FirmwareContext {outDir:string;run:(argv:string[])=>Promise<void>}
 export interface FirmwareTarget<L extends string=string> {readonly id:string;readonly languages:readonly L[];build(context:FirmwareContext):Promise<void>}
+
+export { deployment, type DeploymentPlan, type DeploymentStep } from './core/deployment';

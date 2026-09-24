@@ -7,7 +7,7 @@ import { ShellSession } from '../src/shell/model/session';
 import { ShellClient } from '../src/shell/client';
 import { resourceUri } from '../src/core/resources';
 import type { IDEState } from '../src/protocol';
-import project from '../project/project';
+import project from '@saturn/example';
 
 test('actual OpenTUI React renderer shows the shared document after a Shell command', async () => {
   const uri = resourceUri(project.id, 'device', 'P-01');

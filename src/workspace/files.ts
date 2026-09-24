@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, realpathSync, renameSync, writeFileSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync, renameSync, writeFileSync, statSync, mkdirSync, unlinkSync, lstatSync, existsSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import type { PositionSource } from "../source-edits";
@@ -49,6 +49,19 @@ export class Workspace {
     writeFileSync(temp, source, { mode: statSync(full).mode });
     renameSync(temp, full);
     return { path, source, version: hash(source) };
+  }
+  create(path:string,source:string):SourceFile {
+    if(!/^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(ts|tsx|md|json)$/.test(path)||path.split('/').some(part=>part.startsWith('.')||part==='node_modules'))throw new HttpError(400,'Unsupported project path');
+    if(Buffer.byteLength(source)>256_000)throw new HttpError(413,'File exceeds editor size limit');
+    let parent=this.root;for(const part of path.split('/').slice(0,-1)){parent=join(parent,part);if(existsSync(parent)){if(lstatSync(parent).isSymbolicLink()||!lstatSync(parent).isDirectory())throw new HttpError(403,'Unsafe project directory');}else mkdirSync(parent);}
+    const full=join(this.root,path);try{writeFileSync(full,source,{flag:'wx'});}catch(error){if((error as NodeJS.ErrnoException).code==='EEXIST')throw new HttpError(409,'File already exists');throw error;}
+    return {path,source,version:hash(source)};
+  }
+  createAndAttach(path:string,source:string,projectSource:string,projectVersion:string):SourceFile {
+    if(this.read('project.ts').version!==projectVersion)throw new HttpError(409,'Project changed; preview again');
+    const file=this.create(path,source);
+    try{this.save('project.ts',projectSource,projectVersion);}catch(error){unlinkSync(this.file(path));throw error;}
+    return file;
   }
   positions(ids: readonly string[]): Record<string, PositionSource> {
     const result: Record<string, PositionSource> = {};

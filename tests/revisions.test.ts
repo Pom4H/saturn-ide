@@ -4,7 +4,7 @@ import { RevisionStore } from '../src/runtime/revisions';
 import { createArtifact, digest } from '../src/core/artifact';
 import { decodeProject } from '../src/runtime/decode-project';
 import type { Signal } from '../src/core';
-import demo from '../project/project';
+import demo from '@saturn/example';
 test('actual SQLite stores builds, separates published/applied, and compare-and-swaps',async()=>{
   const store=new Store(':memory:');await store.init();const revisions=new RevisionStore(store.sql);await revisions.init();
   try {

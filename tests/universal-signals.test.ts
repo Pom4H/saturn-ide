@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test';
-import demo, { booster } from '../project/project';
+import demo, { booster } from '@saturn/example';
 import { bind, protocol, qualityState, signal } from '../src/core';
 import { projectDocumentation } from '../src/documentation';
 import { impact, semanticDiff, semanticGraph } from '../src/semantic';
+import { canonical } from '../src/core/artifact';
+import { decodeProject } from '../src/runtime/decode-project';
 
 test('equipment owns anonymous signals without duplicated string paths',()=>{
   expect(booster.rpm.id).toBe('P-01.rpm');
@@ -34,6 +36,11 @@ test('semantic diff includes engineering attributes, not only graph edges',()=>{
   expect(semanticDiff(demo,moved as typeof demo)).toContainEqual(expect.objectContaining({semanticId:'equipment:booster-primary',type:'changed'}));
   const changedPressure={...demo,signals:{...demo.signals,[booster.pressure.id]:{...booster.pressure,unit:'kPa'}}};
   expect(semanticDiff(demo,changedPressure as typeof demo).some(change=>change.semanticId===booster.pressure.semanticId&&change.type==='changed')).toBe(true);
+});
+
+test('build transport key order does not invent changes to the applied project',()=>{
+  const applied=decodeProject(canonical(demo));
+  expect(semanticDiff(applied,demo)).toEqual([]);
 });
 
 test('compact runtime quality has a richer canonical interpretation',()=>{

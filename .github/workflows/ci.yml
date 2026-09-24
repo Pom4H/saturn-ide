@@ -1,43 +1,42 @@
-name: MVP checks
+name: IDE architecture and integration checks
 on:
   push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/screenshots/**'
+    branches: [main, 'codex/**']
+  pull_request:
   workflow_dispatch:
-
+permissions:
+  contents: read
 concurrency:
   group: saturn-ide-${{ github.ref }}
   cancel-in-progress: true
-
-permissions:
-  contents: read
-
 jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7.0.1
-
+      - uses: actions/checkout@v4
+        with:
+          path: saturn-ide
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-examples
+          path: saturn-examples
+          ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-plugins
+          path: saturn-plugins
+          ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
-
-      - name: Cache Bun packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-1.4.2-${{ hashFiles('bun.lock', 'package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-1.4.2-
-
-      - name: Install
-        run: bun install --frozen-lockfile
-
-      - name: Typecheck
-        run: bun run check
-
-      - name: Unit and SQLite tests
-        run: bun test tests
-
+      - run: bun install --frozen-lockfile
+        working-directory: saturn-ide
+      - name: Share test toolchain with external integration fixtures
+        run: |
+          ln -s ../saturn-ide/node_modules saturn-examples/node_modules
+          ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
+      - run: bun run check
+        working-directory: saturn-ide
+      - run: bun test tests
+        working-directory: saturn-ide

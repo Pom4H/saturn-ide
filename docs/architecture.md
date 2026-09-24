@@ -176,7 +176,44 @@ Shell владеет навигацией, открытыми буферами �
 наблюдения, команды, тревоги и их подтверждения. Не создаётся второй EventBus или model store для
 каждой вкладки. Выбор сущности связывает её source, оборудование, сигнал, соединения, HMI и отчёты.
 
-Текущие компоненты UI перенесены без изменения рендера. Выделение состояния из большого App,
+У browser Shell одна постоянная нижняя `ShellPanel` на уровне workbench, общая для всех
+поверхностей. Оборудование, графики, терминал и уведомления — её вкладки. Состояния открытия,
+вкладки, высоты и разворачивания принадлежат одному `panelReducer`; колокольчик, вкладки,
+клавиатура и statusbar направляют действия туда. Surface не создаёт собственную нижнюю панель.
+Сворачивание и смена Surface не размонтируют терминал и не теряют введённую команду/журнал.
+История тревог загружается один раз через `useAlarmHistory` и передаётся обеим проекциям:
+уведомлениям и терминалу. Квитирование остаётся командой runtime API; ошибка запроса не
+превращается в локальное подтверждение. Инспектор занимает область поверхности над панелью.
+Селектор проекта и его режим находятся в topbar, сайдбар содержит разделы и ресурсы.
+Цвета всех поверхностей определены общими токенами `styles.css`, компоновка — `resources.css`.
+Browser Shell показывает постоянный проводник: папки и файлы строятся из настоящих
+`resource.source.path`, объявления устройств/отчётов остаются дочерними узлами своих файлов.
+Несколько объявлений в одном файле не создают выдуманные файлы. Узлы без найденного исходника
+помечаются отдельно. «Представления» — явная группа команд, а не часть файловой системы.
+Клик по файлу всегда открывает исходник; действия устройства явно открывают схему или сигналы.
+
+Схема и исходники — независимые вкладки в одной полосе. Source-вкладка идентифицируется путём
+реального файла, схема — парой project/diagram; выбор другого прибора не создаёт вторую схему.
+Вкладка восстанавливает своё представление. Переключение сохраняет порядок вкладок и черновики;
+закрытие неактивной вкладки не меняет текущую. Защита от потери текста относится к исходнику:
+закрытие схемы не отбрасывает и не требует сохранения открытого черновика. Последнюю вкладку
+можно закрыть; telemetry/обновление каталога не открывают её заново. Split «Код рядом» удалён.
+Документы по-прежнему имеют один общий буфер на путь, никакой второй модели проекта нет.
+
+Текст chrome не выделяется; редактор и копируемые данные сохраняют selection. Подсветка
+CodeMirror использует семантические CSS-токены обеих тем и меняется без пересоздания редактора
+или потери черновика. Подсказки TypeScript используют те же токены подсветки и имеют
+ограниченную высоту с прокруткой полного ответа language service.
+
+Контекстные и выпадающие меню Shell используют один `MenuProvider` / `MenuButton`:
+в каждый момент открыто одно меню, его положение ограничено viewport; Escape возвращает
+фокус инициатору, стрелки выбирают действия, Shift+F10 открывает контекстное меню.
+Проводник передаёт ресурс конкретной строки, вкладки — конкретную ResourceTab, нижняя
+панель — действия существующего panelReducer. Меню не владеет документами или runtime.
+Пакетное закрытие вкладок проверяет черновики до первой операции закрытия. Переходы
+проекта и настройки вида используют тот же компонент; отдельный мобильный popup удалён.
+
+При базовой миграции рендеры были сохранены; последующие изменения Shell проверяются в браузере. Выделение оставшегося состояния из большого App,
 показ draft рядом с applied live-моделью и операции release непосредственно в Shell ещё не завершены.
 Эти пункты — условия приёмки, а не необязательная полировка.
 
@@ -208,3 +245,30 @@ and licenses from the previous Saturn implementation.
 ### AST as one source projection
 
 Source tooling does not identify equipment by helper names such as `pump()` or `saturnPlc500()`. The shared parser recognizes the structural authored form `factory("ID", { x, y, ... })`. Resource indexing, two-way drag ranges and rename consume that same AST projection. It is derived from source and is never persisted as a second model.
+
+## Repository ownership, 2026-09-24
+
+- `saturn-ide`: reusable DSL, workspace, runtime, shell and local host. Its package
+  exports core contracts, artifact, shell and host. No production import points
+  at an example, vendor kit, Vercel or SaaS.
+- `saturn-saas` (private): depends on a pinned IDE revision. Owns GitHub OAuth,
+  encrypted browser sessions, GitHub transport, Vercel deployment and cloud UI.
+- `saturn-examples`: authored object projects. `pumping-station` replaces the old
+  embedded `project/`. It contains explicit imports and copied vendor source.
+- `saturn-plugins`: canonical reusable source kits, including `saturn-plc500` and
+  its unchanged Firmverse binaries and license/provenance files.
+
+A trusted local project can export browser display factories from `browser.ts`.
+The host bundles this explicit entry and supplies its factories to Shell. It
+also bundles a project without this entry, using generic displays. The IDE no
+longer imports a concrete PLC display. Project browser source changes are
+rebundled; reload the browser to load the new renderer. Runtime observations and
+normal source edits continue through existing SSE/preview behavior.
+
+Integration tests deliberately use sibling examples/plugins checkouts; these
+are test inputs, not production IDE dependencies. `SATURN_PROJECT` selects the
+local engineering project; the development convenience default is the sibling
+`saturn-examples/pumping-station`. Core and runtime remain usable independently.
+Cloud source authoring does not run an arbitrary repository in the OAuth server.
+Remote runtime execution and physical PLC flashing remain separate acceptance
+criteria; a deployment plan alone does not fulfill them.

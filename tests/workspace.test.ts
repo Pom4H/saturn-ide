@@ -16,7 +16,7 @@ test('drag edits numeric AST ranges without changing comments or strings',()=>{
 });
 test('filesystem confines traversal, hidden files and external symlinks',()=>{
   const f=fixture();try{const w=new Workspace(f.root);writeFileSync(join(f.dir,'outside.ts'),'secret');symlinkSync(join(f.dir,'outside.ts'),join(f.root,'escape.ts'));
-    for(const path of ['../outside.ts','.env','escape.ts','../project/project.ts','project.ts/..'])expect(()=>w.read(path)).toThrow();expect(w.list()).not.toContain('escape.ts');
+    for(const path of ['../outside.ts','.env','escape.ts','@saturn/example.ts','project.ts/..'])expect(()=>w.read(path)).toThrow();expect(w.list()).not.toContain('escape.ts');
   }finally{f.clean();}
 });
 test('scaffolding is project-owned and refuses overwrite',()=>{

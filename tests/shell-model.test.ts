@@ -20,7 +20,7 @@ test('browser and terminal execute the same resource/source commands', async () 
     assert.equal(session.getSnapshot().selected, 'P-01');
     session.documents.edit(resource.source!.path, 'new draft');
     await session.execute({ type: 'open', uri: resource.uri, editor: 'source' });
-    assert.equal(session.getSnapshot().tabs.length, 1);
+    assert.equal(session.getSnapshot().tabs.length, 2);
     assert.equal(session.documents.getSnapshot().get(resource.source!.path)?.draft, 'new draft');
     await session.execute({ type: 'save' }); assert.equal(io.saves, 1); assert.equal(session.documents.dirty, false);
   }
@@ -32,6 +32,41 @@ test('multiple resources backed by one file share one buffer', async () => {
   await session.execute({ type: 'open', uri: resource.uri }); session.documents.edit(resource.source!.path, 'draft');
   await session.execute({ type: 'open', uri: other.uri, editor: 'source' });
   assert.equal(session.documents.getSnapshot().size, 1); assert.equal(session.documents.getSnapshot().get(resource.source!.path)?.draft, 'draft');
+});
+test('diagram and real source files have independent stable tabs and one shared buffer per path', async () => {
+  const root:ProjectResource={...resource,uri:catalog.project,kind:'project',entityId:undefined,source:{path:'project.ts'},editors:['diagram','source','signals','docs']};
+  const other={...resource,uri:resourceUri('station','device','P-02'),entityId:'P-02',source:{path:'equipment/P-02.device.ts'}};
+  const session=new ShellSession('browser',{read:async path=>({path,source:`// ${path}`,version:'1'}),save:async file=>file});
+  session.replaceCatalog({...catalog,resources:[root,resource,other]});
+  await session.execute({type:'open',uri:resource.uri,editor:'diagram'});
+  await session.execute({type:'open',uri:resource.uri,editor:'source'});
+  session.documents.edit(resource.source!.path,'retained draft');
+  await session.execute({type:'open',uri:other.uri,editor:'diagram'});
+  assert.equal(session.getSnapshot().tabs.filter(tab=>tab.editor==='diagram').length,1);
+  assert.equal(session.getSnapshot().active?.uri,root.uri);
+  assert.equal(session.getSnapshot().selected,'P-02');
+  await session.execute({type:'open',uri:other.uri,editor:'source'});
+  const ids=session.getSnapshot().tabs.map(tab=>tab.id);
+  await session.execute({type:'open',uri:resource.uri,editor:'source'});
+  assert.deepEqual(session.getSnapshot().tabs.map(tab=>tab.id),ids);
+  assert.equal(session.getSnapshot().source,resource.source!.path);
+  assert.equal(session.documents.getSnapshot().get(resource.source!.path)?.draft,'retained draft');
+  assert.equal(session.getSnapshot().tabs.length,3);
+});
+test('closing a view preserves a dirty source; source close is guarded; final close leaves no active tab', async () => {
+  const session=new ShellSession('browser',port());session.replaceCatalog(catalog);
+  await session.execute({type:'open',uri:resource.uri,editor:'diagram'});
+  await session.execute({type:'open',uri:resource.uri,editor:'source'});
+  session.documents.edit(resource.source!.path,'draft');
+  await session.execute({type:'close',uri:resource.uri,editor:'diagram'});
+  assert.equal(session.getSnapshot().surface,'source');
+  await assert.rejects(session.execute({type:'close',uri:resource.uri,editor:'source'}),/Save or discard/);
+  await session.execute({type:'save'});
+  await session.execute({type:'open',uri:resource.uri,editor:'diagram'});
+  await session.execute({type:'close',uri:resource.uri,editor:'diagram'});
+  assert.equal(session.getSnapshot().active?.editor,'source');
+  await session.execute({type:'close',uri:resource.uri,editor:'source'});
+  assert.equal(session.getSnapshot().active,null);assert.deepEqual(session.getSnapshot().tabs,[]);
 });
 test('rename display labels and source paths do not create another entity identity', () => {
   const session = new ShellSession('browser', port()); session.replaceCatalog(catalog);
@@ -50,7 +85,7 @@ test('capabilities reject graphical HMI in terminal and source without backing',
 });
 test('opening is read-only and closing dirty tabs cannot discard a draft', async () => {
   const io = port(), session = new ShellSession('browser', io); session.replaceCatalog(catalog);
-  await session.execute({ type: 'open', uri: resource.uri }); assert.equal(io.saves, 0);
+  await session.execute({ type: 'open', uri: resource.uri, editor:'source' }); assert.equal(io.saves, 0);
   session.documents.edit(resource.source!.path, 'draft');
   await assert.rejects(session.execute({ type: 'close', uri: resource.uri }), /Save or discard/);
   assert.equal(session.getSnapshot().tabs.length, 1);

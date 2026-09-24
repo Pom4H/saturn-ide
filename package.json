@@ -20,15 +20,17 @@
     "@codemirror/autocomplete": "6.20.1",
     "@codemirror/commands": "6.10.3",
     "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/language": "6.12.4",
     "@codemirror/lint": "6.9.5",
     "@codemirror/state": "6.6.0",
     "@codemirror/view": "6.41.0",
+    "@lezer/highlight": "1.2.4",
+    "@opentui/core": "0.5.12",
+    "@opentui/react": "0.5.12",
     "codemirror": "6.0.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "three": "0.186.0",
-    "@opentui/core": "0.5.12",
-    "@opentui/react": "0.5.12",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "web-push": "3.6.7"
   },
@@ -43,5 +45,12 @@
   },
   "engines": {
     "bun": ">=1.4.2"
+  },
+  "exports": {
+    ".": "./src/core.ts",
+    "./core": "./src/core.ts",
+    "./artifact": "./src/core/artifact.ts",
+    "./shell": "./src/shell/app.tsx",
+    "./host": "./src/host/dev.ts"
   }
 }
