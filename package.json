@@ -29,13 +29,14 @@
     "@lezer/highlight": "1.2.4",
     "@opentui/core": "0.5.12",
     "@opentui/react": "0.5.12",
+    "@types/web-push": "^3.6.4",
     "codemirror": "6.0.2",
+    "fflate": "^0.8.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "three": "0.186.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "web-push": "3.6.7",
-    "@types/web-push": "^3.6.4"
+    "web-push": "3.6.7"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",
@@ -63,6 +64,12 @@
     "./runtime-host": "./src/host/runtime.ts",
     "./release/build": "./scripts/build-release.ts",
     "./release/deploy": "./scripts/deploy-release.ts",
-    "./surfaces": "./src/shell/surfaces.ts"
+    "./surfaces": "./src/shell/surfaces.ts",
+    "./feedback": "./src/core/feedback.ts",
+    "./dsl-proposal": "./src/workspace/dsl-proposal.ts",
+    "./runtime-engine": "./src/runtime/engine.ts",
+    "./assistant": "./src/shell/assistant.tsx",
+    "./assistant-contract": "./src/core/assistant.ts",
+    "./lanmon": "./src/core/lanmon.ts"
   }
 }

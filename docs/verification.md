@@ -440,3 +440,22 @@ Executed on macOS arm64, Bun 1.4.2:
 No physical MCU flashing, cloud vendor LCD factory distribution, CRDT cursors or durable
 per-user command audit is claimed. The temporary tunnel and simulator are a local demo;
 production reliability of hardware deployment remains an outstanding acceptance criterion.
+
+## Assistant shell and Lanmon inventory — 2026-09-24
+
+macOS arm64 / Bun 1.4.2: `bun run check` passed both compilers and 82 architecture
+modules. `bun test tests/assistant.test.ts tests/dsl-proposal.test.ts`: 5 passed,
+21 assertions. Browser `bun scripts/assistant-browser-test.ts` passed persistent panel,
+engineer/operator mode, history across reload, explicit note/recipient payload, attachment
+secret exclusion, dark/light and 390px without overflow or page errors. Its chat adapter
+is injected; this is not evidence of a real AI response or GitHub delivery.
+Frames: artifacts/assistant-{light,dark,phone}.png; video in assistant-recording.
+
+The official Lanmon 4 distribution at
+https://www.mnppsaturn.ru/ftp/public/soft/lanmon4/last_stable/lanmon4.zip
+contains lanmonsetup.exe dated 2026-09-08. Extracted with innoextract (not executed).
+Its “Домовой тепло-водо учет” example was packed locally and read by the actual loader:
+367 files, 90 configuration, 11 screens, 100 scripts, 41 reports, 44 assets and 81
+unsupported. Input ~8.97 MB, expanded ~57.1 MB. Inventory saved under artifacts/.
+No vendor distribution is committed. No claim of migrated behavior, signal dimensions,
+script semantics or HMI visual equivalence follows from this inventory check.

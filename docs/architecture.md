@@ -291,3 +291,39 @@ Workflow SDK is optional project-owned scenario orchestration, outside core and 
 Scenario helpers take existing typed Signal references. A durable workflow coordinates
 simulation stimuli and measured assertions; Firmverse owns the scan cycle in a separate
 process. Neither saving source nor retrying a workflow deploys or flashes a PLC.
+
+### Operator feedback → authored DSL proposal
+
+Feedback belongs to SaaS identity/Git integration. AI Gateway receives the operator request
+and a bounded catalog of existing DSL literals, never runtime/deployment credentials or a
+shell tool. It returns typed DslChange operations. Workspace owns AST targeting and literal
+serialization. Supported operations initially cover equipment localized labels, existing
+signal initial values and existing alarm thresholds; unknown targets and computed/spread
+forms are rejected. This is an extensible operation contract, not another project DSL.
+The resulting draft PR is unverified authored source until ordinary project CI checks it.
+It cannot merge, publish, apply, flash, edit CI/permissions/dependencies or run generated code.
+Operator notes can be recorded as issues without generating source. Capability checks and
+GitHub repository authority apply independently; lack of GitHub push permission cannot be
+worked around by using another user's OAuth credential.
+
+## Ассистент shell
+
+Ассистент — вкладка существующей ShellPanel. Диалог и локальный разбор загруженного
+архива не создают второго проекта или authority. Переключение инженер/оператор —
+представление; права SaaS проверяет сервер. `AssistantService` передаётся в local host
+композицией; IDE не зависит от SaaS, GitHub/OAuth или AI Gateway. Без адаптера показывается
+явное отсутствие AI, а разбор файлов работает. Общий React-компонент экспортирован для SaaS.
+
+История диалога хранится в sessionStorage на проект и identity; это история вкладки
+браузера, не долговременный многопользовательский журнал. Архив не сохраняется там.
+ZIP разбирается локально с лимитами 32 МБ входа, 64 МБ распаковки, 8 МБ на файл,
+1000 записей и проверкой путей. Это инвентаризация Lanmon, не доказательство успешной
+миграции. Только имена файлов, категории, названия INI-секций и ссылки MAP отправляются
+в модель. Скрипты, строки подключения и настройки пользователей не исполняются/не отправляются.
+
+SaaS владеет AI Gateway, авторизацией, адресатами и публикацией заметок. Обычный ответ
+не вызывает внешних записей. Кнопка публикации заметки — отдельное явное действие.
+Модель не получает инструменты runtime-команд, shell, изменения CI, прав, зависимостей
+или прошивки. Предложения DSL проходят отдельную границу workspace/AST, review и CI;
+ответ в чате не является checked artifact. Автоматический перенос Lanmon-карт/скриптов
+и создание PR из ассистента пока не реализованы; эти критерии остаются открытыми.
