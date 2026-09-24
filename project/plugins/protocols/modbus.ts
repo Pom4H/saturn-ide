@@ -60,11 +60,15 @@ export function decodeRegisters(a: ModbusAddress, words: readonly number[]): num
 }
 export function encodeRegisters(a: ModbusAddress, value: number): number[] {
   if (a.area !== 'holding') throw new Error('Only holding registers can be written');
-  const raw = finite((value - (a.bias ?? 0)) / (a.scale ?? 1), 'encoded value'), bytes = Buffer.alloc(width(a) * 2);
+  let raw = finite((value - (a.bias ?? 0)) / (a.scale ?? 1), 'encoded value');
+  const bytes = Buffer.alloc(width(a) * 2);
   if (a.format === 'float32') {
     bytes.writeFloatBE(raw);
     if (!Number.isFinite(bytes.readFloatBE())) throw new Error('Float32 overflow');
   } else {
+    // Absorb arithmetic roundoff, never quantize a genuine fractional register command.
+    const rounded = Math.round(raw);
+    if (Math.abs(raw - rounded) <= Number.EPSILON * Math.max(1, Math.abs(raw)) * 4) raw = rounded;
     const bits = width(a) * 16, signed = a.format.startsWith('int');
     int(raw, signed ? -(2 ** (bits - 1)) : 0, signed ? 2 ** (bits - 1) - 1 : 2 ** bits - 1, 'encoded integer');
     if (a.format === 'uint16') bytes.writeUInt16BE(raw); else if (a.format === 'int16') bytes.writeInt16BE(raw);

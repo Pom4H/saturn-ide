@@ -39,5 +39,5 @@ jobs:
         run: bun run check
 
       - name: Unit and SQLite tests
-        run: bun test tests
-
+        # Network/native SDK cleanup must finish; an orphan socket must not occupy a runner for 20 minutes.
+        run: timeout --kill-after=10s 180s bun test tests
