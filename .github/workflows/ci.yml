@@ -50,29 +50,20 @@ jobs:
       - name: Chromium
         run: bunx playwright install --with-deps chromium
 
-      - name: Browser round trip and real screenshots
-        run: bun run test:browser
+      - name: Capture repository screenshots
+        run: bun scripts/screenshots.ts
 
       - name: Store screenshots in Git
-        if: success()
         run: |
-          mkdir -p docs/screenshots
-          cp artifacts/menu-diagram.png docs/screenshots/diagram.png
-          cp artifacts/menu-source.png docs/screenshots/source.png
-          cp artifacts/menu-signals.png docs/screenshots/signals.png
-          cp artifacts/menu-reports.png docs/screenshots/reports.png
-          cp artifacts/menu-hmi.png docs/screenshots/hmi.png
-          cp artifacts/menu-environment.png docs/screenshots/environment.png
-          cp artifacts/menu-git.png docs/screenshots/git.png
-          cp artifacts/ide-dark.png docs/screenshots/ide-dark.png
-          cp artifacts/ide-light.png docs/screenshots/ide-light.png
-          cp artifacts/ide-3d.png docs/screenshots/ide-3d.png
           git add docs/screenshots
           if git diff --cached --quiet; then
             echo "Screenshots unchanged"
-            exit 0
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'docs: refresh Saturn screenshots'
+            git push origin HEAD:main
           fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'docs: refresh verified Saturn screenshots'
-          git push origin HEAD:main
+
+      - name: Browser round trip
+        run: bun run test:browser
