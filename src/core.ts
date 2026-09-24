@@ -1,4 +1,3 @@
-import { portsFor, type Ports, type Kind } from './geometry';
 export type Locale = 'en' | 'ru';
 export type Text = string | Readonly<Record<Locale, string>>;
 export const text = (value: Text, locale: Locale): string => typeof value === 'string' ? value : value[locale];
@@ -95,34 +94,6 @@ export interface Position {
   semanticId?:string;
   description?:Text;
 }
-type SignalInput<T extends Value> = Signal<T>|SignalSpec<T>;
-interface EquipmentSignalInputs {
-  pump: { rpm: SignalInput<number>; run?: SignalInput<boolean> };
-  tank: { level: SignalInput<number> };
-  valve: { opening: SignalInput<number> };
-  plc: { online: SignalInput<boolean> };
-}
-interface EquipmentSignals {
-  pump: { rpm: Signal<number>; run?: Signal<boolean> };
-  tank: { level: Signal<number> };
-  valve: { opening: Signal<number> };
-  plc: { online: Signal<boolean> };
-}
-export type BuiltinEquipment<K extends Kind = Kind, I extends string = string> = {
-  [P in K]: Position & EquipmentSignals[P] & { id: I; kind: P; ports: Ports<P,I> }
-}[K];
-type Options<K extends Kind> = Position & EquipmentSignalInputs[K];
-type MaterializedEquipment<K extends Kind,I extends string,O extends Options<K>> = Materialized<O,I> & {id:I;kind:K;ports:Ports<K,I>};
-/** @ru Насос владеет своими сигналами. Безымянные signal({...}) получают ID от экземпляра: P-101.rpm.
- * @en A pump owns its signals. rpm is measured speed; anonymous signal({...}) declarations get IDs from the instance: P-101.rpm. */
-export function pump<const I extends string, O extends Options<'pump'>>(id:I, options:O):MaterializedEquipment<'pump',I,O> { return {...ownSignals(id,options),id,kind:'pump',ports:portsFor('pump',id)}; }
-/** @ru Резервуар владеет уровнем и локальными сигналами. @en Tank owns level and local signals. */
-export function tank<const I extends string, O extends Options<'tank'>>(id:I, options:O):MaterializedEquipment<'tank',I,O> { return {...ownSignals(id,options),id,kind:'tank',ports:portsFor('tank',id)}; }
-/** @ru Клапан владеет положением и локальными сигналами. @en Valve owns position and local signals. */
-export function valve<const I extends string, O extends Options<'valve'>>(id:I, options:O):MaterializedEquipment<'valve',I,O> { return {...ownSignals(id,options),id,kind:'valve',ports:portsFor('valve',id)}; }
-/** @ru ПЛК владеет диагностикой; vendor-профиль и компилятор принадлежат проекту.
- * @en PLC owns diagnostics; vendor profile and compiler belong to the project. */
-export function plc<const I extends string, O extends Options<'plc'>>(id:I, options:O):MaterializedEquipment<'plc',I,O> { return {...ownSignals(id,options),id,kind:'plc',ports:portsFor('plc',id)}; }
 export type Medium = 'fluid' | 'control' | 'power' | 'bus';
 export type Role = 'source' | 'sink' | 'passive';
 export type Side = 'left' | 'right' | 'up' | 'down';
@@ -150,28 +121,39 @@ export function terminalFromAnchor<const M extends Medium,const F extends string
 export interface Endpoint<M extends Medium=Medium,F extends string=string,R extends Role=Role,I extends string=string> {
   readonly device:I; readonly port:string; readonly terminal:Terminal<M,F,R>;
 }
-export type VendorDeviceKind<C extends string=string> = `device:${C}`;
 export interface DiagramCapability {readonly width:number;readonly height:number;readonly svg?:string}
 export interface HmiCapability {readonly target:string;readonly width:number;readonly height:number;readonly auto?:'topology'}
 export interface FirmwareCapability {readonly target:string;readonly languages:readonly string[];readonly sourceDir?:string}
 export interface EmulatorCapability {readonly runtime:string;readonly abi?:string}
 export interface DeviceCapabilities {readonly diagram?:DiagramCapability;readonly hmi?:HmiCapability;readonly firmware?:FirmwareCapability;readonly emulator?:EmulatorCapability}
-type DevicePorts<P extends Readonly<Record<string,Terminal>>,I extends string> = {
-  readonly [K in keyof P]:Endpoint<P[K]['medium'],P[K]['family'],P[K]['role'],I>&{readonly port:Extract<K,string>;readonly terminal:P[K]}
-};
-export type VendorEquipment<C extends string=string,I extends string=string,O extends Position=Position,P extends Readonly<Record<string,Terminal>>=Readonly<Record<string,Terminal>>> =
-  Materialized<O,I>&Position&{readonly id:I;readonly kind:VendorDeviceKind<C>;readonly classId:C;readonly icon:string;readonly ports:DevicePorts<P,I>;readonly capabilities:DeviceCapabilities};
-export type Equipment = BuiltinEquipment|VendorEquipment;
-export interface DeviceClassDefinition<C extends string,P extends Readonly<Record<string,Terminal>>> {readonly id:C;readonly icon:string;readonly ports:P;readonly capabilities?:DeviceCapabilities}
-/** @ru Vendor-класс оборудования — project-owned TypeScript factory без глобальной регистрации.
- * @en A vendor device class is a project-owned TypeScript factory with no global plugin registry. */
-export function deviceClass<const C extends string,const P extends Readonly<Record<string,Terminal>>>(definition:DeviceClassDefinition<C,P>) {
-  return function<const I extends string,const O extends Position>(id:I,options:O):VendorEquipment<C,I,O,P> {
+type DevicePorts<P extends Readonly<Record<string,Terminal>>,I extends string> = { readonly [K in keyof P]:Endpoint<P[K]['medium'],P[K]['family'],P[K]['role'],I>&{readonly port:Extract<K,string>;readonly terminal:P[K]} };
+type Merge<A,B> = Omit<A,keyof B>&B;
+type DeviceSignalOptions<S extends Readonly<Record<string,SignalSpec>>> = { readonly [K in keyof S]?: S[K] extends SignalSpec<infer T,infer W> ? Signal<T,string,W>|SignalSpec<T,W> : never };
+export type Equipment<K extends string=string,I extends string=string,O extends Position=Position,P extends Readonly<Record<string,Terminal>>=Readonly<Record<string,Terminal>>> = Materialized<O,I>&Position&{readonly id:I;readonly kind:K;readonly icon:string;readonly ports:DevicePorts<P,I>;readonly capabilities:DeviceCapabilities};
+export interface DeviceDefinition<K extends string,P extends Readonly<Record<string,Terminal>>,S extends Readonly<Record<string,SignalSpec>>=Record<never,never>> {readonly id:K;readonly icon:string;readonly ports:P;readonly signals?:S;readonly capabilities?:DeviceCapabilities}
+/** @ru Единственный конструктор класса оборудования. Наше и vendor-оборудование используют один путь.
+ * @en The only equipment-class constructor. Built-in and vendor equipment use the same path. */
+export function device<const K extends string,const P extends Readonly<Record<string,Terminal>>,const S extends Readonly<Record<string,SignalSpec>>=Record<never,never>>(definition:DeviceDefinition<K,P,S>) {
+  return function<const I extends string,const O extends Position&DeviceSignalOptions<S>>(id:I,options:O):Equipment<K,I,Merge<S,O>,P> {
     const ports=Object.fromEntries(Object.entries(definition.ports).map(([port,terminal])=>[port,{device:id,port,terminal}])) as DevicePorts<P,I>;
-    return {...ownSignals(id,options),id,kind:`device:${definition.id}`,classId:definition.id,icon:definition.icon,ports,capabilities:definition.capabilities??{}} as VendorEquipment<C,I,O,P>;
+    const authored={...(definition.signals??{}),...options} as Merge<S,O>;
+    return {...ownSignals(id,authored),id,kind:definition.id,icon:definition.icon,ports,capabilities:definition.capabilities??{}} as Equipment<K,I,Merge<S,O>,P>;
   };
 }
-export function isVendorEquipment(e:Equipment):e is VendorEquipment {return e.kind.startsWith('device:');}
+export function equipmentSignal<T extends Value>(equipment:Equipment,field:string,type:'number'|'boolean'|'string'):Signal<T>|undefined {
+  const value=Object.entries(equipment).find(([key])=>key===field)?.[1];
+  return signalLike(value)&&'id' in value&&typeof value.id==='string'&&typeof value.initial===type?value as Signal<T>:undefined;
+}
+export function equipmentSignals(equipment:Equipment):Signal[] {return Object.values(equipment).filter((value):value is Signal=>signalLike(value)&&'id' in value&&typeof value.id==='string');}
+const tankPorts={inlet:terminal({x:79,y:3,z:195,side:'up',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:170,y:184,z:24,side:'right',medium:'fluid',family:'water',role:'source'})} as const;
+const pumpPorts={inlet:terminal({x:0,y:96,z:60,side:'left',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:76,y:0,z:105,side:'up',medium:'fluid',family:'water',role:'source'}),run:terminal({x:170,y:40,z:85,side:'up',medium:'control',family:'digital',role:'sink'})} as const;
+const valvePorts={inlet:terminal({x:0,y:102,z:60,side:'left',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:160,y:102,z:60,side:'right',medium:'fluid',family:'water',role:'source'}),command:terminal({x:80,y:6,z:105,side:'up',medium:'control',family:'analog',role:'sink'})} as const;
+const plcPorts={DO1:terminal({x:35,y:0,z:70,side:'up',medium:'control',family:'digital',role:'source'}),AO1:terminal({x:80,y:0,z:70,side:'up',medium:'control',family:'analog',role:'source'}),RS485:terminal({x:145,y:130,z:35,side:'down',medium:'bus',family:'rs485',role:'passive',max:2})} as const;
+/** Built-ins are ordinary device() declarations, not a privileged registry. */
+export const tank=device({id:'tank',icon:'tank',ports:tankPorts,signals:{level:signal({initial:0})},capabilities:{diagram:{width:170,height:230}}});
+export const pump=device({id:'pump',icon:'pump',ports:pumpPorts,signals:{rpm:signal({initial:0}),run:signal({initial:true,writable:true})},capabilities:{diagram:{width:220,height:170}}});
+export const valve=device({id:'valve',icon:'valve',ports:valvePorts,signals:{opening:signal({initial:0,writable:true})},capabilities:{diagram:{width:160,height:164}}});
+export const plc=device({id:'plc',icon:'plc',ports:plcPorts,signals:{online:signal({initial:false})},capabilities:{diagram:{width:160,height:150}}});
 interface Connection { id:string; from:Endpoint; to:Endpoint; via?:readonly {x:number;y:number}[] }
 export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number> }
 export interface Cable extends Connection { kind:'cable'; signal?:Signal }
@@ -255,11 +237,10 @@ export function validateProject(p:Project):void {
   const devices=new Map(p.equipment.map(e=>[e.id,e]));
   for(const e of p.equipment){
     requireThat([e.x,e.y,e.z??0].every(v=>Number.isFinite(v)&&Math.abs(v)<=15000),'POSITION',`Invalid position ${e.id}`,`Неверная позиция ${e.id}`);
-    if(isVendorEquipment(e)){
-      requireThat(/^[-a-zA-Z0-9_.]+$/.test(e.classId),'EQUIPMENT_CLASS',`Invalid equipment class ${e.classId}`,`Неверный класс оборудования ${e.classId}`);
-      for(const value of Object.values(e))if(signalLike(value)&&'id' in value)ref(value as Signal);
-      const d=e.capabilities.diagram;if(d)requireThat(Number.isFinite(d.width)&&d.width>0&&Number.isFinite(d.height)&&d.height>0,'EQUIPMENT_VIEW','Invalid vendor diagram bounds','Неверные размеры vendor-схемы');
-    }else if(e.kind==='pump'){ref(e.rpm,'number');if(e.run)ref(e.run,'boolean');}else if(e.kind==='tank')ref(e.level,'number');else if(e.kind==='valve')ref(e.opening,'number');else if(e.kind==='plc')ref(e.online,'boolean');
+    requireThat(/^[-a-zA-Z0-9_.]+$/.test(e.kind),'EQUIPMENT_CLASS',`Invalid equipment class ${e.kind}`,`Неверный класс оборудования ${e.kind}`);
+    requireThat(typeof e.icon==='string'&&e.icon.length>0,'EQUIPMENT_ICON','Invalid equipment icon','Неверная иконка оборудования');
+    for(const value of Object.values(e))if(signalLike(value)&&'id' in value)ref(value as Signal);
+    const diagram=e.capabilities.diagram;if(diagram)requireThat(Number.isFinite(diagram.width)&&diagram.width>0&&Number.isFinite(diagram.height)&&diagram.height>0,'EQUIPMENT_VIEW','Invalid equipment diagram bounds','Неверные размеры схемы оборудования');
   }
   const degree=new Map<string,number>();
   for(const edge of [...p.pipes,...p.cables??[]]) {
@@ -301,7 +282,7 @@ export interface AutoHmi {readonly mode:'topology';readonly controller:string;re
 /** @ru HMI выводится из физической топологии контроллера, а не поддерживает второй список вручную.
  * @en HMI is derived from controller topology instead of maintaining a second authored equipment list. */
 export function autoHmi(controller:Equipment,options:{width?:number;height?:number}={}):AutoHmi {
-  const profile=isVendorEquipment(controller)?controller.capabilities.hmi:undefined;
+  const profile=controller.capabilities.hmi;
   return {mode:'topology',controller:controller.id,width:options.width??profile?.width??320,height:options.height??profile?.height??240};
 }
 function resolveAutoHmi(definition:ProjectDefinition,intent:AutoHmi):Hmi {

@@ -1,4 +1,4 @@
-import { deviceClass, signal, terminal, terminalFromAnchor, type Position, type Signal, type SignalSpec } from '@saturn/core';
+import { device, signal, terminal, terminalFromAnchor, type Position, type Signal, type SignalSpec } from '@saturn/core';
 import { renderSaturnPlcSvg } from './diagram';
 import { saturnTerminalAnchor } from './vendor/saturn/view';
 import { STATE_ABI } from './vendor/firmverse';
@@ -17,7 +17,7 @@ const ports={
   RS485:terminal({x:121,y:325,z:35,side:'down',medium:'bus',family:'rs485',role:'passive',max:32}),
 } as const;
 const panel=renderSaturnPlcSvg({defsPrefix:'saturn-plc500'}).replace('<svg ','<svg width="620" height="340" ');
-const define=deviceClass({
+const define=device({
   id:'saturn.plc500',icon:'plc',ports,
   capabilities:{
     diagram:{width:620,height:340,svg:panel},
