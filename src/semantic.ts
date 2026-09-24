@@ -22,7 +22,7 @@ export function semanticGraph(project:Project):SemanticGraph {
   const signalIds=new Map(Object.values(project.signals).map(s=>[s.id,signalIdentity(s)]));
   for(const equipment of project.equipment){
     const owned=Object.values(equipment).filter((value):value is Signal=>!!value&&typeof value==='object'&&'id' in value&&'initial' in value).map(signalIdentity);
-    drafts.push({semanticId:equipmentIdentity(equipment),kind:'equipment',id:equipment.id,label:equipment.label,signature:sig({kind:equipment.kind,icon:equipment.icon,x:equipment.x,y:equipment.y,z:equipment.z??0,description:equipment.description??null,ports:equipment.ports,capabilities:equipment.capabilities}),uses:owned});
+    drafts.push({semanticId:equipmentIdentity(equipment),kind:'equipment',id:equipment.id,label:equipment.label,signature:sig({kind:equipment.kind,icon:equipment.icon,x:equipment.x,y:equipment.y,z:equipment.z??0,description:equipment.description??null,ports:equipment.ports,capabilities:equipment.capabilities,knowledge:equipment.knowledge,alarms:equipment.alarms.map(alarm=>({id:alarm.id,signal:signalIdentity(alarm.signal),above:alarm.above,hysteresis:alarm.hysteresis??null,label:alarm.label}))}),uses:owned});
   }
   for(const signal of Object.values(project.signals)){
     const owner=signal.owner?.kind==='equipment'?equipmentIds.get(signal.owner.id):undefined;
