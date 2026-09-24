@@ -4,7 +4,7 @@ import { indexResources } from '../src/workspace/resource-index';
 import type { Project } from '../src/core';
 // Source-index fixture only. No driver, renderer, PLC or SQL execution is claimed by these tests.
 const project = { id: 'station', label: { en: 'Station', ru: 'Станция' }, equipment: [
-  { id: 'P-01', kind: 'pump', label: { en: 'Booster', ru: 'Повысительный насос' }, rpm: { id: 'rpm', initial: 0 } },
+  { id: 'P-01', semanticId: 'equipment:booster-primary', kind: 'pump', label: { en: 'Booster', ru: 'Повысительный насос' }, rpm: { id: 'rpm', initial: 0 } },
   { id: 'PLC-01', kind: 'plc', label: 'PLC' },
 ], pipes: [], cables: [], reports: [{ id: 'hourly', label: 'Hourly', columns: { speed: { signal: { id: 'rpm' } } } }] } as unknown as Project;
 const workspace = (files: Record<string, string>) => ({ list: () => Object.keys(files), read: (path: string) => ({ source: files[path]! }) });
@@ -46,4 +46,12 @@ test('moving a file keeps device identity; unknown files remain accessible witho
   const b = indexResources(workspace({ 'systems/water/booster.ts': 'pump("P-01", {});', 'notes.ts': '// unknown code' }), project, 'r');
   assert.equal(a.resources.find(r => r.entityId === 'P-01')?.uri, b.resources.find(r => r.entityId === 'P-01')?.uri);
   assert.equal(b.resources.find(r => r.source?.path === 'notes.ts')?.kind, 'file');
+});
+
+test('human tag rename keeps the same semantic resource URI', () => {
+  const before = indexResources(workspace({ 'equipment/P-01.device.ts': 'pump("P-01", {});' }), project, 'r1');
+  const renamed = { ...project, equipment: project.equipment.map(e => e.id === 'P-01' ? { ...e, id: 'P-201' } : e) } as Project;
+  const after = indexResources(workspace({ 'equipment/P-201.device.ts': 'pump("P-201", {});' }), renamed, 'r2');
+  assert.equal(before.resources.find(r => r.semanticId === 'equipment:booster-primary')?.uri, after.resources.find(r => r.semanticId === 'equipment:booster-primary')?.uri);
+  assert.equal(after.resources.find(r => r.semanticId === 'equipment:booster-primary')?.entityId, 'P-201');
 });
