@@ -280,7 +280,7 @@ export function validateProject(p:Project):void {
   if(p.hmi)requireThat(p.hmi.width>0&&p.hmi.height>0&&p.hmi.equipment.every(e=>devices.has(e.id)),'HMI_TARGET','Invalid HMI configuration','Неверная конфигурация HMI');
 }
 export interface Sample<T extends Value=Value> {
-  signal:string; value:T; quality:Quality; at:number;
+  signal:string; semantic?:string; value:T; quality:Quality; at:number;
   /** Source timestamp may differ from receipt time; both are useful for stale/replay diagnostics. */
   sourceAt?:number; receivedAt?:number; sequence?:number; state?:QualityState;
 }
