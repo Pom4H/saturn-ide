@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { alarm, cable, column, command, observation, pipe, plc, project, pump, report, signal, tank, valve, type ReportRow, type Sample, type Snapshot } from '../src/core';
-import { routeConnection, routeConnections } from '../src/topology';
+import { routeConnection, routeConnections, routePath } from '../src/topology';
 import { aggregateReport, reportCsv } from '../src/reports';
 import { advancePhase, flowOf } from '../src/motion';
 const s={rpm:signal('rpm',{initial:0}),flow:signal('flow',{initial:0,unit:'m³/h',staleAfter:3600_000}),run:signal('run',{initial:true,writable:true}),level:signal('level',{initial:50}),opening:signal('opening',{initial:75}),online:signal('online',{initial:true})};
@@ -46,6 +46,19 @@ test('routing changes while moving, avoids obstacles, and reports blocked stubs'
   assert.notDeepEqual(routeConnection(moved,model.pipes[0]!).points,original.points);
   const blocked={...model,equipment:[...model.equipment,plc('obstacle',{label:'O',x:175,y:140,online:s.online})]};
   assert.equal(routeConnection(blocked,model.pipes[0]!).valid,false);
+});
+test('moving a device preserves clear routes on unrelated connections',()=>{
+  const placed={...model,equipment:model.equipment.map(e=>e.id==='TK'?{...e,x:-185,y:-128}:e.id==='P'?{...e,x:166,y:222}:e.id==='V'?{...e,x:566,y:-289}:e.id==='PLC'?{...e,x:586,y:191}:e)};
+  const before=routeConnections(placed),unrelated=before.find(route=>route.id==='b')!;
+  const moved={...placed,equipment:placed.equipment.map(e=>e.id==='TK'?{...e,y:e.y+20}:e)};
+  assert.equal(routePath(routeConnection(moved,moved.pipes[1]!)),routePath(unrelated));
+  const after=routeConnections(moved,{project:placed,routes:before});
+  assert.deepEqual(after.find(route=>route.id==='b')?.points,unrelated.points);
+  assert.notDeepEqual(after.find(route=>route.id==='a')?.points,before.find(route=>route.id==='a')?.points);
+  const obstructed={...placed,equipment:placed.equipment.map(e=>e.id==='TK'?{...e,x:270,y:80}:e)};
+  const safe=routeConnections(obstructed,{project:placed,routes:before}).find(route=>route.id==='b')!;
+  assert.notDeepEqual(safe.points,unrelated.points);
+  assert.equal(safe.valid,true);
 });
 test('runtime validation rejects forged ports and double occupancy',()=>{
   assert.throws(()=>project({...model,cables:[{...model.cables[0]!,to:v.ports.command}]}),/Incompatible/);

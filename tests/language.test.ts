@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { writeFileSync } from 'node:fs';
+import { renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Language } from '../src/workspace/language';
 import { Workspace } from '../src/workspace/files';
@@ -14,3 +14,17 @@ test('genuine TS aliases, diagnostics, completions and RU/EN JSDoc',()=>{
     const complete=source+'\np.';expect(language.complete('hover.ts',complete,complete.length).some(o=>o.label==='rpm')).toBe(true);
   }finally{language.dispose();f.clean();}
 },30000);
+
+test('clearing editor overlays detects a same-size disk edit', () => {
+  const f = fixture(), workspace = new Workspace(f.root), language = new Language(workspace, appRoot);
+  try {
+    const path = join(f.root, 'change.ts');
+    writeFileSync(path, 'const position: number = 0;\n');
+    expect(language.diagnostics('change.ts')).toHaveLength(0);
+    const temp = join(f.root, 'replacement.tmp');
+    writeFileSync(temp, 'const position: number = z;\n');
+    renameSync(temp, path);
+    language.clear();
+    expect(language.diagnostics('change.ts').some(problem => problem.code === 'TS2304')).toBe(true);
+  } finally { language.dispose(); f.clean(); }
+}, 30000);

@@ -1,9 +1,10 @@
-import { StrictMode, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { StrictMode, Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { text, type Equipment, type Locale, type Snapshot, type Value } from '../core';
+import { text, type Equipment, type Locale, type Project, type Snapshot, type Value } from '../core';
 import { availableEditors, editorNames, findResources, type EditorId, type ProjectResource } from '../core/resources';
 import { moveSource, type PositionSource } from '../source-edits';
-import { related } from '../topology';
+import type { IDEState } from '../protocol';
+import { related, routeConnections, type PhysicalRoute } from '../topology';
 import { api, browserClient } from './api';
 import { useShell } from './use-shell';
 import type { DocumentBuffer } from './model/documents';
@@ -35,7 +36,9 @@ function App() {
   const [releases, setReleases] = useState<Releases | null>(null);
   const [palette, setPalette] = useState(false), [query, setQuery] = useState(''), [choice, setChoice] = useState(0);
   const [preview, setPreview] = useState<{ id: string; x: number; y: number } | null>(null), [dragging, setDragging] = useState(false);
-  const drag = useRef<{ file: DocumentBuffer; position: PositionSource; next: string } | null>(null);
+  const drag = useRef<{ file: DocumentBuffer; position: PositionSource; next: string; token: number; target?: { id: string; x: number; y: number } } | null>(null);
+  const dragSerial = useRef(0);
+  const routeCache = useRef<{ project: Project; routes: PhysicalRoute[] } | null>(null);
   const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
   const refreshGit = () => api<GitState>('git').then(setGit).catch(fail);
   const chooseSurface = (editor: EditorId) => { session.setSurface(editor); if (editor === 'git') void refreshGit(); };
@@ -48,7 +51,7 @@ function App() {
     if (resource) void openResource(resource, 'diagram'); else session.selectEquipment(id);
   };
   const save = async (path = session.getSnapshot().source) => {
-    try { await session.documents.save(path); await refresh(); void refreshGit(); } catch (e) { fail(e); }
+    try { await session.documents.save(path); await refresh(); void refreshGit(); return true; } catch (e) { fail(e); return false; }
   };
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => { document.documentElement.lang = locale; localStorage.setItem('saturn.locale', locale); }, [locale]);
@@ -78,17 +81,36 @@ function App() {
     if (buffer.saving || buffer.draft !== buffer.source || buffer.version !== position.version) {
       setError(ru ? 'Сохраните или перечитайте исходник перед перемещением.' : 'Save or reload the source before dragging.'); return false;
     }
-    session.selectSource(position.path); drag.current = { file: buffer, position, next: buffer.source }; setDragging(true); return true;
+    session.selectSource(position.path); drag.current = { file: buffer, position, next: buffer.source, token: ++dragSerial.current }; setDragging(true); return true;
   };
   const move = (id: string, x: number, y: number) => {
     const d = drag.current; if (!d) return;
-    d.next = moveSource(d.file.source, d.position, x, y); setPreview({ id, x, y }); session.documents.edit(d.file.path, d.next);
+    d.next = moveSource(d.file.source, d.position, x, y); d.target = { id, x, y }; setPreview(d.target); session.documents.edit(d.file.path, d.next);
   };
   const end = (cancel: boolean) => {
-    const d = drag.current; drag.current = null; setDragging(false); setPreview(null); if (!d) return;
-    if (cancel) session.documents.edit(d.file.path, d.file.source); else void save(d.file.path);
+    const d = drag.current; drag.current = null; setDragging(false); if (!d) return;
+    if (cancel) { setPreview(null); session.documents.edit(d.file.path, d.file.source); }
+    else void save(d.file.path).then(async saved => {
+      if (dragSerial.current !== d.token) return;
+      if (!saved) { setPreview(null); return; }
+      try {
+        const current = await api<IDEState>('state'), device = current.project.equipment.find(e => e.id === d.target?.id);
+        if (dragSerial.current !== d.token) return;
+        if (current.problems.length || !device || device.x !== d.target?.x || device.y !== d.target?.y) setPreview(null);
+      } catch (error) { if (dragSerial.current === d.token) { setPreview(null); fail(error); } }
+    });
   };
   const previewProject = useMemo(() => state ? preview ? { ...state.project, equipment: state.project.equipment.map(e => e.id === preview.id ? { ...e, x: preview.x, y: preview.y } : e) } : state.project : null, [state?.project, preview]);
+  const routes = useMemo(() => {
+    if (!previewProject) return [];
+    return routeConnections(previewProject, routeCache.current ?? undefined);
+  }, [previewProject]);
+  useLayoutEffect(() => { if (previewProject) routeCache.current = { project: previewProject, routes }; }, [previewProject, routes]);
+  useEffect(() => {
+    if (!preview || dragging) return;
+    const device = state?.project.equipment.find(e => e.id === preview.id);
+    if (state?.problems.length || device?.x === preview.x && device.y === preview.y) setPreview(null);
+  }, [state?.project, state?.problems, preview, dragging]);
   const send = async (id: string, value: Value) => { await api('command', { signal: id, value, expectedApplied: state?.revision ? `sha256:${state.revision}` : null }); };
   const notify = async () => {
     try {
@@ -112,7 +134,7 @@ function App() {
   const signal = Object.values(state.project.signals).find(s => s.id === nav.signal) ?? Object.values(state.project.signals)[0];
   const activeAlarms = Object.values(snapshot.alarms).filter(a => a.active), file = documents.get(active);
   const mode = state.mode === 'simulation' ? (ru ? 'Симуляция' : 'Simulation') : state.mode === 'live' ? (ru ? 'Реальный драйвер' : 'Live driver') : (ru ? 'Нет драйвера' : 'No driver');
-  const scene = { project: previewProject, snapshot, locale, selected, select: selectEquipment, fit, ports, begin, move, end };
+  const scene = { project: previewProject, routes, snapshot, locale, selected, select: selectEquipment, fit, ports, begin, move, end };
   const controlFor = (e?: Equipment) => e?.kind === 'pump' ? e.run : e?.kind === 'valve' ? e.opening : undefined;
   const control = controlFor(equipment);
   const sourcePanel = <section className="code-pane"><div className="pane-heading"><code title={active}>{active}</code><button disabled={!file || file.draft === file.source || file.saving || dragging} onClick={() => void save()}>{file?.saving ? '…' : ru ? 'Сохранить' : 'Save'}</button></div>

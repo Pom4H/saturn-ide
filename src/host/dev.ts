@@ -84,8 +84,12 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
   const staleTimer = setInterval(() => { if (manager.phase === 'running') void runtime.stale().catch(reportError); }, 1000);
   const retention = setInterval(() => void store.prune().catch(reportError), 3600_000); await store.prune();
   let debounce: ReturnType<typeof setTimeout>;
+  const savedVersions = new Map<string, string>();
   const watcher = watch(workspace.root, { recursive: true }, (_event, path) => {
     if (!path || !/\.(tsx?|json)$/.test(path) || path.split(/[\\/]/).some(p => p.startsWith('.') || p === 'node_modules')) return;
+    const relativePath = path.replaceAll('\\', '/');
+    try { if (savedVersions.get(relativePath) === workspace.read(relativePath).version) return; }
+    catch { /* A removed or inaccessible file still needs a rebuild. */ }
     clearTimeout(debounce); debounce = setTimeout(() => void reload().catch(reportError), 200);
   });
   const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
@@ -119,7 +123,7 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
         if (request.method !== 'POST') throw new HttpError(405, 'Method not allowed');
         if (request.headers.get('X-Saturn-Key') !== key || !request.headers.get('content-type')?.includes('application/json')) throw new HttpError(403, 'Missing session key or JSON content type');
         const body: unknown = await request.json(); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected an object'); const b = body as Record<string, unknown>;
-        if (path === '/api/file') { const file = workspace.save(field(b, 'path'), field(b, 'source'), field(b, 'version')); await reload(); return json({ file, state: state() }); }
+        if (path === '/api/file') { const file = workspace.save(field(b, 'path'), field(b, 'source'), field(b, 'version')); savedVersions.set(file.path, file.version); await reload(); return json({ file, state: state() }); }
         if (path === '/api/publish') {
           const hash = field(b, 'hash'); if (hash !== draft?.artifact.hash || problems.length) throw new HttpError(409, 'Only the current checked draft can be published');
           await revisions.publish(hash, expected(b, 'expectedPublished')); releaseState = await revisions.state(); return json(releaseState);

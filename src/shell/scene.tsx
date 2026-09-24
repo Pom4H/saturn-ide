@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
 import { geometry } from '../geometry';
-import { routeConnections, routePath } from '../topology';
+import { routePath, type PhysicalRoute } from '../topology';
 import { useSvgMotion } from './svg-motion';
 import { Symbol } from './symbols';
 export interface SceneProps {
-  project:Project;snapshot:Snapshot;locale:Locale;selected:string;focus?:string;fit?:number;ports?:boolean;
+  project:Project;routes:readonly PhysicalRoute[];snapshot:Snapshot;locale:Locale;selected:string;focus?:string;fit?:number;ports?:boolean;
   select:(id:string)=>void;begin?:(id:string)=>boolean;move?:(id:string,x:number,y:number)=>void;end?:(cancel:boolean)=>void;
 }
 export function Scene(props:SceneProps){
@@ -21,7 +21,7 @@ export function Scene(props:SceneProps){
   };
   const [box,setBox]=useState(bounds);
   useEffect(()=>setBox(bounds()),[props.fit,props.focus,props.project.id]);
-  const routes=useMemo(()=>routeConnections(props.project),[props.project]);
+  const routes=props.routes;
   const coordinate=(event:PointerEvent)=>{const p=svg.current!.createSVGPoint();p.x=event.clientX;p.y=event.clientY;return p.matrixTransform(svg.current!.getScreenCTM()!.inverse());};
   useEffect(()=>{
     const node=svg.current!;
