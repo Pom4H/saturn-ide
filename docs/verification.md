@@ -395,3 +395,10 @@ No renderer was changed; no new browser/GPU parity claim is made by this test.
 The external protocol catalog revision is pinned in IDE CI so later kit changes
 cannot silently alter the acceptance input. No vendor-specific module is
 imported by the production runtime host.
+
+After the example acquired release scripts, source tooling was updated to resolve
+public subpaths from the IDE's package exports instead of a separate handwritten
+map. Repeated `bun run check` and all 125 local tests passed (same 3 skips).
+`bun scripts/browser-test.ts` passed the actual external project, Firmverse WASM
+screen/buttons, source hints, device drag, commands/alarms/reports/Git, WebGL and
+responsive HMI checks. The fixture excludes generated .saturn deployment output.

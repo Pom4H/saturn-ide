@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { statSync } from 'node:fs';
+import { statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { equipmentSignals, type Locale, type Problem, type Project } from '../core';
 import { deviceCalls } from './ast';
@@ -9,7 +9,16 @@ export class Language {
   private revision = 0;
   private service: ts.LanguageService;
   constructor(readonly workspace: Workspace, readonly appRoot: string) {
-    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.Preserve, moduleResolution: ts.ModuleResolutionKind.Bundler, strict: true, noUncheckedIndexedAccess: true, skipLibCheck: true, noEmit: true, allowImportingTsExtensions: true, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX, paths: { '@saturn/core': [join(appRoot, 'src/core.ts')], '@saturn/scada/acquisition': [join(appRoot, 'src/runtime/acquisition.ts')] }, types: ['bun'] };
+    const exports: unknown = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8')).exports;
+    const paths: Record<string, string[]> = { '@saturn/scada/acquisition': [join(appRoot, 'src/runtime/acquisition.ts')] };
+    if (exports && typeof exports === 'object') for (const [key, value] of Object.entries(exports)) {
+      if (typeof value === 'string' && value.startsWith('./')) {
+        const suffix = key === '.' ? '' : key.slice(1);
+        paths['@saturn/core' + suffix] = [join(appRoot, value)];
+        paths['saturn-ide' + suffix] = [join(appRoot, value)];
+      }
+    }
+    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.Preserve, moduleResolution: ts.ModuleResolutionKind.Bundler, strict: true, noUncheckedIndexedAccess: true, skipLibCheck: true, noEmit: true, allowImportingTsExtensions: true, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX, paths, types: ['bun'] };
     const host: ts.LanguageServiceHost = {
       getCompilationSettings: () => options,
       getScriptFileNames: () => workspace.list().filter(p => /\.tsx?$/.test(p)).map(p => workspace.file(p)),
