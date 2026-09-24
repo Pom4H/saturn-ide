@@ -30,6 +30,12 @@ function App() {
   const { session, navigation: nav, documents, catalog, state, connected, error, setError, refresh } = shell;
   const { surface, selected, source: active } = nav;
   const [locale, setLocale] = useState<Locale>(() => localStorage.getItem('saturn.locale') === 'en' ? 'en' : 'ru'), ru = locale === 'ru';
+  const [theme, setTheme] = useState<'system'|'light'|'dark'>(() => {
+    const saved = localStorage.getItem('saturn.theme');
+    return saved === 'light' || saved === 'dark' ? saved : 'system';
+  });
+  const systemDark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
+  const dark = theme === 'dark' || theme === 'system' && systemDark;
   const [now, setNow] = useState(Date.now()), [operator, setOperator] = useState(false);
   const [tree, setTree] = useState(true), [inspect, setInspect] = useState(false), [dock, setDock] = useState(false);
   const [code, setCode] = useState(false), [dimension, setDimension] = useState<'2d' | '3d'>('2d'), [ports, setPorts] = useState(false), [fit, setFit] = useState(0);
@@ -56,6 +62,11 @@ function App() {
   };
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => { document.documentElement.lang = locale; localStorage.setItem('saturn.locale', locale); }, [locale]);
+  useEffect(() => {
+    if (theme === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+    localStorage.setItem('saturn.theme', theme);
+  }, [theme]);
   useEffect(() => { if (location.pathname !== '/hmi') void refreshGit(); }, []);
   useEffect(() => { if (dock) void api<AlarmEvent[]>('alarms').then(setAudit).catch(fail); }, [dock, shell.alarmVersion]);
   useEffect(() => { if (surface === 'targets') void api<Releases>('releases').then(setReleases).catch(fail); }, [surface, state?.revision]);
@@ -164,9 +175,12 @@ function App() {
   ].slice(0, 30);
   return <div className={`shell ${operator ? 'operator-mode' : ''}`}>
     <header className="topbar"><span className="window-dots" aria-hidden="true"><i/><i/><i/></span><button className="brand" onClick={() => chooseSurface('diagram')}><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx={16} cy={16} r={9}/><ellipse cx={16} cy={16} rx={15} ry={5} transform="rotate(-25 16 16)"/></svg><strong>Saturn</strong></button>
-      <button className="project-chip" onClick={() => chooseSurface('targets')}>{text(state.project.label, locale)} · {state.mode==='live'?'PROD':'DESIGN'}⌄</button><span className="sim-badge">{state.mode==='simulation'?'SIM':'LIVE'}</span><span className="spacer"/>
-      <button className="palette-trigger" onClick={() => { setPalette(true); setQuery(''); setChoice(0); }}>⌕ {ru ? 'Найти / выполнить команду…' : 'Find / run command…'} <kbd>⌘ K</kbd></button>
-      <button className="icon-button" aria-label={ru?'Уведомления':'Notifications'} onClick={() => setDock(true)}>♧</button><button className="avatar-button" aria-label="Account">A</button></header>
+      <button className="project-chip" onClick={() => chooseSurface('targets')}>{text(state.project.label, locale)} · {state.mode==='live'?'PROD':'DESIGN'} <ResourceIcon icon="chevron" size={14}/></button><span className="sim-badge">{state.mode==='simulation'?'SIM':'LIVE'}</span><span className="spacer"/>
+      <button className="palette-trigger" onClick={() => { setPalette(true); setQuery(''); setChoice(0); }}><ResourceIcon icon="search" size={15}/><span>{ru ? 'Найти / выполнить команду…' : 'Find / run command…'}</span><kbd>⌘ K</kbd></button>
+      <button className="icon-button" aria-label={ru?'Уведомления':'Notifications'} onClick={() => setDock(true)}><ResourceIcon icon="bell" size={17}/></button>
+      <select className="language-select" aria-label="Language" value={locale} onChange={event=>setLocale(event.target.value as Locale)}><option value="ru">RU</option><option value="en">EN</option></select>
+      <button className="icon-button theme-toggle" aria-label={dark?(ru?'Светлая тема':'Light theme'):(ru?'Тёмная тема':'Dark theme')} title={dark?(ru?'Светлая тема':'Light theme'):(ru?'Тёмная тема':'Dark theme')} onClick={()=>setTheme(dark?'light':'dark')}><ResourceIcon icon={dark?'sun':'moon'} size={17}/></button>
+      <button className="avatar-button" aria-label="Account">A</button></header>
     {error && <div className="message error" role="alert"><span>{error}</span><button onClick={() => setError('')} aria-label="Close">×</button></div>}
     {!!state.problems.length && <div className="problems" role="alert"><strong>{ru ? 'Ошибка проекта или сервиса. Применённая ревизия показана отдельно.' : 'Project or service error. Applied revision is shown separately.'}</strong>{state.problems.map((p, i) => <div key={i}>{p.code} {p.path} {p.message[locale]}</div>)}</div>}
     <div className="shell-body">
