@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, realpathSync, renameSync, writeFileSync, sta
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import type { PositionSource } from "../source-edits";
+import { deviceCalls, numericLiteral } from "./ast";
 
 export interface SourceFile { path: string; source: string; version: string }
 export class HttpError extends Error { constructor(readonly status: number, message: string) { super(message); } }
@@ -54,23 +55,13 @@ export class Workspace {
     const ambiguous = new Set<string>();
     for (const path of this.list().filter(p => /\.tsx?$/.test(p))) {
       const file = this.read(path), tree = ts.createSourceFile(path, file.source, ts.ScriptTarget.Latest, true);
-      const numeric = (n: ts.Expression) => ts.isNumericLiteral(n) || ts.isPrefixUnaryExpression(n) && [ts.SyntaxKind.MinusToken, ts.SyntaxKind.PlusToken].includes(n.operator) && ts.isNumericLiteral(n.operand);
-      const visit = (node: ts.Node) => {
-        if (ts.isCallExpression(node)) {
-          const [first, second] = node.arguments;
-          if (first && ts.isStringLiteral(first) && ids.includes(first.text) && second && ts.isObjectLiteralExpression(second)) {
-            const props = second.properties.filter(ts.isPropertyAssignment);
-            const x = props.find(p => p.name.getText(tree) === "x")?.initializer;
-            const y = props.find(p => p.name.getText(tree) === "y")?.initializer;
-            if (x && y && numeric(x) && numeric(y)) {
-              if (result[first.text]) ambiguous.add(first.text);
-              result[first.text] = { path, version: file.version, x: { from: x.getStart(tree), to: x.end }, y: { from: y.getStart(tree), to: y.end } };
-            }
-          }
+      for(const found of deviceCalls(tree,new Set(ids))){
+        const {id,x,y}=found;
+        if(numericLiteral(x)&&numericLiteral(y)){
+          if(result[id])ambiguous.add(id);
+          result[id]={path,version:file.version,x:{from:x.getStart(tree),to:x.end},y:{from:y.getStart(tree),to:y.end}};
         }
-        ts.forEachChild(node, visit);
-      };
-      visit(tree);
+      }
     }
     for (const id of ambiguous) delete result[id];
     return result;

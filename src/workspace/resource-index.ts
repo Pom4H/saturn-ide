@@ -2,6 +2,7 @@ import ts from 'typescript';
 import type { Project } from '../core';
 const text = (label: Project['label'], locale: 'en' | 'ru') => typeof label === 'string' ? label : label[locale];
 import { resourceUri, type ProjectResource, type ResourceCatalog, type SourceLocation } from '../core/resources';
+import { deviceCalls } from './ast';
 
 /** Read-only source indexing. Importing a copied plugin is never a side effect of listing the tree. */
 export function indexResources(workspace: { list(): string[]; read(path: string): { source: string } }, project: Project, revision: string): ResourceCatalog {
@@ -9,17 +10,18 @@ export function indexResources(workspace: { list(): string[]; read(path: string)
   const ids = new Set([...project.equipment, ...project.reports ?? []].map(item => item.id));
   for (const path of files.filter(p => /\.tsx?$/.test(p))) {
     const file = workspace.read(path), tree = ts.createSourceFile(path, file.source, ts.ScriptTarget.Latest, true);
-    const visit = (node: ts.Node) => {
-      if (ts.isCallExpression(node)) {
-        const first = node.arguments[0];
-        if (first && ts.isStringLiteral(first) && ids.has(first.text)) {
-          const list = locations.get(first.text) ?? [];
-          list.push({ path, from: node.getStart(tree), to: node.end }); locations.set(first.text, list);
-        }
-      }
-      ts.forEachChild(node, visit);
+    const equipmentIds=new Set(project.equipment.map(item=>item.id));
+    for(const found of deviceCalls(tree,equipmentIds)){
+      const list=locations.get(found.id)??[];
+      list.push({path,from:found.call.getStart(tree),to:found.call.end});locations.set(found.id,list);
+    }
+    const reportIds=new Set((project.reports??[]).map(item=>item.id));
+    const visitReport=(node:ts.Node)=>{
+      if(ts.isCallExpression(node)){const first=node.arguments[0];if(first&&ts.isStringLiteral(first)&&reportIds.has(first.text)){
+        const list=locations.get(first.text)??[];list.push({path,from:node.getStart(tree),to:node.end});locations.set(first.text,list);
+      }}ts.forEachChild(node,visitReport);
     };
-    visit(tree);
+    visitReport(tree);
   }
   const sourceOf = (id: string) => { const found = locations.get(id); return found?.length === 1 ? found[0] : undefined; };
   const uri = (kind: ProjectResource['kind'], id: string) => resourceUri(project.id, kind, id);

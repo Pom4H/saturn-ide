@@ -2,6 +2,7 @@ import ts from 'typescript';
 import { ProjectError, type Project } from '../core';
 import type { ProjectResource } from '../core/resources';
 import { impact } from '../semantic';
+import { deviceCalls } from './ast';
 
 export interface RenamePreview {
   kind:'rename-equipment'; from:string; to:string; semanticId:string;
@@ -18,18 +19,10 @@ export function previewEquipmentRename(project:Project,resource:ProjectResource,
   if(!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(nextId)) throw new ProjectError('REFACTOR_ID',{en:`Invalid equipment ID ${nextId}`,ru:`Неверный ID оборудования ${nextId}`});
   const current=resource.entityId,location=resource.source;
   const tree=ts.createSourceFile(location.path,source,ts.ScriptTarget.Latest,true);
-  const matches:ts.StringLiteral[]=[];
   const from=location.from??0,to=location.to??source.length;
-  const visit=(node:ts.Node)=>{
-    if(ts.isCallExpression(node)&&node.getStart(tree)>=from&&node.end<=to){
-      const first=node.arguments[0];
-      if(first&&ts.isStringLiteral(first)&&first.text===current)matches.push(first);
-    }
-    ts.forEachChild(node,visit);
-  };
-  visit(tree);
+  const matches=deviceCalls(tree,new Set([current])).filter(found=>found.call.getStart(tree)>=from&&found.call.end<=to);
   if(matches.length!==1) throw new ProjectError('REFACTOR_AMBIGUOUS',{en:`Expected one AST declaration for ${current}, found ${matches.length}`,ru:`Ожидалось одно AST-объявление ${current}, найдено: ${matches.length}`});
-  const literal=matches[0]!,start=literal.getStart(tree),end=literal.end;
+  const literal=matches[0]!.idLiteral,start=literal.getStart(tree),end=literal.end;
   const updated=source.slice(0,start)+JSON.stringify(nextId)+source.slice(end);
   const semanticId=resource.semanticId??`equipment:${current}`,blast=impact(project,semanticId);
   return {kind:'rename-equipment',from:current,to:nextId,semanticId,source:updated,affected:(blast?.transitive??[]).map(node=>({semanticId:node.semanticId,id:node.id,kind:node.kind}))};

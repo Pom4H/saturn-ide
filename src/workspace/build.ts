@@ -23,7 +23,7 @@ export class Builder {
     const sourceDigest = await digest(canonical(sourceFiles.map(({ path, source }) => ({ path, source }))));
     const lock = join(this.appRoot, 'bun.lock');
     const lockHash = existsSync(lock) ? await digest(readFileSync(lock, 'utf8')) : null;
-    const coreHash = await digest(['core.ts', 'geometry.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
+    const coreHash = await digest(['core.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
     const inputKey = await digest(canonical({ sourceDigest, coreHash, lockHash, bunVersion: Bun.version }));
     this.language.clear(); const problems = this.language.diagnostics();
     if (problems.length) throw new BuildError(problems);
