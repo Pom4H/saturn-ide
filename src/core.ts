@@ -4,8 +4,32 @@ export type Text = string | Readonly<Record<Locale, string>>;
 export const text = (value: Text, locale: Locale): string => typeof value === 'string' ? value : value[locale];
 export type Value = number | boolean | string;
 export type Quality = 'good' | 'stale' | 'bad';
+/** Protocol-neutral origin of a domain signal. Transport addressing is metadata, not signal identity. */
+export type SignalOrigin =
+  | { readonly kind:'hardware'; readonly device:string; readonly channel?:string }
+  | { readonly kind:'protocol'; readonly protocol:string; readonly endpoint:string; readonly address?:string }
+  | { readonly kind:'derived'; readonly dependencies:readonly string[]; readonly expression?:string }
+  | { readonly kind:'aggregate'; readonly dependencies:readonly string[]; readonly windowMs:number; readonly operation:'mean'|'min'|'max'|'integral'|'last' }
+  | { readonly kind:'simulation'; readonly model?:string }
+  | { readonly kind:'replay'; readonly runId?:string }
+  | { readonly kind:'manual'; readonly actor?:string }
+  | { readonly kind:'estimated'; readonly model?:string };
+export interface SignalBinding {
+  readonly protocol:string; readonly endpoint:string; readonly address?:string; readonly codec?:string; readonly pollMs?:number;
+  readonly metadata?:Readonly<Record<string,string|number|boolean>>;
+}
+/** Rich quality is available without breaking the compact runtime quality used on the wire/history. */
+export interface QualityState {
+  readonly validity:'good'|'uncertain'|'bad'; readonly connection:'online'|'offline'; readonly freshness:'fresh'|'stale';
+  readonly substituted?:boolean; readonly simulated?:boolean; readonly overridden?:boolean; readonly reason?:string;
+}
+export const qualityState = (quality:Quality):QualityState => quality==='good'
+  ? {validity:'good',connection:'online',freshness:'fresh'}
+  : quality==='stale' ? {validity:'uncertain',connection:'online',freshness:'stale'}
+  : {validity:'bad',connection:'online',freshness:'fresh'};
 export interface Signal<T extends Value = Value, ID extends string = string, W extends boolean = boolean> {
   readonly id: ID; readonly initial: T; readonly writable?: W; readonly unit?: string;
+  readonly label?:Text; readonly description?:Text; readonly dimension?:string; readonly origin?:SignalOrigin; readonly binding?:SignalBinding;
   readonly staleAfter?: number; readonly min?: T extends number ? number : never; readonly max?: T extends number ? number : never;
 }
 /** @ru Сигнал сохраняет свой ID и тип во всех представлениях проекта. Команда не является показанием.
@@ -14,6 +38,17 @@ export function signal<const I extends string, const W extends boolean = false>(
 export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<boolean,I,W>, 'id'>): Signal<boolean,I,W>;
 export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<string,I,W>, 'id'>): Signal<string,I,W>;
 export function signal(id: string, options: Omit<Signal, 'id'>): Signal { return { ...options, id }; }
+/** Bind transport addressing without changing the domain signal ID/type. */
+export function bind<S extends Signal>(source:S, binding:SignalBinding):S {
+  return { ...source, binding, origin:{kind:'protocol',protocol:binding.protocol,endpoint:binding.endpoint,address:binding.address} } as S;
+}
+/** Built-in binding descriptors. Protocol drivers remain project-owned code. */
+export const protocol = {
+  modbus:(endpoint:string,address:number|string,options:Omit<SignalBinding,'protocol'|'endpoint'|'address'>={}):SignalBinding=>({protocol:'modbus',endpoint,address:String(address),...options}),
+  opcua:(endpoint:string,nodeId:string,options:Omit<SignalBinding,'protocol'|'endpoint'|'address'>={}):SignalBinding=>({protocol:'opcua',endpoint,address:nodeId,...options}),
+  mqtt:(endpoint:string,topic:string,options:Omit<SignalBinding,'protocol'|'endpoint'|'address'>={}):SignalBinding=>({protocol:'mqtt',endpoint,address:topic,...options}),
+  generic:(name:string,endpoint:string,address?:string,options:Omit<SignalBinding,'protocol'|'endpoint'|'address'>={}):SignalBinding=>({protocol:name,endpoint,...(address?{address}:{}),...options}),
+} as const;
 export type SignalValue<S extends Signal> = S extends Signal<infer T> ? T : never;
 export type SignalValues<S extends Record<string, Signal>> = { [K in keyof S]: SignalValue<S[K]> };
 /** @ru Типизированная команда: только writable-сигналы, только их собственный тип значения.
@@ -141,7 +176,11 @@ export function validateProject(p:Project):void {
   }
   if(p.hmi)requireThat(p.hmi.width>0&&p.hmi.height>0&&p.hmi.equipment.every(e=>devices.has(e.id)),'HMI_TARGET','Invalid HMI configuration','Неверная конфигурация HMI');
 }
-export interface Sample<T extends Value=Value> { signal:string; value:T; quality:Quality; at:number }
+export interface Sample<T extends Value=Value> {
+  signal:string; value:T; quality:Quality; at:number;
+  /** Source timestamp may differ from receipt time; both are useful for stale/replay diagnostics. */
+  sourceAt?:number; receivedAt?:number; sequence?:number; state?:QualityState;
+}
 export interface AlarmState {id:string;active:boolean;acknowledged:boolean;at:number}
 export interface Snapshot {samples:Record<string,Sample>;alarms:Record<string,AlarmState>}
 /** @ru Тип показания выводится из переданного сигнала; отсутствие данных не заменяется initial.
