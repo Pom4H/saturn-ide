@@ -23,7 +23,7 @@ export class Builder {
     const sourceDigest = await digest(canonical(sourceFiles.map(({ path, source }) => ({ path, source }))));
     const lock = join(this.appRoot, 'bun.lock');
     const lockHash = existsSync(lock) ? await digest(readFileSync(lock, 'utf8')) : null;
-    const coreHash = await digest(['core.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
+    const coreHash = await digest(['core.ts', 'core/acquisition.ts', 'runtime/acquisition.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
     const inputKey = await digest(canonical({ sourceDigest, coreHash, lockHash, bunVersion: Bun.version }));
     this.language.clear(); const problems = this.language.diagnostics();
     if (problems.length) throw new BuildError(problems);
@@ -31,7 +31,7 @@ export class Builder {
     const entrypoints = [this.workspace.file('project.ts')];
     if (sourceFiles.some(f => f.path === 'server.ts')) entrypoints.push(this.workspace.file('server.ts'));
     const result = await Bun.build({ entrypoints, outdir, naming: '[name].mjs', target: 'bun', plugins: [{ name: 'core-import', setup: build => {
-      build.onResolve({ filter: /^@saturn\/core$/ }, () => ({ path: join(this.appRoot, 'src/core.ts') }));
+      build.onResolve({ filter: /^@saturn\/(core|scada\/acquisition)$/ }, args => ({ path: join(this.appRoot, args.path === '@saturn/core' ? 'src/core.ts' : 'src/runtime/acquisition.ts') }));
     } }] });
     if (!result.success) throw new Error(result.logs.map(l => l.message).join('\n'));
     const project = (await import(pathToFileURL(join(outdir, 'project.mjs')).href)).default as Project;

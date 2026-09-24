@@ -9,7 +9,7 @@ export class Language {
   private revision = 0;
   private service: ts.LanguageService;
   constructor(readonly workspace: Workspace, readonly appRoot: string) {
-    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.Preserve, moduleResolution: ts.ModuleResolutionKind.Bundler, strict: true, noUncheckedIndexedAccess: true, skipLibCheck: true, noEmit: true, allowImportingTsExtensions: true, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX, paths: { '@saturn/core': [join(appRoot, 'src/core.ts')] }, types: ['bun'] };
+    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.Preserve, moduleResolution: ts.ModuleResolutionKind.Bundler, strict: true, noUncheckedIndexedAccess: true, skipLibCheck: true, noEmit: true, allowImportingTsExtensions: true, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX, paths: { '@saturn/core': [join(appRoot, 'src/core.ts')], '@saturn/scada/acquisition': [join(appRoot, 'src/runtime/acquisition.ts')] }, types: ['bun'] };
     const host: ts.LanguageServiceHost = {
       getCompilationSettings: () => options,
       getScriptFileNames: () => workspace.list().filter(p => /\.tsx?$/.test(p)).map(p => workspace.file(p)),

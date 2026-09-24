@@ -5,7 +5,7 @@
     "strict": true, "noUncheckedIndexedAccess": true, "noEmit": true,
     "allowImportingTsExtensions": true, "esModuleInterop": true,
     "skipLibCheck": true, "types": ["bun"],
-    "paths": { "@saturn/core": ["./src/core.ts"] }
+    "paths": { "@saturn/core": ["./src/core.ts"], "@saturn/scada/acquisition": ["./src/runtime/acquisition.ts"] }
   },
   "include": ["src", "project", "scripts", "tests"]
 }
