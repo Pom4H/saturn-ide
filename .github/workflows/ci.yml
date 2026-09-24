@@ -1,7 +1,7 @@
 name: IDE architecture and integration checks
 on:
   push:
-    branches: [main, 'codex/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
