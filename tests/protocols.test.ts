@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { DataValue } from 'node-opcua';
 import { project, signal, type Observation, type ProtocolSource, type Signal } from '../src/core';
 import { acquire } from '../src/runtime/acquisition';
 import { modbusTcp, modbusRtu, modbusAddress, decodeRegisters, encodeRegisters, planModbus } from '../project/plugins/protocols/modbus';
@@ -132,6 +133,8 @@ test('MQTT parsing keeps retained stale, rejects malformed values and preserves 
 test('real MQTT broker: retained state, subscriptions, commands, malformed payload and reconnect', async () => {
   const { default: Aedes } = await import('aedes'); const { connectAsync } = await import('mqtt');
   const broker = new Aedes(), server = createServer(broker.handle), sockets = new Set<Socket>();
+  let disconnectSubscriber: (() => void) | undefined;
+  broker.on('client', (client: { id: string; close: () => void }) => { if (client.id === 'saturn-protocol-test') disconnectSubscriber = () => client.close(); });
   server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
   server.listen(0, '127.0.0.1'); await once(server, 'listening'); const a = server.address(); if (!a || typeof a === 'string') throw new Error('No port');
   const url = `mqtt://127.0.0.1:${a.port}`, publisher = await connectAsync(url, { reconnectPeriod: 0 });
@@ -147,7 +150,7 @@ test('real MQTT broker: retained state, subscriptions, commands, malformed paylo
     expect(r.received.some(s => s.signal === 'run' && s.value === true)).toBe(false);
     await publisher.publishAsync('rpm', '{broken', { qos: 1 }); await until(() => r.received.some(s => s.signal === 'rpm' && s.quality === 'bad'));
     const attempts = r.driver.status()[0]!.attempts;
-    broker.clients['saturn-protocol-test']!.close();
+    if (!disconnectSubscriber) throw new Error('Missing broker-side test subscriber'); disconnectSubscriber();
     await until(() => r.driver.status()[0]!.attempts > attempts && r.received.filter(s => s.value === 100 && s.quality === 'stale').length >= 2);
     expect(commands).toEqual(['true']);
   } catch (error) { console.error('MQTT status', running?.driver.status()); throw error; }
@@ -169,7 +172,7 @@ test('real OPC UA server: batched values, source timestamps, unknown nodes, type
     await server.initialize(); const ns = server.engine.addressSpace!.getOwnNamespace(); let value = 12.5;
     ns.addVariable({ organizedBy: server.engine.addressSpace!.rootFolder.objects, nodeId: 's=temperature', browseName: 'Temperature', dataType: 'Double',
       minimumSamplingInterval: 0, value: { timestamped_get: () => new sdk.DataValue({ value: new sdk.Variant({ dataType: sdk.DataType.Double, value }), sourceTimestamp: new Date(1700000000000), statusCode: sdk.StatusCodes.Good }),
-        timestamped_set: async data => { value = Number(data.value.value); return sdk.StatusCodes.Good; } } });
+        timestamped_set: async (data: DataValue) => { value = Number(data.value.value); return sdk.StatusCodes.Good; } } });
     await server.start();
     const source = opcua('ua', { endpoint: server.getEndpointUrl(), pkiDir: join(root, 'client'),
       security: { mode: 'SignAndEncrypt', serverCertificate: () => server.getCertificate() } }, { ...options, timeoutMs: 20000 });
