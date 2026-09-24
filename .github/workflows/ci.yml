@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -49,21 +49,6 @@ jobs:
 
       - name: Chromium
         run: bunx playwright install --with-deps chromium
-
-      - name: Capture repository screenshots
-        run: bun scripts/screenshots.ts
-
-      - name: Store screenshots in Git
-        run: |
-          git add docs/screenshots
-          if git diff --cached --quiet; then
-            echo "Screenshots unchanged"
-          else
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git commit -m 'docs: refresh Saturn screenshots'
-            git push origin HEAD:main
-          fi
 
       - name: Browser round trip
         run: bun run test:browser
