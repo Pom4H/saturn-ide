@@ -196,3 +196,18 @@ Shell владеет навигацией, открытыми буферами �
 Не все эти функции уже перенесены. [Матрица](capabilities.md) связывает их со старым кодом,
 владельцем в новой структуре и проверкой. Готовность новой архитектуры означает закрытие этих
 проверок, а не только зелёный typecheck или меньшее число файлов.
+
+
+## Vendor device classes
+
+Project-owned equipment extends the model through `deviceClass()`. A class owns typed ports and
+declarative Diagram/HMI/Firmware/Emulator capabilities; instances remain ordinary Project equipment.
+There is no global plugin registry or activation lifecycle and the IDE must not branch on vendor IDs.
+
+`autoHmi(controller)` stores intent only. `project()` derives the HMI equipment set from physical
+topology, so connectivity is not authored twice. Firmware remains source-owned and target-defined:
+C23, C/C++, Rust, Zig or another language are valid when the target supplies the corresponding toolchain.
+
+The first reference kit is `project/plugins/saturn-plc500`: the real Saturn PLC SVG, pinned
+Firmverse compiler/runtime WASM and the 320×240 React HMI projection are carried with provenance
+and licenses from the previous Saturn implementation.

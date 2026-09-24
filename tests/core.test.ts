@@ -25,3 +25,12 @@ if(false){
   // @ts-expect-error boolean anonymous signal cannot satisfy measured shaft speed.
   pump('invalid-anon',{label:'Invalid',x:0,y:0,rpm:signal({initial:false})});
 }
+
+
+test('vendor PLC is a project-owned device class and auto HMI follows topology',()=>{
+  const controller=demo.equipment.find(e=>e.id==='PLC-01')!;
+  expect(controller.kind).toBe('device:saturn.plc500');
+  expect(demo.hmi?.source).toBe('topology');
+  expect(demo.hmi?.controller).toBe('PLC-01');
+  expect(demo.hmi?.equipment.map(e=>e.id).sort()).toEqual(['P-01','TK-01','V-01']);
+});

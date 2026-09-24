@@ -108,7 +108,7 @@ interface EquipmentSignals {
   valve: { opening: Signal<number> };
   plc: { online: Signal<boolean> };
 }
-export type Equipment<K extends Kind = Kind, I extends string = string> = {
+export type BuiltinEquipment<K extends Kind = Kind, I extends string = string> = {
   [P in K]: Position & EquipmentSignals[P] & { id: I; kind: P; ports: Ports<P,I> }
 }[K];
 type Options<K extends Kind> = Position & EquipmentSignalInputs[K];
@@ -133,6 +133,28 @@ export interface Terminal<M extends Medium=Medium,F extends string=string,R exte
 export interface Endpoint<M extends Medium=Medium,F extends string=string,R extends Role=Role,I extends string=string> {
   readonly device:I; readonly port:string; readonly terminal:Terminal<M,F,R>;
 }
+export type VendorDeviceKind<C extends string=string> = `device:${C}`;
+export interface DiagramCapability {readonly width:number;readonly height:number;readonly svg?:string}
+export interface HmiCapability {readonly target:string;readonly width:number;readonly height:number;readonly auto?:'topology'}
+export interface FirmwareCapability {readonly target:string;readonly languages:readonly string[];readonly sourceDir?:string}
+export interface EmulatorCapability {readonly runtime:string;readonly abi?:string}
+export interface DeviceCapabilities {readonly diagram?:DiagramCapability;readonly hmi?:HmiCapability;readonly firmware?:FirmwareCapability;readonly emulator?:EmulatorCapability}
+type DevicePorts<P extends Readonly<Record<string,Terminal>>,I extends string> = {
+  readonly [K in keyof P]:Endpoint<P[K]['medium'],P[K]['family'],P[K]['role'],I>&{readonly port:Extract<K,string>;readonly terminal:P[K]}
+};
+export type VendorEquipment<C extends string=string,I extends string=string,O extends Position=Position,P extends Readonly<Record<string,Terminal>>=Readonly<Record<string,Terminal>>> =
+  Materialized<O,I>&Position&{readonly id:I;readonly kind:VendorDeviceKind<C>;readonly classId:C;readonly ports:DevicePorts<P,I>;readonly capabilities:DeviceCapabilities};
+export type Equipment = BuiltinEquipment|VendorEquipment;
+export interface DeviceClassDefinition<C extends string,P extends Readonly<Record<string,Terminal>>> {readonly id:C;readonly ports:P;readonly capabilities?:DeviceCapabilities}
+/** @ru Vendor-класс оборудования — project-owned TypeScript factory без глобальной регистрации.
+ * @en A vendor device class is a project-owned TypeScript factory with no global plugin registry. */
+export function deviceClass<const C extends string,const P extends Readonly<Record<string,Terminal>>>(definition:DeviceClassDefinition<C,P>) {
+  return function<const I extends string,const O extends Position>(id:I,options:O):VendorEquipment<C,I,O,P> {
+    const ports=Object.fromEntries(Object.entries(definition.ports).map(([port,terminal])=>[port,{device:id,port,terminal}])) as DevicePorts<P,I>;
+    return {...ownSignals(id,options),id,kind:`device:${definition.id}`,classId:definition.id,ports,capabilities:definition.capabilities??{}} as VendorEquipment<C,I,O,P>;
+  };
+}
+export function isVendorEquipment(e:Equipment):e is VendorEquipment {return e.kind.startsWith('device:');}
 interface Connection { id:string; from:Endpoint; to:Endpoint; via?:readonly {x:number;y:number}[] }
 export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number> }
 export interface Cable extends Connection { kind:'cable'; signal?:Signal }
@@ -167,7 +189,7 @@ export interface Project {
   id:string; label:Text; signals:Record<string,Signal>; equipment:Equipment[]; pipes:Pipe[]; cables?:Cable[];
   alarms:Alarm[]; hmi?:Hmi; reports?:Report[];
 }
-export type ProjectDefinition = Omit<Project,'signals'> & {signals?:Record<string,Signal>};
+export type ProjectDefinition = Omit<Project,'signals'|'hmi'> & {signals?:Record<string,Signal>;hmi?:Hmi|AutoHmi};
 /** @ru Производный индекс всех сигналов. Он не является вторым authored-файлом и не требует ручных строковых путей.
  * @en Derived index of every signal. It is not a second authored file and requires no manually duplicated string paths. */
 export function collectSignals(definition:ProjectDefinition):Record<string,Signal> {
@@ -188,9 +210,10 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
 /** @ru Единая модель. Сигналы выводятся из владельцев и ссылок; явный registry — только совместимый escape hatch.
  * @en One model. Signals are derived from owners/references; an explicit registry is only a compatibility escape hatch. */
 type ProjectSignals<P extends ProjectDefinition> = P extends {signals:infer S extends Record<string,Signal>} ? S : Record<string,Signal>;
-export function project<const P extends ProjectDefinition>(definition:P):Omit<P,'signals'> & {signals:ProjectSignals<P>} {
-  const model={...definition,signals:collectSignals(definition)} as unknown as Omit<P,'signals'> & {signals:ProjectSignals<P>};
-  validateProject(model);return model;
+export function project<const P extends ProjectDefinition>(definition:P):Omit<P,'signals'|'hmi'> & {signals:ProjectSignals<P>;hmi?:Hmi} {
+  const hmi=definition.hmi&&'mode' in definition.hmi&&definition.hmi.mode==='topology'?resolveAutoHmi(definition,definition.hmi):definition.hmi;
+  const model={...definition,hmi,signals:collectSignals(definition)} as unknown as Omit<P,'signals'|'hmi'> & {signals:ProjectSignals<P>;hmi?:Hmi};
+  validateProject(model as Project);return model;
 }
 export interface Problem { code:string; message:Record<Locale,string>; path?:string; from?:number; to?:number }
 export class ProjectError extends Error {
@@ -215,7 +238,11 @@ export function validateProject(p:Project):void {
   const devices=new Map(p.equipment.map(e=>[e.id,e]));
   for(const e of p.equipment){
     requireThat([e.x,e.y,e.z??0].every(v=>Number.isFinite(v)&&Math.abs(v)<=15000),'POSITION',`Invalid position ${e.id}`,`Неверная позиция ${e.id}`);
-    if(e.kind==='pump'){ref(e.rpm,'number');if(e.run)ref(e.run,'boolean');}else if(e.kind==='tank')ref(e.level,'number');else if(e.kind==='valve')ref(e.opening,'number');else if(e.kind==='plc')ref(e.online,'boolean');else requireThat(false,'EQUIPMENT_KIND','Unknown equipment kind','Неизвестный вид оборудования');
+    if(isVendorEquipment(e)){
+      requireThat(/^[-a-zA-Z0-9_.]+$/.test(e.classId),'EQUIPMENT_CLASS',`Invalid equipment class ${e.classId}`,`Неверный класс оборудования ${e.classId}`);
+      for(const value of Object.values(e))if(signalLike(value)&&'id' in value)ref(value as Signal);
+      const d=e.capabilities.diagram;if(d)requireThat(Number.isFinite(d.width)&&d.width>0&&Number.isFinite(d.height)&&d.height>0,'EQUIPMENT_VIEW','Invalid vendor diagram bounds','Неверные размеры vendor-схемы');
+    }else if(e.kind==='pump'){ref(e.rpm,'number');if(e.run)ref(e.run,'boolean');}else if(e.kind==='tank')ref(e.level,'number');else if(e.kind==='valve')ref(e.opening,'number');else if(e.kind==='plc')ref(e.online,'boolean');
   }
   const degree=new Map<string,number>();
   for(const edge of [...p.pipes,...p.cables??[]]) {
@@ -252,5 +279,19 @@ export interface Driver {
   start(context:{project:Project;snapshot:Snapshot;publish:(values:Record<string,Value>)=>Promise<void>}):Promise<()=>void>;
   write?:(signal:string,value:Value)=>Promise<void>;
 }
-export interface Hmi {width:number;height:number;equipment:readonly Equipment[]}
+export interface Hmi {width:number;height:number;equipment:readonly Equipment[];source?:'explicit'|'topology';controller?:string}
+export interface AutoHmi {readonly mode:'topology';readonly controller:string;readonly width:number;readonly height:number}
+/** @ru HMI выводится из физической топологии контроллера, а не поддерживает второй список вручную.
+ * @en HMI is derived from controller topology instead of maintaining a second authored equipment list. */
+export function autoHmi(controller:Equipment,options:{width?:number;height?:number}={}):AutoHmi {
+  const profile=isVendorEquipment(controller)?controller.capabilities.hmi:undefined;
+  return {mode:'topology',controller:controller.id,width:options.width??profile?.width??320,height:options.height??profile?.height??240};
+}
+function resolveAutoHmi(definition:ProjectDefinition,intent:AutoHmi):Hmi {
+  requireThat(definition.equipment.some(e=>e.id===intent.controller),'HMI_CONTROLLER',`Unknown HMI controller ${intent.controller}`,`Неизвестный HMI-контроллер ${intent.controller}`);
+  const reached=new Set([intent.controller]),edges=[...definition.pipes,...definition.cables??[]];
+  let changed=true;while(changed){changed=false;for(const edge of edges){if(reached.has(edge.from.device)&&!reached.has(edge.to.device)){reached.add(edge.to.device);changed=true;}if(reached.has(edge.to.device)&&!reached.has(edge.from.device)){reached.add(edge.from.device);changed=true;}}}
+  return {width:intent.width,height:intent.height,controller:intent.controller,source:'topology',equipment:definition.equipment.filter(e=>e.id!==intent.controller&&reached.has(e.id))};
+}
 export interface FirmwareContext {outDir:string;run:(argv:string[])=>Promise<void>}
+export interface FirmwareTarget<L extends string=string> {readonly id:string;readonly languages:readonly L[];build(context:FirmwareContext):Promise<void>}

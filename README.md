@@ -115,3 +115,11 @@ OpenTUI testRender проверяет реальный renderer с тестов�
 настоящий bun dev и сохраняет только реальные кадры. PostgreSQL-тесты включаются через
 `TEST_POSTGRES_URL`. Неисполненный тест не считается успешным. Исторический MVP сохранён в
 [docs/mvp-before-foundation.md](docs/mvp-before-foundation.md); его заявления не относятся к этому проходу.
+
+
+## Vendor equipment
+
+`deviceClass()` adds vendor equipment through normal TypeScript imports. The reference
+`project/plugins/saturn-plc500` kit carries the Saturn PLC SVG, Firmverse WASM compiler/runtime and
+320×240 React HMI projection. `autoHmi(controller)` derives the HMI equipment set from project
+topology. Firmware language is a target/toolchain concern, not a TypeScript restriction.

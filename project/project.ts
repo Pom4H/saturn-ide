@@ -1,4 +1,4 @@
-import { alarm, cable, pipe, project } from '@saturn/core';
+import { alarm, autoHmi, cable, pipe, project } from '@saturn/core';
 import reservoir from './equipment/TK-01.device';
 import booster from './equipment/P-01.device';
 import outlet from './equipment/V-01.device';
@@ -10,7 +10,7 @@ export default project({
   id: 'pumping-station',
   label: { en: 'Pumping station', ru: 'Насосная станция' },
   equipment: [reservoir, booster, outlet, controller],
-  hmi: { width: 320, height: 240, equipment: [reservoir, booster, outlet] },
+  hmi: autoHmi(controller),
   pipes: [
     pipe('suction', { from: reservoir.ports.outlet, to: booster.ports.inlet, flow: booster.flow }),
     pipe('discharge', { from: booster.ports.outlet, to: outlet.ports.inlet, flow: booster.flow }),

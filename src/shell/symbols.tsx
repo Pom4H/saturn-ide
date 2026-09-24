@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from "react";
-import { type Equipment, type Locale, type Snapshot } from "../core";
+import { isVendorEquipment, type Equipment, type Locale, type Snapshot } from "../core";
 
 // Anatomy and native coordinates ported from Pom4H/saturn, src/equipment-svg.ts
 // at 90da21a1885a72022b7a2d1b45cb36993bee1597. No per-symbol scaling or connector adapters.
@@ -11,6 +11,7 @@ function Bolt({ x, y, r = 2 }: { x: number; y: number; r?: number }) { return <c
 function Label({ x, y, children, size = 12 }: { x: number; y: number; children: ReactNode; size?: number }) { return <text x={x} y={y} textAnchor="middle" fontSize={size} fontFamily="ui-monospace, monospace" fontWeight={600} fill="#17485c">{children}</text>; }
 export function Symbol({ equipment: e, snapshot, locale }: { equipment: Equipment; snapshot: Snapshot; locale: Locale }) {
   const clip = useId().replace(/:/g, "");
+  if (isVendorEquipment(e)) return <g data-anatomy="vendor-device"/>;
   const number = (id: string) => { const s = snapshot.samples[id]; return s?.quality === "good" && typeof s.value === "number" ? s.value : null; };
   if (e.kind === "tank") {
     const level = number(e.level.id), y = 195 - Math.max(0, Math.min(100, level ?? 0)) * 1.44;
