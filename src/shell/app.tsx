@@ -175,7 +175,7 @@ function App() {
   const controlFor = (e?: Equipment) => e ? equipmentSignals(e).find(signal=>signal.writable) : undefined;
   const control = controlFor(equipment);
   const sourcePanel = <section className="code-pane"><div className="pane-heading"><code title={active}>{active}</code><button disabled={!file || file.draft === file.source || file.saving || dragging} onClick={() => void save()}>{file?.saving ? '…' : ru ? 'Сохранить' : 'Save'}</button></div>
-    {file ? <Editor path={active} source={file.draft} locale={locale} dragging={dragging} change={draft => session.documents.edit(active, draft)} save={() => void save()}/> : <p>{ru ? 'Откройте исходник объекта' : 'Open an object source'}</p>}</section>;
+    {file ? <Editor path={active} source={file.draft} locale={locale} dragging={dragging} snapshot={snapshot} signals={state.project.signals} now={now} change={draft => session.documents.edit(active, draft)} save={() => void save()}/> : <p>{ru ? 'Откройте исходник объекта' : 'Open an object source'}</p>}</section>;
   if (location.pathname === '/hmi') {
     const configured = state.project.hmi?.equipment.map(e => e.id), devices = state.project.equipment.filter(e => !configured || configured.includes(e.id));
     const index = Math.max(0, devices.findIndex(e => e.id === selected)), shown = devices[index], cmd = controlFor(shown);
