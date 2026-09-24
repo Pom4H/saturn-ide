@@ -8,7 +8,7 @@ import { linter } from '@codemirror/lint';
 import { indentWithTab, isolateHistory } from '@codemirror/commands';
 import { api } from './api';
 import type { Locale, Problem, Signal, Snapshot } from '../core';
-interface SignalHint {signal:string;at:number}
+interface SignalHint {signal:string;semantic?:string;unit?:string;at:number}
 interface LiveDecoration {at:number;text:string;quality:string}
 const setLiveDecorations=StateEffect.define<readonly LiveDecoration[]>();
 class LiveValueWidget extends WidgetType {
@@ -70,11 +70,11 @@ export function Editor(props:Props){
   },[props.source,props.dragging]);
   useEffect(()=>{
     const view=editor.current;if(!view)return;const source=props.source;let cancelled=false;
-    void api<SignalHint[]>('language',{operation:'signal-hints',path:props.path,source,position:0,locale:props.locale}).then(next=>{if(cancelled||editor.current?.state.doc.toString()!==source)return;hints.current=next;const live=next.map(hint=>{const definition=props.signals[hint.signal],sample=props.snapshot.samples[hint.signal];const value=sample?.value;const formatted=typeof value==='number'?new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(value):value===undefined?'—':String(value);const unit=definition?.unit?` ${definition.unit}`:'';const quality=sample?.quality??'stale';const age=sample?.at?Math.max(0,props.now-sample.at):0;const ageText=sample?.at?(age<1000?`${age} ms`:`${(age/1000).toFixed(age<10000?1:0)} s`):'no data';return {at:hint.at,text:`${formatted}${unit} · ${quality.toUpperCase()} · ${ageText}`,quality};});view.dispatch({effects:setLiveDecorations.of(live)});}).catch(()=>{});
+    void api<SignalHint[]>('language',{operation:'signal-hints',path:props.path,source,position:0,locale:props.locale}).then(next=>{if(cancelled||editor.current?.state.doc.toString()!==source)return;hints.current=next;const live=next.map(hint=>{const definition=props.signals[hint.signal],sample=props.snapshot.samples[hint.signal];const value=sample?.value;const formatted=typeof value==='number'?new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(value):value===undefined?'—':String(value);const unit=(hint.unit??definition?.unit)?` ${hint.unit??definition?.unit}`:'';const quality=sample?.quality??'stale';const age=sample?.at?Math.max(0,props.now-sample.at):0;const ageText=sample?.at?(age<1000?`${age} ms`:`${(age/1000).toFixed(age<10000?1:0)} s`):'no data';return {at:hint.at,text:`${formatted}${unit} · ${quality.toUpperCase()} · ${ageText}`,quality};});view.dispatch({effects:setLiveDecorations.of(live)});}).catch(()=>{});
     return()=>{cancelled=true;};
   },[props.path,props.source]);
   useEffect(()=>{
-    const view=editor.current;if(!view||!hints.current.length)return;const live=hints.current.map(hint=>{const definition=props.signals[hint.signal],sample=props.snapshot.samples[hint.signal];const value=sample?.value;const formatted=typeof value==='number'?new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(value):value===undefined?'—':String(value);const unit=definition?.unit?` ${definition.unit}`:'';const quality=sample?.quality??'stale';const age=sample?.at?Math.max(0,props.now-sample.at):0;const ageText=sample?.at?(age<1000?`${age} ms`:`${(age/1000).toFixed(age<10000?1:0)} s`):'no data';return {at:hint.at,text:`${formatted}${unit} · ${quality.toUpperCase()} · ${ageText}`,quality};});view.dispatch({effects:setLiveDecorations.of(live)});
+    const view=editor.current;if(!view||!hints.current.length)return;const live=hints.current.map(hint=>{const definition=props.signals[hint.signal],sample=props.snapshot.samples[hint.signal];const value=sample?.value;const formatted=typeof value==='number'?new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(value):value===undefined?'—':String(value);const unit=(hint.unit??definition?.unit)?` ${hint.unit??definition?.unit}`:'';const quality=sample?.quality??'stale';const age=sample?.at?Math.max(0,props.now-sample.at):0;const ageText=sample?.at?(age<1000?`${age} ms`:`${(age/1000).toFixed(age<10000?1:0)} s`):'no data';return {at:hint.at,text:`${formatted}${unit} · ${quality.toUpperCase()} · ${ageText}`,quality};});view.dispatch({effects:setLiveDecorations.of(live)});
   },[props.snapshot,props.signals,props.now]);
   return <div ref={host} className="editor" aria-label="TypeScript editor"/>;
 }
