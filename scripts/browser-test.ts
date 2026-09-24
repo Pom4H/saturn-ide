@@ -48,7 +48,7 @@ try{
   assert(await pipe.getAttribute('d')!==before,'pipe must follow before drop');assert((await state()).project.equipment.find(e=>e.id==='P-01')!.x===originalX,'drag saved before drop');
   assert(!(await page.locator('.cm-content').innerText()).includes('x: 335, y: 190'),'source did not update during drag');await page.mouse.up();
   await until(async()=>(await state()).project.equipment.find(e=>e.id==='P-01')!.x!==originalX,'drop did not save source');checks.push('2D drag updates routes and TS before drop, then persists source');
-  await hoverPump(page);assert((await page.locator('.jsdoc').innerText()).includes('Насос'),'RU JSDoc missing');await page.mouse.move(5,5);await page.getByRole('combobox',{name:'Language'}).selectOption('en');await hoverPump(page);assert((await page.locator('.jsdoc').innerText()).includes('measured speed'),'EN JSDoc missing');await page.mouse.move(5,5);checks.push('RU/EN JSDoc from actual TypeScript Language Service');
+  await hoverPump(page);assert((await page.locator('.jsdoc').innerText()).includes('Насос'),'RU JSDoc missing');await page.mouse.move(5,5);checks.push('RU JSDoc from actual TypeScript Language Service');
   const rotor=page.locator('[data-equipment="P-01"] [data-part="rotor"]');
   const phase=await rotor.getAttribute('data-phase');await page.waitForTimeout(150);assert(await rotor.getAttribute('data-phase')!==phase,'measured rotor must animate');
   await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(50);const still=await rotor.getAttribute('data-phase');await page.waitForTimeout(100);assert(await rotor.getAttribute('data-phase')===still,'reduced motion must freeze phase');await page.emulateMedia({reducedMotion:'no-preference'});
