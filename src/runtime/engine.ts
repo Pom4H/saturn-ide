@@ -8,19 +8,25 @@ export class Runtime {
   private clock = 0;
   constructor(public project: Project, readonly store: Store, readonly events: Events, readonly notify: (id: string) => void) {}
   async init() {
-    for (const s of await this.store.latest()) this.snapshot.samples[s.signal] = { ...s, quality: "stale" };
+    for (const definition of Object.values(this.project.signals)) await this.store.bindSemantic(definition.id,definition.semanticId??definition.id);
+    const byIdentity=new Map(Object.values(this.project.signals).map(definition=>[definition.semanticId??definition.id,definition]));
+    for (const sample of await this.store.latest()) {
+      const definition=byIdentity.get(sample.semantic??sample.signal); if(!definition)continue;
+      this.snapshot.samples[definition.id]={...sample,signal:definition.id,semantic:definition.semanticId??definition.id,quality:"stale"};
+    }
     for (const a of await this.store.alarmStates()) this.snapshot.alarms[a.id] = a;
     this.clock = Math.max(0, ...Object.values(this.snapshot.samples).map(s => s.at), ...Object.values(this.snapshot.alarms).map(a => a.at));
     this.apply(this.project);
   }
   apply(project: Project) {
+    const oldByIdentity=new Map(Object.values(this.snapshot.samples).map(sample=>[sample.semantic??sample.signal,sample]));
     this.project = project;
     const next: Snapshot = { samples: {}, alarms: {} };
     for (const s of Object.values(project.signals)) {
-      const old = this.snapshot.samples[s.id];
+      const identity=s.semanticId??s.id,old=oldByIdentity.get(identity)??this.snapshot.samples[s.id];
       let valid = false;
       try { if (old) { validateValue(s, old.value); valid = true; } } catch { /* definition changed */ }
-      next.samples[s.id] = valid && old ? old : { signal: s.id, value: s.initial, quality: "stale", at: 0 };
+      next.samples[s.id] = valid && old ? { ...old, signal:s.id, semantic:identity } : { signal: s.id, semantic:identity, value: s.initial, quality: "stale", at: 0 };
     }
     for (const a of project.alarms) if (this.snapshot.alarms[a.id]) next.alarms[a.id] = this.snapshot.alarms[a.id]!;
     this.snapshot = next;
@@ -38,7 +44,7 @@ export class Runtime {
         const definition = definitions.get(id);
         if (!definition) throw new Error(`Unknown signal: ${id}`);
         validateValue(definition, value);
-        return { signal: id, value, quality: "good", at };
+        return { signal: id, semantic:definition.semanticId??definition.id, value, quality: "good", at };
       });
       const nextSamples = { ...this.snapshot.samples };
       for (const s of samples) nextSamples[s.signal] = s;
