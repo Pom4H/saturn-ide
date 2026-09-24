@@ -277,3 +277,17 @@ Standalone runtime deployment is described in [runtime-deployment.md](runtime-de
 Industrial protocol kits are owned by `saturn-plugins/protocols`; the IDE tests
 use that repository as an external fixture. `src/host/runtime.ts` composes only
 runtime and core modules and accepts checked artifacts through role-scoped APIs.
+
+### SaaS access and scenario orchestration (2026-09-24)
+
+SaaS authenticates one GitHub identity for engineering and operator views. Project-scoped
+capabilities are checked by its server, including source, CI, runtime reads, commands and
+alarm acknowledgements. The runtime accepts only gateway service credentials; each control
+request carries expectedApplied and shares the apply queue, so a build transition cannot
+race a command accepted for another build. Shell visibility is never the security boundary.
+GitHub remains repository authority: a Saturn policy cannot remove direct GitHub access.
+
+Workflow SDK is optional project-owned scenario orchestration, outside core and runtime.
+Scenario helpers take existing typed Signal references. A durable workflow coordinates
+simulation stimuli and measured assertions; Firmverse owns the scan cycle in a separate
+process. Neither saving source nor retrying a workflow deploys or flashes a PLC.

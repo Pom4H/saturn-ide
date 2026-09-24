@@ -402,3 +402,15 @@ map. Repeated `bun run check` and all 125 local tests passed (same 3 skips).
 `bun scripts/browser-test.ts` passed the actual external project, Firmverse WASM
 screen/buttons, source hints, device drag, commands/alarms/reports/Git, WebGL and
 responsive HMI checks. The fixture excludes generated .saturn deployment output.
+
+## 2026-09-24 — operator gateway prerequisites
+
+Runtime control requests now require expectedApplied, checked inside the same serialized
+queue as publish/apply. The standalone-host integration test covers rejection of a stale
+identity and acceptance of the current one. Shared Scene/Control projections are exported
+through `saturn-ide/surfaces`; this adds no alternative project model or runtime authority.
+Verification results are recorded after execution below.
+
+Executed on macOS arm64 / Bun 1.4.2: `bun run check` passed both TypeScript compilers
+and the 76-module architecture guard; `bun test tests/runtime-host.test.ts` passed
+1 test / 20 assertions, including command/apply revision fencing.

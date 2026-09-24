@@ -91,13 +91,14 @@ export async function createRuntimeHost(options: RuntimeHostOptions) {
           let body: unknown; try { body = await request.json(); } catch { throw new RequestError(400, 'Invalid JSON'); }
           if (!body || typeof body !== 'object' || Array.isArray(body)) throw new RequestError(400, 'Expected object');
           const b = body as Record<string, unknown>;
-          if (control) {
+          if (control) return await serial(async () => {
+            if (expected(b, 'expectedApplied') !== manager.applied) throw new RequestError(409, 'Applied build changed');
             if (manager.phase !== 'running' || !(manager.installation instanceof ProjectInstallation)) throw new RequestError(409, 'Runtime is not accepting commands');
             const id = string(b, 'id');
             if (path === '/api/command') await manager.installation.command(id, b.value);
             else await runtime.acknowledge(id);
             return json({ ok: true });
-          }
+          });
           return await serial(async () => {
             if (path === '/api/builds') {
               const artifact = await validate(b.artifact); await revisions.put(artifact);

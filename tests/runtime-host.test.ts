@@ -54,7 +54,8 @@ test('portable release runs outside authoring, isolates credentials, CAS applies
     const before = await until(reading, n => n > 2);
     blocker = Bun.spawn([process.execPath, '-e', 'while(true){}'], { stdout: 'ignore', stderr: 'ignore' });
     await until(reading, n => n > before + 3); blocker.kill(); await blocker.exited; blocker = undefined;
-    expect((await call('/api/command', tokens.control, { id: 'n', value: 1000 })).status).toBe(200);
+    expect((await call('/api/command', tokens.control, { id: 'n', value: 1000, expectedApplied: null })).status).toBe(409);
+    expect((await call('/api/command', tokens.control, { id: 'n', value: 1000, expectedApplied: artifact.hash })).status).toBe(200);
     await until(reading, n => n > 1000);
     expect((await call('/api/apply', tokens.deploy, { hash: artifact.hash, expectedApplied: null })).status).toBe(409);
     const history = await (await call('/api/history?signal=n')).json(); expect(history.length).toBeGreaterThan(2);

@@ -62,6 +62,7 @@
     "./acquisition": "./src/runtime/acquisition.ts",
     "./runtime-host": "./src/host/runtime.ts",
     "./release/build": "./scripts/build-release.ts",
-    "./release/deploy": "./scripts/deploy-release.ts"
+    "./release/deploy": "./scripts/deploy-release.ts",
+    "./surfaces": "./src/shell/surfaces.ts"
   }
 }
