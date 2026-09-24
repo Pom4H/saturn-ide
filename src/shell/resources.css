@@ -241,3 +241,15 @@ html,body,#root{background:var(--cx-bg);color:var(--cx-text)}
   .palette-trigger span,.palette-trigger kbd{display:none!important}
   .surface-toolbar{height:44px!important;min-height:44px!important}.equipment-strip{display:none!important}
 }
+
+/* Bridge explicit appearance to the existing Saturn semantic tokens. */
+html[data-theme=light]{
+  --bg:#f7f7f8;--panel:#fff;--editor:#fff;--raised:#fff;--text:#202123;--muted:#73767b;--border:#dedfe1;--hover:#e9eaec;
+  --accent:#0b6bcf;--accent-soft:#e8f2ff;--good:#15805d;--warn:#9a6500;--bad:#c63d3d;
+  --pipe-rim:#829fad;--pipe-fill:#c6e6ed;--flow:#258eaa;--cable:#9d865b;
+}
+html[data-theme=dark]{
+  --bg:#171717;--panel:#212121;--editor:#1d1d1d;--raised:#262626;--text:#ececec;--muted:#a6a6a6;--border:#343434;--hover:#292929;
+  --accent:#62a8ff;--accent-soft:#26384c;--good:#63c59d;--warn:#d6ab62;--bad:#f08080;
+  --pipe-rim:#597687;--pipe-fill:#345261;--flow:#7dd9e6;--cable:#c8ab76;
+}
