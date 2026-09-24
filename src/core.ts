@@ -150,9 +150,16 @@ const pumpPorts={inlet:terminal({x:0,y:96,z:60,side:'left',medium:'fluid',family
 const valvePorts={inlet:terminal({x:0,y:102,z:60,side:'left',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:160,y:102,z:60,side:'right',medium:'fluid',family:'water',role:'source'}),command:terminal({x:80,y:6,z:105,side:'up',medium:'control',family:'analog',role:'sink'})} as const;
 const plcPorts={DO1:terminal({x:35,y:0,z:70,side:'up',medium:'control',family:'digital',role:'source'}),AO1:terminal({x:80,y:0,z:70,side:'up',medium:'control',family:'analog',role:'source'}),RS485:terminal({x:145,y:130,z:35,side:'down',medium:'bus',family:'rs485',role:'passive',max:2})} as const;
 /** Built-ins are ordinary device() declarations, not a privileged registry. */
+/** @ru Резервуар с измеряемым уровнем. @en Tank with measured level. */
 export const tank=device({id:'tank',icon:'tank',ports:tankPorts,signals:{level:signal({initial:0})},capabilities:{diagram:{width:170,height:230}}});
+/** @ru Насос. rpm — измеренная скорость вращения; run — команда пуска.
+ * @en Pump. rpm is measured speed; run is the start command. */
 export const pump=device({id:'pump',icon:'pump',ports:pumpPorts,signals:{rpm:signal({initial:0}),run:signal({initial:true,writable:true})},capabilities:{diagram:{width:220,height:170}}});
+/** @ru Клапан с измеряемым/управляемым положением открытия.
+ * @en Valve with measured/commanded opening. */
 export const valve=device({id:'valve',icon:'valve',ports:valvePorts,signals:{opening:signal({initial:0,writable:true})},capabilities:{diagram:{width:160,height:164}}});
+/** @ru Базовый ПЛК без vendor-specific toolchain.
+ * @en Generic PLC without a vendor-specific toolchain. */
 export const plc=device({id:'plc',icon:'plc',ports:plcPorts,signals:{online:signal({initial:false})},capabilities:{diagram:{width:160,height:150}}});
 interface Connection { id:string; from:Endpoint; to:Endpoint; via?:readonly {x:number;y:number}[] }
 export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number> }
