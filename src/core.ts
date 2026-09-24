@@ -234,6 +234,7 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
   for(const edge of [...definition.pipes,...definition.cables??[]])add(edge.kind==='pipe'?edge.flow:edge.signal);
   for(const alarm of definition.alarms??[])add(alarm.signal);
   for(const report of definition.reports??[])for(const column of Object.values(report.columns))add(column.signal);
+  for(const screen of [definition.hmi,...definition.hmis??[]])if(screen&&'elements' in screen)for(const element of screen.elements??[])if(element.signal)add(element.signal);
   return Object.fromEntries(found);
 }
 /** @ru Единая модель. Сигналы выводятся из владельцев и ссылок; явный registry — только совместимый escape hatch.
@@ -313,7 +314,18 @@ export function validateProject(p:Project):void {
     for(const c of Object.values(r.columns)){ref(c.signal,c.aggregate==='last'?undefined:'number');requireThat(['mean','min','max','integral','last'].includes(c.aggregate),'REPORT_AGGREGATE','Invalid aggregation','Неверная агрегация');}
   }
   const screens=[...(p.hmi?[p.hmi]:[]),...(p.hmis??[])];
-  for(const screen of screens)requireThat(Number.isInteger(screen.width)&&Number.isInteger(screen.height)&&screen.width>0&&screen.height>0&&screen.width<=8192&&screen.height<=8192&&screen.equipment.every(e=>devices.has(e.id)),'HMI_TARGET','Invalid HMI configuration','Неверная конфигурация HMI');
+  for(const screen of screens){
+    requireThat(Number.isInteger(screen.width)&&Number.isInteger(screen.height)&&screen.width>0&&screen.height>0&&screen.width<=8192&&screen.height<=8192&&screen.equipment.every(e=>devices.has(e.id)),'HMI_TARGET','Invalid HMI configuration','Неверная конфигурация HMI');
+    const ids=new Set<string>();
+    for(const element of screen.elements??[]){
+      requireThat(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(element.id)&&!ids.has(element.id),'HMI_ELEMENT_ID',`Invalid/duplicate presentation element ${element.id}`,`Неверный/повторяющийся элемент представления ${element.id}`);ids.add(element.id);
+      requireThat([element.x,element.y,element.width,element.height,element.z??0].every(Number.isFinite)&&element.width>0&&element.height>0&&Math.abs(element.x)<=100000&&Math.abs(element.y)<=100000&&element.width<=100000&&element.height<=100000,'HMI_ELEMENT_BOUNDS',`Invalid presentation bounds ${element.id}`,`Неверные границы элемента ${element.id}`);
+      if(element.signal)ref(element.signal,element.kind==='progress'?'number':undefined);
+      if(element.kind==='progress')requireThat(Number.isFinite(element.min)&&Number.isFinite(element.max)&&element.max>element.min&&(element.current===undefined||Number.isFinite(element.current)),'HMI_PROGRESS','Invalid progress range','Неверный диапазон индикатора');
+      if(element.kind==='image'&&element.href)requireThat(/^data:image\/(?:png|jpeg|gif|webp|bmp);base64,[A-Za-z0-9+/=]+$/i.test(element.href),'HMI_IMAGE','Only embedded image data is allowed','Разрешены только встроенные изображения');
+      if(element.kind==='polyline')requireThat(element.points.length>1&&element.points.length<=4096&&element.points.every(point=>Number.isFinite(point.x)&&Number.isFinite(point.y)),'HMI_POLYLINE','Invalid presentation polyline','Неверная полилиния представления');
+    }
+  }
   requireThat(new Set((p.hmis??[]).map(h=>h.id)).size===(p.hmis??[]).length&&(p.hmis??[]).every(h=>/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(h.id)&&h.id!=='default'),'HMI_ID','Invalid or duplicate HMI ID','Неверный или повторяющийся ID HMI');
 }
 export interface Sample<T extends Value=Value> {
@@ -337,7 +349,16 @@ export interface Driver {
   start(context:DriverContext):Promise<()=>void|Promise<void>>;
   write?:(signal:string,value:Value)=>Promise<void>;
 }
-export interface Hmi {width:number;height:number;equipment:readonly Equipment[];source?:'explicit'|'topology';controller?:string}
+export interface PresentationBase {readonly id:string;readonly x:number;readonly y:number;readonly width:number;readonly height:number;readonly z?:number;readonly signal?:Signal}
+export type PresentationElement =
+  | (PresentationBase & {readonly kind:'text';readonly text:string;readonly color?:string;readonly fontSize?:number;readonly align?:'left'|'center'|'right'})
+  | (PresentationBase & {readonly kind:'shape';readonly shape:'rectangle'|'ellipse';readonly fill?:string;readonly stroke?:string;readonly strokeWidth?:number})
+  | (PresentationBase & {readonly kind:'image';readonly href?:string;readonly alt?:string})
+  | (PresentationBase & {readonly kind:'progress';readonly min:number;readonly max:number;readonly current?:number;readonly fill?:string;readonly background?:string})
+  | (PresentationBase & {readonly kind:'list';readonly lines:readonly string[]})
+  | (PresentationBase & {readonly kind:'polyline';readonly points:readonly Readonly<{x:number;y:number}>[];readonly fill?:string;readonly stroke?:string;readonly strokeWidth?:number})
+  | (PresentationBase & {readonly kind:'placeholder';readonly label:string;readonly detail?:string});
+export interface Hmi {width:number;height:number;equipment:readonly Equipment[];elements?:readonly PresentationElement[];source?:'explicit'|'topology';controller?:string}
 export interface HmiInterface extends Hmi {id:string;label?:Text}
 export type HmiIntent=(Hmi|AutoHmi)&{id:string;label?:Text};
 /** A named operator interface authored in TS and backed by the same equipment references. */
@@ -361,3 +382,6 @@ export interface FirmwareTarget<L extends string=string> {readonly id:string;rea
 export { deployment, type DeploymentPlan, type DeploymentStep } from './core/deployment';
 export { defineProtocol } from './core/acquisition';
 export type { Observation, Observe, ProtocolDefinition, ProtocolSession, ProtocolChannel, ProtocolEndpoint, ProtocolSource } from './core/acquisition';
+
+export { defineImporter } from './core/importer';
+export type { ImportDiagnostic, ImportGeneratedFile, ImportLabel, ImportSeverity, ImportSourceFile, ScadaImporter, ScadaImportPlan, ScadaImportSource } from './core/importer';

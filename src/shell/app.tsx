@@ -21,6 +21,8 @@ import { ShellPanel } from './shell-panel';
 import { initialPanel, panelReducer } from './model/panel';
 import { useAlarmHistory } from './use-alarm-history';
 import { ProjectDocument } from './project-document';
+import { PresentationView } from './presentation';
+import type { ScadaImporter } from '../core/importer';
 import './resources.css';
 const Scene3D = lazy(() => import('./scene3d'));
 const surfaces = Object.keys(editorNames) as EditorId[];
@@ -31,8 +33,9 @@ interface RenamePreview { kind:'rename-equipment'; from:string; to:string; seman
 const fmt = (v: Value | null | undefined) => v == null ? '—' : typeof v === 'number' ? Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(v) : String(v);
 const clock = (at?: number) => at ? new Date(at).toLocaleTimeString() : '—';
 
-export function App(props:Pick<SceneProps,'displays'>) { return <MenuProvider><Workbench {...props}/></MenuProvider>; }
-function Workbench({displays}:Pick<SceneProps,'displays'>) {
+type AppProps=Pick<SceneProps,'displays'>&{importers?:readonly ScadaImporter[]};
+export function App(props:AppProps) { return <MenuProvider><Workbench {...props}/></MenuProvider>; }
+function Workbench({displays,importers}:AppProps) {
   const menu=useMenu();
   const [plugins,setPlugins]=useState<PluginStatus[]>([]);
   const [createDevice,setCreateDevice]=useState(false);
@@ -190,6 +193,7 @@ function Workbench({displays}:Pick<SceneProps,'displays'>) {
   if (location.pathname === '/hmi') {
     const requested=new URLSearchParams(location.search).get('screen')??'default',screen=requested==='default'?state.project.hmi:state.project.hmis?.find(h=>h.id===requested);
     if(requested!=='default'&&!screen)return <main className="empty-state"><h1>HMI</h1><p>{ru?'Интерфейс не найден':'Interface not found'}</p></main>;
+    if(screen?.elements?.length){const screenLabel='label' in screen&&screen.label?text(screen.label,locale):requested;return <main className="hmi imported-presentation"><header><strong>{screenLabel}</strong><span className={`status ${state.mode === 'simulation' ? 'simulation' : ''}`}>{connected?mode:ru?'Нет связи':'Disconnected'}</span></header><PresentationView screen={screen} snapshot={snapshot} locale={locale}/></main>;}
     const configured = screen?.equipment.map(e => e.id), devices = state.project.equipment.filter(e => !configured || configured.includes(e.id));
     const index = Math.max(0, devices.findIndex(e => e.id === selected)), shown = devices[index], cmd = controlFor(shown);
     return <main className="hmi"><header><strong>{shown?.id ?? 'HMI'}</strong><span className={`status ${state.mode === 'simulation' ? 'simulation' : ''}`}>{connected ? mode : ru ? 'Нет связи' : 'Disconnected'}</span></header>
@@ -286,7 +290,7 @@ function Workbench({displays}:Pick<SceneProps,'displays'>) {
           {surface === 'git' && <section className="git-surface">{git?.available ? <><div className="git-controls"><input aria-label={ru ? 'Описание коммита' : 'Commit message'} placeholder={ru ? 'Что изменено?' : 'What changed?'} value={message} onChange={e => setMessage(e.target.value)}/><button disabled={gitBusy || !message.trim() || !git.status.trim() || session.documents.dirty} onClick={() => void gitAction('commit')}>{ru ? 'Коммит' : 'Commit'}</button>{git.remotes && <><button disabled={gitBusy || session.documents.dirty} onClick={() => void gitAction('pull')}>Pull</button><button disabled={gitBusy} onClick={() => void gitAction('push')}>Push</button></>}</div><h3>{ru ? 'Изменения проекта' : 'Project changes'}</h3><pre>{git.status || (ru ? 'Рабочая копия чистая' : 'Working tree is clean')}{git.diff ? `\n${git.diff}` : ''}</pre><h3>{ru ? 'Последние коммиты' : 'Recent commits'}</h3><pre className="muted">{git.log}</pre></> : <button onClick={() => void gitAction('init')}>{ru ? 'Создать Git-репозиторий' : 'Initialize Git repository'}</button>}</section>}
           </>}
         </div>
-        <ShellPanel operator={operator} pluginUpdates={plugins.filter(p=>p.update)} openDependencies={()=>chooseSurface('dependencies')} panel={panel} dispatch={dispatchPanel} project={state.project} snapshot={snapshot} selectedIds={selectedIds} primaryId={selected} signalId={surface==='signals'?signal?.id:undefined} locale={locale} connected={connected} shellError={error} problems={state.problems} mode={state.mode} events={alarmHistory.events} historyError={alarmHistory.error} send={send} acknowledge={async id=>{await api('ack',{id});}} onInspect={()=>{chooseSurface('diagram');setInspect(true);}}/>
+        <ShellPanel operator={operator} importers={importers} onImported={refresh} pluginUpdates={plugins.filter(p=>p.update)} openDependencies={()=>chooseSurface('dependencies')} panel={panel} dispatch={dispatchPanel} project={state.project} snapshot={snapshot} selectedIds={selectedIds} primaryId={selected} signalId={surface==='signals'?signal?.id:undefined} locale={locale} connected={connected} shellError={error} problems={state.problems} mode={state.mode} events={alarmHistory.events} historyError={alarmHistory.error} send={send} acknowledge={async id=>{await api('ack',{id});}} onInspect={()=>{chooseSurface('diagram');setInspect(true);}}/>
       </main>
     </div>
     <footer className="statusbar"><span className={connected ? 'good' : 'bad'} title={ru?'Состояние соединения с runtime':'Runtime connection status'}>{connected ? state.mode==='simulation'?(ru?'Симулятор':'Simulator'):(ru?'Связь активна':'Connected') : ru ? 'Нет связи' : 'Disconnected'}</span><button onClick={() => chooseSurface('git')}>⑂ {git?.branch || '—'}</button><span>{[...documents.values()].filter(b => b.draft !== b.source).length} {ru ? 'несохранённых' : 'unsaved'}</span>{file && file.draft !== file.source && <button onClick={() => { if (confirm(ru ? 'Отбросить несохранённый текст этого файла?' : 'Discard this file’s unsaved text?')) void session.documents.reload(active, true).catch(fail); }}>{ru ? 'Перечитать файл' : 'Reload file'}</button>}<span className="spacer"/><button title={state.revision} onClick={()=>chooseSurface('targets')}>applied {state.revision.slice(0, 8)}</button><button className="status-panel-toggle" aria-label={ru?'Нижняя панель':'Bottom panel'} aria-pressed={panel.open} onClick={()=>dispatchPanel({type:'toggle'})}><ResourceIcon icon="panel" size={15}/></button></footer>

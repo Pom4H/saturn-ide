@@ -327,3 +327,25 @@ SaaS владеет AI Gateway, авторизацией, адресатами �
 или прошивки. Предложения DSL проходят отдельную границу workspace/AST, review и CI;
 ответ в чате не является checked artifact. Автоматический перенос Lanmon-карт/скриптов
 и создание PR из ассистента пока не реализованы; эти критерии остаются открытыми.
+
+
+## Importers as vendor boundary
+
+Legacy SCADA formats are not part of the Saturn domain model. Saturn exposes only the
+`ScadaImporter` source contract. A vendor source kit may parse its own archives and produce
+ordinary authored Saturn TypeScript plus diagnostics. The project opts in explicitly from
+`browser.ts`; the IDE does not maintain a global importer registry.
+
+```text
+legacy SCADA files
+        ↓
+project-owned importer source kit
+        ↓
+ScadaImportPlan
+        ↓ explicit review/apply
+Saturn TypeScript → normal check/Git/publish/apply
+```
+
+Generated files are confined to `imports/<importer-id>/`. Import changes source only:
+the applied runtime is unchanged until the normal publish/apply lifecycle. Presentation
+elements reference canonical Saturn signals; they are not modeled as fake equipment.

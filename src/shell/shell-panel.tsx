@@ -7,6 +7,7 @@ import { ShellTerminal } from './shell-terminal';
 import { Assistant } from './assistant';
 import { api } from './api';
 import type { AssistantTransport } from '../core/assistant';
+import type { ScadaImporter } from '../core/importer';
 const assistantTransport:AssistantTransport=(action,body,signal)=>api('assistant'+(action==='status'?'':'/send'),body,signal);
 import { History } from './history';
 import { useMenu, MenuButton, type MenuItem } from './menu';
@@ -14,7 +15,7 @@ import { ResourceIcon } from './icons';
 import type { PanelAction, PanelState, PanelTab } from './model/panel';
 
 interface Props {
-  operator?:boolean;
+  operator?:boolean; importers?:readonly ScadaImporter[]; onImported?:()=>Promise<void>;
   pluginUpdates?:{name:string;latest?:string}[];openDependencies?:()=>void;
   panel: PanelState; dispatch: Dispatch<PanelAction>;
   project: Project; snapshot: Snapshot; selectedIds: readonly string[]; primaryId: string; signalId?: string;
@@ -65,7 +66,7 @@ export function ShellPanel(props: Props) {
     <div id="panel-body-equipment" role="tabpanel" aria-labelledby="panel-tab-equipment" className="panel-content" hidden={!panel.open||panel.tab!=='equipment'}>{equipment.length?<div className="panel-equipment-list">{equipment.map(item=><EquipmentCard key={item.id} project={project} equipment={item} snapshot={snapshot} locale={locale} connected={connected} primary={item.id===primaryId} onInspect={props.onInspect}/>)}</div>:<p className="panel-empty">{ru?'Выберите оборудование на схеме или в списке слева.':'Select equipment in the diagram or sidebar.'}</p>}</div>
     <div id="panel-body-graphs" role="tabpanel" aria-labelledby="panel-tab-graphs" className="panel-content" hidden={!panel.open||panel.tab!=='graphs'}>{signalId?<History key={signalId} id={signalId} locale={locale}/>:<MultiTrend signals={signals} snapshot={snapshot} locale={locale}/>}</div>
     <div id="panel-body-terminal" role="tabpanel" aria-labelledby="panel-tab-terminal" className="panel-content" hidden={!panel.open||panel.tab!=='terminal'}><ShellTerminal project={project} signals={signals} snapshot={snapshot} locale={locale} connected={connected} shellError={props.shellError} problems={props.problems} mode={props.mode} events={props.events} historyError={props.historyError} send={props.send}/></div>
-    <div id="panel-body-assistant" role="tabpanel" aria-labelledby="panel-tab-assistant" className="panel-content" hidden={!panel.open||panel.tab!=='assistant'}><Assistant key={project.id} projectId={project.id} selection={ids} operator={props.operator??false} transport={assistantTransport}/></div>
+    <div id="panel-body-assistant" role="tabpanel" aria-labelledby="panel-tab-assistant" className="panel-content" hidden={!panel.open||panel.tab!=='assistant'}><Assistant key={project.id} projectId={project.id} selection={ids} operator={props.operator??false} locale={locale} importers={props.importers??[]} onImported={props.onImported??(async()=>{})} transport={assistantTransport}/></div>
     <div id="panel-body-notifications" role="tabpanel" aria-labelledby="panel-tab-notifications" className="panel-content" hidden={!panel.open||panel.tab!=='notifications'}><Notifications {...props}/></div>
   </section>;
 }

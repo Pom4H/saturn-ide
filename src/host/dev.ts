@@ -23,6 +23,8 @@ import { previewEquipmentRename } from '../workspace/refactor';
 import { createDeployment, deploymentWorkflow, initialDeployment } from '../workspace/deployment';
 import type { DeploymentPlan } from '../core/deployment';
 import { ProjectPlugins } from '../workspace/plugins';
+import { applyImportPlan } from '../workspace/importers';
+import type { ScadaImportPlan } from '../core/importer';
 import { deviceTemplates, previewDevice, previewHmi } from '../workspace/scaffold';
 import { previewCableDisconnect, previewCableEndpoint } from '../workspace/cable-edit';
 
@@ -117,7 +119,7 @@ export async function createApp(options: { assistant?:AssistantService; projectD
   const expected = (b: Record<string, unknown>, name: string) => { const v = b[name]; if (v !== null && (typeof v !== 'string' || !HASH.test(v))) throw new HttpError(400, `Expected hash or null: ${name}`); return v; };
   let gitBusy = false;
   const server = Bun.serve({ hostname: '127.0.0.1', port: options.port ?? Number(Bun.env.PORT ?? 3000), idleTimeout: 0,
-    development: false, maxRequestBodySize: 300_000,
+    development: false, maxRequestBodySize: 2_500_000,
     async fetch(request) {
       try {
         const url = new URL(request.url), path = url.pathname;
@@ -137,6 +139,7 @@ export async function createApp(options: { assistant?:AssistantService; projectD
           if (path === '/api/releases') return json({ key, source: draft?.artifact.provenance ?? null, checked: draft?.artifact.hash ?? null, ...await revisions.state(), phase: manager.phase, error: manager.error });
           if(path==='/api/deployment/template')return json({plan:initialDeployment,exists:workspace.list().includes('targets/deployment.ts')});
           if(path==='/api/plugins')return json(plugins.list());
+          if(path==='/api/import/context')return json({projectVersion:workspace.read('project.ts').version});
           if(path==='/api/templates')return json(deviceTemplates.map(({signals,...item})=>item));
           if (path === '/api/files') return json(workspace.list());
           if (path === '/api/file') return json(workspace.read(url.searchParams.get('path') ?? 'project.ts'));
@@ -160,6 +163,13 @@ export async function createApp(options: { assistant?:AssistantService; projectD
           const plan=b.plan as DeploymentPlan;let workflow:string;try{workflow=deploymentWorkflow(plan);}catch(error){throw new HttpError(400,String(error));}
           if(path.endsWith('/preview'))return json({workflow});
           const file=createDeployment(workspace,plan);return json({file,workflow});
+        }
+        if(path==='/api/import/apply'){
+          if(!b.plan||typeof b.plan!=='object'||Array.isArray(b.plan))throw new HttpError(400,'Expected import plan');
+          const applied=applyImportPlan(workspace,b.plan as ScadaImportPlan,field(b,'projectVersion'));
+          for(const file of [...applied.files,applied.project])savedVersions.set(file.path,file.version);
+          await reload();
+          return json({files:applied.files,project:applied.project,problems,state:state()});
         }
         if(path==='/api/plugins/check')return json(await plugins.check());
         if(path==='/api/plugins/install'||path==='/api/plugins/update'){
