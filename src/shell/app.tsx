@@ -1,18 +1,15 @@
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { equipmentSignals, interfaceProfile, text, type Equipment, type Locale, type Project, type Snapshot, type Value } from '../core';
 import { availableEditors, editorNames, findResources, type EditorId, type ProjectResource } from '../core/resources';
-import { type PositionSource } from '../source-edits';
-import type { IDEState } from '../protocol';
 import { related, routeConnections, type PhysicalRoute } from '../topology';
 import { api, browserClient } from './api';
 import { useShell } from './use-shell';
-import type { DocumentBuffer } from './model/documents';
+import { useLayoutEditing } from './use-layout-editing';
 import { ResourceIcon } from './icons';
 import { DeploymentPlan } from './deployment-plan';
 import { Dependencies, type PluginStatus } from './dependencies';
 import { HmiSurface } from './hmi-surface';
 import { CreateDevice } from './create-device';
-import { moveLayout } from './model/layout-edits';
 import { MenuProvider, MenuButton, useMenu, type MenuItem } from './menu';
 import type { ResourceTab } from './model/session';
 import { UnifiedSidebar } from './unified-sidebar';
@@ -62,10 +59,7 @@ function Workbench({displays}:Pick<SceneProps,'displays'>) {
   const [renameId, setRenameId] = useState(''), [renamePreview, setRenamePreview] = useState<RenamePreview | null>(null), [renameVersion, setRenameVersion] = useState(''), [renameBusy, setRenameBusy] = useState(false);
   const [palette, setPalette] = useState(false), [query, setQuery] = useState(''), [choice, setChoice] = useState(0);
   const [mobileNav,setMobileNav]=useState(false);
-  const [previews, setPreviews] = useState<Record<string,{id:string;x:number;y:number}>>({}), [dragging, setDragging] = useState(false);
-  const layouts=useRef(new Map<string,{source:string;positions:Record<string,PositionSource>}>());
-  const drag = useRef<{ id:string; file: DocumentBuffer; positions:Record<string,PositionSource>; next: string; token: number; previous?:{id:string;x:number;y:number} } | null>(null);
-  const dragSerial = useRef(0);
+  const { previews, dragging, begin, move, end } = useLayoutEditing(shell, operator, locale);
   const routeCache = useRef<{ project: Project; routes: PhysicalRoute[] } | null>(null);
   const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
   const refreshGit = () => api<GitState>('git').then(setGit).catch(fail);
@@ -140,36 +134,6 @@ function Workbench({displays}:Pick<SceneProps,'displays'>) {
   }, [operator, session, surface]);
   useEffect(()=>{if(operator)setInteraction('select');},[operator]);
   useEffect(()=>{if(interaction!=='edit'||!state)return;for(const path of new Set(Object.values(state.positions).map(position=>position.path)))if(!session.documents.getSnapshot().has(path))void session.documents.open(path).catch(fail);},[interaction,state?.positions,session]);
-  const persistLayout=async(path:string)=>{
-    try {
-      // Serialize writes; a second completed gesture is saved after the first response.
-      // While a gesture is active its draft is never auto-saved halfway through.
-      do {await session.documents.save(path);} while(drag.current?.file.path!==path&&session.documents.getSnapshot().get(path)?.draft!==session.documents.getSnapshot().get(path)?.source);
-      await refresh();
-    } catch(reason){fail(reason);}
-  };
-  const begin = (id: string) => {
-    const position=state?.positions[id],cached=[...layouts.current.values()].find(item=>item.positions[id]);
-    const path=cached?.positions[id]?.path??position?.path;if(operator||!path)return false;
-    const buffer=session.documents.getSnapshot().get(path);
-    if(!buffer){void session.documents.open(path).catch(fail);return false;}
-    const own=cached?.source===buffer.draft?cached:undefined;
-    if(buffer.error||!own&&(buffer.saving||buffer.draft!==buffer.source||buffer.version!==position?.version)){
-      setError(ru?'Сохраните или перечитайте изменённый код перед перемещением.':'Save or reload modified code before dragging.');return false;
-    }
-    const positions=own?.positions??state!.positions;
-    session.selectSource(path);drag.current={id,file:buffer,positions,next:buffer.draft,token:++dragSerial.current,previous:previews[id]};setDragging(true);return true;
-  };
-  const move = (id:string,x:number,y:number) => {
-    const d=drag.current;if(!d)return;
-    const next=moveLayout(d.file.draft,d.positions,id,x,y);d.next=next.source;
-    layouts.current.set(d.file.path,next);setPreviews(previous=>({...previous,[id]:{id,x,y}}));session.documents.edit(d.file.path,next.source);
-  };
-  const end = (cancel:boolean) => {
-    const d=drag.current;drag.current=null;setDragging(false);if(!d)return;
-    if(cancel){session.documents.edit(d.file.path,d.file.draft);layouts.current.set(d.file.path,{source:d.file.draft,positions:d.positions});setPreviews(previous=>{const next={...previous};if(d.previous)next[d.id]=d.previous;else delete next[d.id];return next;});}
-    void persistLayout(d.file.path);
-  };
   const finishCable=async(target?:{device:string;port:string},cancel=false)=>{
     const pending=cablePreview;setCablePreview(null);if(!pending||cancel)return;
     try{
@@ -185,13 +149,6 @@ function Workbench({displays}:Pick<SceneProps,'displays'>) {
   const previewProject = useMemo(()=>state?{...state.project,equipment:state.project.equipment.map(e=>previews[e.id]?{...e,...previews[e.id]}:e)}:null,[state?.project,previews]);
   const routes = useMemo(()=>previewProject?routeConnections(previewProject,routeCache.current??undefined):[],[previewProject]);
   useLayoutEffect(()=>{if(previewProject)routeCache.current={project:previewProject,routes};},[previewProject,routes]);
-  useEffect(()=>{
-    if(dragging||!state)return;
-    setPreviews(previous=>{const next={...previous};let changed=false;for(const [id,pose] of Object.entries(next)){
-      const device=state.project.equipment.find(e=>e.id===id),path=layouts.current.size?[...layouts.current.keys()].find(path=>layouts.current.get(path)?.positions[id]):undefined,buffer=path?session.documents.getSnapshot().get(path):undefined;
-      if(!buffer?.saving&&buffer?.source===buffer?.draft&&device?.x===pose.x&&device?.y===pose.y){delete next[id];changed=true;}
-    }return changed?next:previous;});
-  },[state?.project,documents,dragging]);
   const send = async (id: string, value: Value) => { await api('command', { signal: id, value, expectedApplied: state?.revision ? `sha256:${state.revision}` : null }); };
   const notify = async () => {
     try {

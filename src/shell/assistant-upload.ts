@@ -1,5 +1,5 @@
 import { Unzip, UnzipInflate } from 'fflate';
-import { inspectLanmon } from '../core/lanmon';
+import { inspectLanmon } from './importers/lanmon';
 import type { MigrationInventory } from '../core/assistant';
 const max=8*1024*1024;
 export async function inspectUpload(file:File):Promise<MigrationInventory>{
