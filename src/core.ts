@@ -28,17 +28,40 @@ export const qualityState = (quality:Quality):QualityState => quality==='good'
   : quality==='stale' ? {validity:'uncertain',connection:'online',freshness:'stale'}
   : quality==='offline' ? {validity:'bad',connection:'offline',freshness:'stale'}
   : {validity:'bad',connection:'online',freshness:'fresh'};
+export interface SignalOwner { readonly kind:'equipment'|'project'|'connection'; readonly id:string; readonly field:string }
 export interface Signal<T extends Value = Value, ID extends string = string, W extends boolean = boolean> {
   readonly id: ID; readonly initial: T; readonly writable?: W; readonly unit?: string;
   readonly label?:Text; readonly description?:Text; readonly dimension?:string; readonly origin?:SignalOrigin; readonly binding?:SignalBinding;
+  readonly owner?:SignalOwner; readonly semanticId?:string;
   readonly staleAfter?: number; readonly min?: T extends number ? number : never; readonly max?: T extends number ? number : never;
 }
-/** @ru Сигнал сохраняет свой ID и тип во всех представлениях проекта. Команда не является показанием.
- * @en A signal retains its ID and value type across the project. A command is not an observation. */
+export type SignalSpec<T extends Value = Value, W extends boolean = boolean> =
+  Omit<Signal<T,string,W>,'id'|'owner'|'semanticId'> & { readonly id?:never; readonly owner?:never; readonly semanticId?:never };
+/** @ru Сигнал можно объявить без строки-ID внутри владельца. Владелец материализует путь P-101.rpm.
+ * Явный ID остаётся для проектных/интеграционных сигналов и обратной совместимости.
+ * @en A signal may be declared without a string ID inside its owner. The owner materializes a path such as P-101.rpm.
+ * Explicit IDs remain available for project/integration signals and compatibility. */
+export function signal<const W extends boolean = false>(options: SignalSpec<number,W>): SignalSpec<number,W>;
+export function signal<const W extends boolean = false>(options: SignalSpec<boolean,W>): SignalSpec<boolean,W>;
+export function signal<const W extends boolean = false>(options: SignalSpec<string,W>): SignalSpec<string,W>;
 export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<number,I,W>, 'id'>): Signal<number,I,W>;
 export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<boolean,I,W>, 'id'>): Signal<boolean,I,W>;
 export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<string,I,W>, 'id'>): Signal<string,I,W>;
-export function signal(id: string, options: Omit<Signal, 'id'>): Signal { return { ...options, id }; }
+export function signal(idOrOptions:string|SignalSpec, options?:Omit<Signal,'id'>):Signal|SignalSpec {
+  return typeof idOrOptions==='string' ? { ...options, id:idOrOptions } as Signal : { ...idOrOptions };
+}
+const signalLike=(value:unknown):value is Signal|SignalSpec =>
+  !!value&&typeof value==='object'&&'initial' in value&&['number','boolean','string'].includes(typeof (value as {initial:unknown}).initial);
+type OwnedSignal<S,I extends string,K extends string> =
+  S extends Signal<infer T,infer SID,infer W> ? Signal<T,SID,W> :
+  S extends SignalSpec<infer T,infer W> ? Signal<T,`${I}.${K}`,W> : S;
+type Materialized<O,I extends string> = {[K in keyof O]:OwnedSignal<O[K],I,Extract<K,string>>};
+function ownSignals<const I extends string,O extends object>(id:I,options:O):Materialized<O,I> {
+  return Object.fromEntries(Object.entries(options).map(([field,value])=>{
+    if(!signalLike(value)||('id' in value&&typeof value.id==='string'))return [field,value];
+    return [field,{...value,id:`${id}.${field}`,owner:{kind:'equipment',id,field},semanticId:`signal:${id}:${field}`}];
+  })) as Materialized<O,I>;
+}
 /** Bind transport addressing without changing the domain signal ID/type. */
 export function bind<S extends Signal>(source:S, binding:SignalBinding):S {
   return { ...source, binding, origin:{kind:'protocol',protocol:binding.protocol,endpoint:binding.endpoint,address:binding.address} } as S;
@@ -66,6 +89,17 @@ export interface Position {
   /** @ru Высота основания, в единицах схемы. @en Base elevation in diagram units. */
   z?: number;
   label: Text;
+  /** @ru Стабильная семантическая identity физической сущности; tag/имя можно менять независимо.
+   * @en Stable semantic identity of the physical entity; its tag/name may change independently. */
+  semanticId?:string;
+  description?:Text;
+}
+type SignalInput<T extends Value> = Signal<T>|SignalSpec<T>;
+interface EquipmentSignalInputs {
+  pump: { rpm: SignalInput<number>; run?: SignalInput<boolean> };
+  tank: { level: SignalInput<number> };
+  valve: { opening: SignalInput<number> };
+  plc: { online: SignalInput<boolean> };
 }
 interface EquipmentSignals {
   pump: { rpm: Signal<number>; run?: Signal<boolean> };
@@ -76,17 +110,18 @@ interface EquipmentSignals {
 export type Equipment<K extends Kind = Kind, I extends string = string> = {
   [P in K]: Position & EquipmentSignals[P] & { id: I; kind: P; ports: Ports<P,I> }
 }[K];
-type Options<K extends Kind> = Position & EquipmentSignals[K];
-/** @ru Насос. rpm — измеренные обороты; run — команда пуска. Анимация следует показаниям.
- * @en Pump. rpm is measured speed; run is a start command. Animation follows observations. */
-export function pump<const I extends string, O extends Options<'pump'>>(id:I, options:O):Equipment<'pump',I>&O { return {...options,id,kind:'pump',ports:portsFor('pump',id)}; }
-/** @ru Резервуар: уровень 0…100%. @en Tank: liquid level 0…100%. */
-export function tank<const I extends string, O extends Options<'tank'>>(id:I, options:O):Equipment<'tank',I>&O { return {...options,id,kind:'tank',ports:portsFor('tank',id)}; }
-/** @ru Клапан: открытие 0…100%. @en Valve: opening 0…100%. */
-export function valve<const I extends string, O extends Options<'valve'>>(id:I, options:O):Equipment<'valve',I>&O { return {...options,id,kind:'valve',ports:portsFor('valve',id)}; }
-/** @ru ПЛК с явными портами. vendor-профиль и компилятор принадлежат проекту.
- * @en PLC with explicit ports. Vendor profile and compiler belong to the project. */
-export function plc<const I extends string, O extends Options<'plc'>>(id:I, options:O):Equipment<'plc',I>&O { return {...options,id,kind:'plc',ports:portsFor('plc',id)}; }
+type Options<K extends Kind> = Position & EquipmentSignalInputs[K];
+type MaterializedEquipment<K extends Kind,I extends string,O extends Options<K>> = Materialized<O,I> & {id:I;kind:K;ports:Ports<K,I>};
+/** @ru Насос владеет своими сигналами. Безымянные signal({...}) получают ID от экземпляра: P-101.rpm.
+ * @en A pump owns its signals. Anonymous signal({...}) declarations get IDs from the instance: P-101.rpm. */
+export function pump<const I extends string, O extends Options<'pump'>>(id:I, options:O):MaterializedEquipment<'pump',I,O> { return {...ownSignals(id,options),id,kind:'pump',ports:portsFor('pump',id)}; }
+/** @ru Резервуар владеет уровнем и локальными сигналами. @en Tank owns level and local signals. */
+export function tank<const I extends string, O extends Options<'tank'>>(id:I, options:O):MaterializedEquipment<'tank',I,O> { return {...ownSignals(id,options),id,kind:'tank',ports:portsFor('tank',id)}; }
+/** @ru Клапан владеет положением и локальными сигналами. @en Valve owns position and local signals. */
+export function valve<const I extends string, O extends Options<'valve'>>(id:I, options:O):MaterializedEquipment<'valve',I,O> { return {...ownSignals(id,options),id,kind:'valve',ports:portsFor('valve',id)}; }
+/** @ru ПЛК владеет диагностикой; vendor-профиль и компилятор принадлежат проекту.
+ * @en PLC owns diagnostics; vendor profile and compiler belong to the project. */
+export function plc<const I extends string, O extends Options<'plc'>>(id:I, options:O):MaterializedEquipment<'plc',I,O> { return {...ownSignals(id,options),id,kind:'plc',ports:portsFor('plc',id)}; }
 export type Medium = 'fluid' | 'control' | 'power' | 'bus';
 export type Role = 'source' | 'sink' | 'passive';
 export type Side = 'left' | 'right' | 'up' | 'down';
@@ -131,9 +166,30 @@ export interface Project {
   id:string; label:Text; signals:Record<string,Signal>; equipment:Equipment[]; pipes:Pipe[]; cables?:Cable[];
   alarms:Alarm[]; hmi?:Hmi; reports?:Report[];
 }
-/** @ru Единая модель. Сохраняет конкретные имена сигналов, типы значений и колонки отчётов без повторных интерфейсов.
- * @en One model. Retains concrete signal names, value types and report columns without duplicate interfaces. */
-export function project<P extends Project>(definition:P):P { validateProject(definition); return definition; }
+export type ProjectDefinition = Omit<Project,'signals'> & {signals?:Record<string,Signal>};
+/** @ru Производный индекс всех сигналов. Он не является вторым authored-файлом и не требует ручных строковых путей.
+ * @en Derived index of every signal. It is not a second authored file and requires no manually duplicated string paths. */
+export function collectSignals(definition:ProjectDefinition):Record<string,Signal> {
+  const found=new Map<string,Signal>();
+  const add=(value:unknown)=>{
+    if(!value||typeof value!=='object'||!('id' in value)||typeof value.id!=='string'||!('initial' in value))return;
+    const item=value as Signal,previous=found.get(item.id);
+    requireThat(!previous||previous===item,'SIGNAL_ID',`Conflicting signal ID ${item.id}`,`Конфликт ID сигнала ${item.id}`);
+    found.set(item.id,item);
+  };
+  for(const item of Object.values(definition.signals??{}))add(item);
+  for(const equipment of definition.equipment)for(const value of Object.values(equipment))add(value);
+  for(const edge of [...definition.pipes,...definition.cables??[]])add(edge.kind==='pipe'?edge.flow:edge.signal);
+  for(const alarm of definition.alarms)add(alarm.signal);
+  for(const report of definition.reports??[])for(const column of Object.values(report.columns))add(column.signal);
+  return Object.fromEntries(found);
+}
+/** @ru Единая модель. Сигналы выводятся из владельцев и ссылок; явный registry — только совместимый escape hatch.
+ * @en One model. Signals are derived from owners/references; an explicit registry is only a compatibility escape hatch. */
+export function project<const P extends ProjectDefinition>(definition:P):P & {signals:Record<string,Signal>} {
+  const model={...definition,signals:collectSignals(definition)} as P & {signals:Record<string,Signal>};
+  validateProject(model);return model;
+}
 export interface Problem { code:string; message:Record<Locale,string>; path?:string; from?:number; to?:number }
 export class ProjectError extends Error {
   readonly code:string; readonly messages:Record<Locale,string>;
