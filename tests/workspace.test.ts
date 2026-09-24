@@ -24,7 +24,9 @@ test('scaffolding is project-owned and refuses overwrite',()=>{
     for(const path of ['equipment/plc-01/compiler.ts','equipment/plc-01/hmi.ts','plugins/sensor/index.ts'])expect(w.list()).toContain(path);
     expect(()=>scaffold('plc','plc-01',f.root)).toThrow('Already exists');expect(()=>scaffold('plc','../bad',f.root)).toThrow();
     const target=create(join(f.dir,'another'));expect(existsSync(join(target,'project.ts'))).toBe(true);
-    for(const path of ['src','scripts','.github'])expect(existsSync(join(target,path))).toBe(false);
+    for(const path of ['src','scripts/scaffold.ts','scripts/architecture-check.mjs','.github'])expect(existsSync(join(target,path))).toBe(false);
+    // The external project's dependency installer belongs to the project, not the IDE.
+    expect(existsSync(join(target,'scripts/install.ts'))).toBe(true);
     expect(()=>create(target)).toThrow('already exists');
   }finally{f.clean();}
 });

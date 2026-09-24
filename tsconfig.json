@@ -30,6 +30,9 @@
       ],
       "@saturn/plc500/*": [
         "../saturn-plugins/saturn-plc500/*"
+      ],
+      "@saturn/scada/acquisition": [
+        "./src/runtime/acquisition.ts"
       ]
     }
   },

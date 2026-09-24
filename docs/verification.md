@@ -346,3 +346,32 @@ Executed on macOS arm64, Bun 1.4.2:
 These checks cover the local simulator, browser and SQLite. They do not verify
 physical PLC flashing or a hosted persistent runtime. SaaS verification is owned
 by the separate SaaS repository.
+
+## Main protocol integration into the repository split, 2026-09-24
+
+Merged `origin/main` at `fe3f84888cee37779b578f0f5ed34873e71b519a`
+into `codex/repository-boundaries-and-authoring`. Both deployment and protocol
+exports, external fixture aliases, and the bounded CI protocol test command
+were retained when resolving the three merge conflicts.
+
+Executed on macOS arm64 / Bun 1.4.2:
+- `bun install --frozen-lockfile`: passed.
+- `bun run check`: both TypeScript checks and architecture guard passed
+  (74 modules).
+- `bun test tests`: 124 passed, 3 skipped, 0 failed, 127 tests across 29 files.
+  PostgreSQL was not configured (two skips); the RTU PTY case requires Linux.
+  Modbus TCP, MQTT and secured OPC UA used real local network fixtures; the
+  compiled Modbus driver also delivered observations to Runtime and SQLite.
+- `git diff --check`: passed.
+
+The first run exposed a scoped IPv6 reverse-DNS failure in the OPC UA SDK on
+Bun/macOS. The local server fixture now temporarily requests IPv4-first DNS
+and restores the previous setting. This does not claim to fix the SDK's
+scoped IPv6 handling in production. The scaffold acceptance now allows the
+external project's dependency installer while continuing to reject IDE source
+and IDE infrastructure. Existing OpenTUI act warnings remain.
+
+This is merge and runtime integration evidence, not physical PLC flashing,
+remote deployment, or a new browser/GPU acceptance run. The protocol source
+kits imported from main still reside at `project/plugins` and need migration
+to the external plugins repository before completing the repository split.

@@ -1,8 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { validateValue, type Driver, type Project, type Snapshot, type Value } from '../core';
+import { qualityState, type Driver, type Project, type Snapshot } from '../core';
 import { canonical, type BuildArtifact } from '../core/artifact';
+import { validateObservation, type AcquisitionContext, type Observation, type Observe } from '../core/acquisition';
 import { decodeProject } from './decode-project';
 import type { Runtime } from './engine';
 import type { Installation } from './installation';
@@ -11,10 +12,10 @@ interface Session {
   controller: AbortController;
   closed: boolean;
   active: boolean;
-  staged: Record<string, Value>;
+  staged: Record<string, Observation>;
   snapshot: Snapshot;
   commands: Promise<void>;
-  stop?: () => void;
+  stop?: () => void | Promise<void>;
 }
 /** One driver ownership token. Late callbacks from a stopped generation are discarded. */
 export class ProjectInstallation implements Installation {
@@ -52,11 +53,14 @@ export class ProjectInstallation implements Installation {
     const snapshot: Snapshot = { samples: {}, alarms: {} };
     for (const definition of Object.values(this.project.signals)) {
       const identity=definition.semanticId??definition.id,old=previousByIdentity.get(identity)??previous.samples[definition.id];
-      let value = definition.initial;
-      let at = 0;
-      try { if (old) { validateValue(definition, old.value); value = old.value; at = old.at; } }
-      catch { /* A new signal contract must not inherit an incompatible value. */ }
-      snapshot.samples[definition.id] = { signal: definition.id, semantic:identity, value, at, quality: 'stale' };
+      let sample = { signal:definition.id, semantic:identity, value:definition.initial, at:0, quality:'stale' as const } as Snapshot['samples'][string];
+      try {
+        if (old) {
+          validateObservation({signal:definition.id,value:old.value,quality:old.quality},definition);
+          sample = {...old,signal:definition.id,semantic:identity,quality:'stale',state:qualityState('stale')};
+        }
+      } catch { /* A new signal contract must not inherit an incompatible value. */ }
+      snapshot.samples[definition.id] = sample;
     }
     for (const rule of this.project.alarms) {
       const old = previous.alarms[rule.id];
@@ -64,20 +68,29 @@ export class ProjectInstallation implements Installation {
     }
     const session: Session = { controller: new AbortController(), closed: false, active: false, staged: {}, snapshot, commands: Promise.resolve() };
     this.session = session;
-    const context = {
-      project: this.project, snapshot: structuredClone(snapshot), signal: session.controller.signal,
-      publish: async (values: Record<string, Value>) => {
-        if (session.closed) return;
-        if (!session.active) {
-          for (const [id, value] of Object.entries(values)) {
-            const definition = Object.values(this.project.signals).find(s => s.id === id);
-            if (!definition) throw new Error(`Unknown startup signal ${id}`);
-            validateValue(definition, value);
-          }
-          Object.assign(session.staged, values);
-          if (Object.keys(session.staged).length > 10000) throw new Error('Driver startup snapshot exceeds limit');
-        } else await this.engine.ingest(values);
-      },
+    const definitions = new Map(Object.values(this.project.signals).map(signal => [signal.id,signal]));
+    const observe: Observe = async batch => {
+      if (session.closed) return;
+      const receivedAt = Date.now();
+      const owned = batch.map(item => ({...item,...('value' in item ? {receivedAt:item.receivedAt??receivedAt} : {})}));
+      const seen = new Set<string>();
+      for (const item of owned) {
+        const definition = definitions.get(item.signal);
+        if (!definition || seen.has(item.signal)) throw new Error(`Unknown/duplicate startup signal ${item.signal}`);
+        seen.add(item.signal); validateObservation(item, definition);
+      }
+      if (!session.active) {
+        for (const item of owned) {
+          const previous = session.staged[item.signal];
+          // Preserve a staged measurement if a quality event follows before activation.
+          session.staged[item.signal] = !('value' in item) && previous ? {...previous,quality:item.quality} : item;
+        }
+        if (Object.keys(session.staged).length > 10000) throw new Error('Driver startup snapshot exceeds limit');
+      } else await this.engine.observe(owned);
+    };
+    const context: AcquisitionContext = {
+      project: this.project, snapshot: structuredClone(snapshot), signal: session.controller.signal, observe,
+      publish: values => observe(Object.entries(values).map(([signal,value]) => ({signal,value,quality:'good'}))),
     };
     // Driver contract: a rejected start releases resources, or releases them on signal.abort.
     // A generic host cannot reverse external physical side effects.
@@ -88,7 +101,7 @@ export class ProjectInstallation implements Installation {
     // No await before switching model+snapshot: the manager has committed its identity.
     this.engine.apply(this.project); this.engine.snapshot = session.snapshot;
     const staged = session.staged; session.staged = {}; session.active = true;
-    if (Object.keys(staged).length) await this.engine.ingest(staged);
+    if (Object.keys(staged).length) await this.engine.observe(Object.values(staged));
   }
   command(id: string, value: unknown): Promise<void> {
     const session = this.session;
@@ -106,14 +119,15 @@ export class ProjectInstallation implements Installation {
     const session = this.session;
     if (session) {
       session.closed = true; session.active = false;
-      await session.commands;
-      await this.engine.serial(async () => {}); // drain in-flight writes before releasing hardware
+      // Cancel I/O before waiting for commands which may be waiting on that same I/O.
       session.controller.abort();
-      await session.stop?.();
+      await session.commands;
+      await this.engine.serial(async () => {});
       await this.engine.serial(async () => {
         this.checkpoint = structuredClone(this.engine.snapshot);
-        for (const sample of Object.values(this.engine.snapshot.samples)) sample.quality = 'stale';
+        for (const sample of Object.values(this.engine.snapshot.samples)) { sample.quality = 'stale'; sample.state = qualityState('stale'); }
       });
+      await session.stop?.();
       this.session = undefined;
     }
   }

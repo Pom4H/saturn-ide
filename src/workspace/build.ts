@@ -21,23 +21,30 @@ export class Builder {
   async build(): Promise<DraftBuild> {
     const sourceFiles = this.sources();
     const sourceDigest = await digest(canonical(sourceFiles.map(({ path, source }) => ({ path, source }))));
-    const lock = join(this.appRoot, 'bun.lock');
+    const projectLock = join(this.workspace.root, 'bun.lock');
+    const lock = existsSync(projectLock) ? projectLock : join(this.appRoot, 'bun.lock');
     const lockHash = existsSync(lock) ? await digest(readFileSync(lock, 'utf8')) : null;
-    const coreHash = await digest(['core.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
+    const coreHash = await digest(['core.ts', 'core/acquisition.ts', 'runtime/acquisition.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
     const inputKey = await digest(canonical({ sourceDigest, coreHash, lockHash, bunVersion: Bun.version }));
     this.language.clear(); const problems = this.language.diagnostics();
     if (problems.length) throw new BuildError(problems);
     const outdir = join(this.dataDir, 'compiler', inputKey.slice(7));
     const entrypoints = [this.workspace.file('project.ts')];
     if (sourceFiles.some(f => f.path === 'server.ts')) entrypoints.push(this.workspace.file('server.ts'));
-    const result = await Bun.build({ entrypoints, outdir, naming: '[name].mjs', target: 'bun', plugins: [{ name: 'core-import', setup: build => {
-      build.onResolve({ filter: /^@saturn\/core$/ }, () => ({ path: join(this.appRoot, 'src/core.ts') }));
+    const result = await Bun.build({ entrypoints, outdir, naming: '[name].mjs', target: 'bun', plugins: [{ name: 'project-imports', setup: build => {
+      // Bundle project code and Saturn contracts; preserve installed SDK packages/native assets.
+      // No protocol-specific package names or plugin registry in the compiler.
+      build.onResolve({ filter: /^[^./]/ }, args => {
+        if (args.path === '@saturn/core' || args.path === '@saturn/scada/acquisition')
+          return { path: join(this.appRoot, args.path === '@saturn/core' ? 'src/core.ts' : 'src/runtime/acquisition.ts') };
+        return { path: args.path, external: true };
+      });
     } }] });
     if (!result.success) throw new Error(result.logs.map(l => l.message).join('\n'));
     const project = (await import(pathToFileURL(join(outdir, 'project.mjs')).href)).default as Project;
     validateProject(project);
     const after = await digest(canonical(this.sources().map(({ path, source }) => ({ path, source }))));
-    if (after !== sourceDigest) throw new Error('Source changed during build; build again');
+    if (after !== sourceDigest || (existsSync(lock) ? await digest(readFileSync(lock, 'utf8')) : null) !== lockHash) throw new Error('Source or dependency lock changed during build; build again');
     const sourceRevision = await execute(['git', 'rev-parse', 'HEAD'], this.workspace.root).then(s => s.trim()).catch(() => null);
     const driver = result.outputs.find(o => o.path.endsWith('server.mjs'));
     const artifact = await createArtifact(project, driver ? await driver.text() : null, { sourceRevision, sourceDigest, coreHash, lockHash, bunVersion: Bun.version });

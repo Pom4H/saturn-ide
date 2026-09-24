@@ -252,8 +252,11 @@ export class ProjectError extends Error {
   constructor(code:string,messages:Record<Locale,string>) {super(messages.en);this.code=code;this.messages=messages;}
 }
 function requireThat(ok:unknown,code:string,en:string,ru:string):asserts ok {if(!ok)throw new ProjectError(code,{en,ru});}
-export function validateValue(signal:Signal,value:unknown):asserts value is Value {
+export function validateReading(signal:Signal,value:unknown):asserts value is Value {
   requireThat(typeof value===typeof signal.initial && (typeof value!=='number'||Number.isFinite(value)),'SIGNAL_TYPE',`Invalid value for ${signal.id}`,`Неверный тип значения ${signal.id}`);
+}
+export function validateValue(signal:Signal,value:unknown):asserts value is Value {
+  validateReading(signal,value);
   if(typeof value==='number')requireThat((signal.min===undefined||value>=signal.min)&&(signal.max===undefined||value<=signal.max),'SIGNAL_RANGE',`${signal.id} outside limits`,`${signal.id}: значение вне диапазона`);
 }
 export function validateProject(p:Project):void {
@@ -323,11 +326,15 @@ export interface Snapshot {samples:Record<string,Sample>;alarms:Record<string,Al
 /** @ru Тип показания выводится из переданного сигнала; отсутствие данных не заменяется initial.
  * @en Observation type is inferred from the signal; missing data is never replaced with initial. */
 export function observation<S extends Signal>(snapshot:Snapshot,signal:S):Sample<SignalValue<S>>|undefined {
-  const sample=snapshot.samples[signal.id]; if(sample)validateValue(signal,sample.value);return sample as Sample<SignalValue<S>>|undefined;
+  const sample=snapshot.samples[signal.id]; if(sample)validateReading(signal,sample.value);return sample as Sample<SignalValue<S>>|undefined;
+}
+export interface DriverContext {
+  project:Project; snapshot:Snapshot; publish:(values:Record<string,Value>)=>Promise<void>;
+  signal?:AbortSignal; observe?:import('./core/acquisition').Observe;
 }
 export interface Driver {
   mode:'simulation'|'live';
-  start(context:{project:Project;snapshot:Snapshot;publish:(values:Record<string,Value>)=>Promise<void>}):Promise<()=>void>;
+  start(context:DriverContext):Promise<()=>void|Promise<void>>;
   write?:(signal:string,value:Value)=>Promise<void>;
 }
 export interface Hmi {width:number;height:number;equipment:readonly Equipment[];source?:'explicit'|'topology';controller?:string}
@@ -352,3 +359,5 @@ export interface FirmwareContext {outDir:string;run:(argv:string[])=>Promise<voi
 export interface FirmwareTarget<L extends string=string> {readonly id:string;readonly languages:readonly L[];build(context:FirmwareContext):Promise<void>}
 
 export { deployment, type DeploymentPlan, type DeploymentStep } from './core/deployment';
+export { defineProtocol } from './core/acquisition';
+export type { Observation, Observe, ProtocolDefinition, ProtocolSession, ProtocolChannel, ProtocolEndpoint, ProtocolSource } from './core/acquisition';
