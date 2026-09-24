@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { isVendorEquipment, text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
-import { geometry } from '../geometry';
+import { text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
 import { routePath, type PhysicalRoute } from '../topology';
 import { useSvgMotion } from './svg-motion';
 import { Symbol } from './symbols';
@@ -14,7 +13,7 @@ export function Scene(props:SceneProps){
   const pan=useRef<{x:number;y:number;box:number[]}|null>(null);
   useSvgMotion(svg,props.project,props.snapshot,props.focus);
   const base=props.focus?props.project.equipment.filter(e=>e.id===props.focus):props.project.equipment;
-  const visual=(e:Equipment)=>isVendorEquipment(e)?{width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150}:geometry[e.kind];
+  const visual=(e:Equipment)=>({width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150});
   const bounds=()=>{
     if(props.focus&&base[0]){const e=base[0],g=visual(e);return [e.x-18,e.y-30,g.width+36,g.height+70];}
     const x=Math.min(0,...base.map(e=>e.x-50)),y=Math.min(0,...base.map(e=>e.y-60));
@@ -47,7 +46,7 @@ export function Scene(props:SceneProps){
     })}
     {base.map(e=>{const g=visual(e);return <g key={e.id} data-equipment={e.id} transform={`translate(${e.x} ${e.y})`} className={`equipment ${props.selected===e.id?'selected':''}`} onPointerDown={event=>start(event,e)} role="button" tabIndex={0} aria-label={`${e.id} ${text(e.label,props.locale)}`} onKeyDown={event=>{if(event.key==='Enter')props.select(e.id);}}>
       <rect className="selection" x={-12} y={-28} width={g.width+24} height={g.height+64} rx={4}/><text className="equipment-id" x={0} y={-13}>{e.id}</text>
-      {isVendorEquipment(e)?(e.capabilities.diagram?.svg?<g data-vendor-svg={e.classId} dangerouslySetInnerHTML={{__html:e.capabilities.diagram.svg}}/>:<rect width={g.width} height={g.height} rx={5}/>):<Symbol equipment={e} snapshot={props.snapshot} locale={props.locale}/>} 
+      {e.capabilities.diagram?.svg?<g data-device-svg={e.kind} dangerouslySetInnerHTML={{__html:e.capabilities.diagram.svg}}/>:<Symbol equipment={e} snapshot={props.snapshot} locale={props.locale}/>} 
       <text className="equipment-name" x={g.width/2} y={g.height+24} textAnchor="middle">{text(e.label,props.locale)}</text>
       {props.ports&&Object.values(e.ports).map((p:Endpoint)=><circle key={p.port} cx={p.terminal.x} cy={p.terminal.y} r={4} className={`port ${p.terminal.medium}`}><title>{e.id}.{p.port} · {p.terminal.family} · {p.terminal.role}</title></circle>)}
     </g>;})}

@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from "react";
-import { isVendorEquipment, type Equipment, type Locale, type Snapshot } from "../core";
+import { equipmentSignal, type Equipment, type Locale, type Snapshot } from "../core";
 
 // Anatomy and native coordinates ported from Pom4H/saturn, src/equipment-svg.ts
 // at 90da21a1885a72022b7a2d1b45cb36993bee1597. No per-symbol scaling or connector adapters.
@@ -11,10 +11,9 @@ function Bolt({ x, y, r = 2 }: { x: number; y: number; r?: number }) { return <c
 function Label({ x, y, children, size = 12 }: { x: number; y: number; children: ReactNode; size?: number }) { return <text x={x} y={y} textAnchor="middle" fontSize={size} fontFamily="ui-monospace, monospace" fontWeight={600} fill="#17485c">{children}</text>; }
 export function Symbol({ equipment: e, snapshot, locale }: { equipment: Equipment; snapshot: Snapshot; locale: Locale }) {
   const clip = useId().replace(/:/g, "");
-  if (isVendorEquipment(e)) return <g data-anatomy="vendor-device"/>;
   const number = (id: string) => { const s = snapshot.samples[id]; return s?.quality === "good" && typeof s.value === "number" ? s.value : null; };
   if (e.kind === "tank") {
-    const level = number(e.level.id), y = 195 - Math.max(0, Math.min(100, level ?? 0)) * 1.44;
+    const levelSignal=equipmentSignal<number>(e,"level","number"), level=levelSignal?number(levelSignal.id):null, y = 195 - Math.max(0, Math.min(100, level ?? 0)) * 1.44;
     return <g data-anatomy="saturn-tank">
       <ellipse cx={79} cy={226} rx={67} ry={4} fill="#1c4055" opacity={.07}/>
       <Rect x={28} y={193} w={12} h={31} r={1} fill={dark}/><Rect x={120} y={193} w={12} h={31} r={1} fill={dark}/>
@@ -31,7 +30,7 @@ export function Symbol({ equipment: e, snapshot, locale }: { equipment: Equipmen
     </g>;
   }
   if (e.kind === "pump") {
-    const rpm = number(e.rpm.id), running = rpm !== null && rpm > 1;
+    const rpmSignal=equipmentSignal<number>(e,"rpm","number"), rpm=rpmSignal?number(rpmSignal.id):null, running = rpm !== null && rpm > 1;
     return <g data-anatomy="saturn-pump">
       <ellipse cx={118} cy={160} rx={95} ry={5} fill="#254e60" opacity={.07}/>
       <path d="M40 132 32 151H109L100 132M143 130 138 151H207L200 130" fill={dark} stroke="#547685"/>
@@ -54,7 +53,7 @@ export function Symbol({ equipment: e, snapshot, locale }: { equipment: Equipmen
     </g>;
   }
   if (e.kind === "valve") {
-    const opening = number(e.opening.id), travel = Math.max(0, Math.min(100, opening ?? 0));
+    const openingSignal=equipmentSignal<number>(e,"opening","number"), opening=openingSignal?number(openingSignal.id):null, travel = Math.max(0, Math.min(100, opening ?? 0));
     return <g data-anatomy="saturn-valve">
       <Rect x={0} y={90} w={160} h={24}/>{[7,137].map(x => <g key={x}><Rect x={x} y={81} w={13} h={42} r={3}/>{[88,116].map(y => <Bolt key={y} x={x+6.5} y={y}/>)}</g>)}
       <path d="M43 88 62 72H98L119 88V116L98 132H62L43 116Z" fill={metal} stroke="#6d8d9b" strokeWidth={1.4}/>
@@ -66,7 +65,7 @@ export function Symbol({ equipment: e, snapshot, locale }: { equipment: Equipmen
       <Label x={80} y={156} size={14}>{opening === null ? "—" : `${Math.round(opening)}%`}</Label>
     </g>;
   }
-  const online = snapshot.samples[e.online.id];
+  const onlineSignal=equipmentSignal<boolean>(e,"online","boolean"), online=onlineSignal?snapshot.samples[onlineSignal.id]:undefined;
   return <g data-anatomy="generic-plc"><Rect x={0} y={0} w={160} h={145} r={5} fill={dark}/>
     {[0,1,2,3,4,5,6,7].map(i => <g key={i}><Rect x={8+i*18} y={0} w={12} h={15}/><Rect x={8+i*18} y={130} w={12} h={15}/></g>)}
     <Rect x={18} y={32} w={124} h={66} r={2} fill="#e0f0ed"/><Label x={80} y={62} size={14}>{e.id}</Label>

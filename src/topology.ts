@@ -1,9 +1,8 @@
-import { isVendorEquipment, type Cable, type Endpoint, type Equipment, type Pipe, type Point, type Project } from './core';
-import { geometry } from './geometry';
+import type { Cable, Endpoint, Equipment, Pipe, Point, Project } from './core';
 export interface PhysicalRoute {id:string;kind:'pipe'|'cable';points:Point[];valid:boolean;error?:string}
 interface Box {id:string;x:number;y:number;right:number;bottom:number}
 export const connections=(project:Project)=>([...project.pipes,...project.cables??[]]);
-const size=(e:Equipment)=>isVendorEquipment(e)?{width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150}:geometry[e.kind];
+const size=(e:Equipment)=>({width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150});
 const boxesFor=(project:Project,clearance:number):Box[]=>project.equipment.map(e=>{const g=size(e);return{id:e.id,x:e.x-clearance,y:e.y-clearance-28,right:e.x+g.width+clearance,bottom:e.y+g.height+clearance};});
 const blocked=(boxes:readonly Box[],a:Point,b:Point,ignore='')=>boxes.some(r=>r.id!==ignore&&(a.x===b.x?a.x>r.x+.01&&a.x<r.right-.01&&Math.max(a.y,b.y)>r.y+.01&&Math.min(a.y,b.y)<r.bottom-.01:a.y===b.y?a.y>r.y+.01&&a.y<r.bottom-.01&&Math.max(a.x,b.x)>r.x+.01&&Math.min(a.x,b.x)<r.right-.01:true));
 const routeClear=(route:PhysicalRoute,boxes:readonly Box[],edge:Pipe|Cable)=>route.points.length>1&&route.points.slice(1).every((point,index)=>

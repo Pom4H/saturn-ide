@@ -28,7 +28,7 @@ export function useShell(client: ShellClient, host: ShellHost, authoring = true)
         setState(value as IDEState);
         if (!authoring) {
           const next = value as IDEState;
-          if (!session.getSnapshot().selected) session.selectEquipment(next.project.equipment.find(e => e.kind === 'pump')?.id ?? next.project.equipment[0]?.id ?? '');
+          if (!session.getSnapshot().selected) session.selectEquipment(next.project.equipment.find(e => e.icon === 'pump')?.id ?? next.project.equipment[0]?.id ?? '');
           return;
         }
         void refresh().then(async () => {
