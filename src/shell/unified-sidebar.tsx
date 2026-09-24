@@ -15,7 +15,7 @@ export function UnifiedSidebar({ locale, project, mode, surface, surfaces, conte
 }) {
   const ru=locale==='ru';
   return <aside className="unified-sidebar">
-    <button className="projects-back">← <span>{ru?'Проекты':'Projects'}</span></button>
+    <button className="projects-back"><ResourceIcon icon="back" size={16}/><span>{ru?'Проекты':'Projects'}</span></button>
     <div className="sidebar-project">
       <strong>{text(project.label,locale)}</strong>
       <span className={mode==='live'?'good':'stale'}>● {mode==='live'?(ru?'Production':'Production'):(ru?'Проектирование':'Engineering')}</span>
