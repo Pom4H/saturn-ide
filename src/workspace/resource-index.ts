@@ -23,9 +23,11 @@ export function indexResources(workspace: { list(): string[]; read(path: string)
   }
   const sourceOf = (id: string) => { const found = locations.get(id); return found?.length === 1 ? found[0] : undefined; };
   const uri = (kind: ProjectResource['kind'], id: string) => resourceUri(project.id, kind, id);
+  const deviceIdentity = new Map(project.equipment.map(e => [e.id, e.semanticId ?? `equipment:${e.id}`]));
+  const deviceUri = (id: string) => uri('device', deviceIdentity.get(id) ?? `equipment:${id}`);
   const root = uri('project', project.id);
   const resources: ProjectResource[] = [{ uri: root, kind: 'project', name: { en: text(project.label, 'en'), ru: text(project.label, 'ru') },
-    icon: 'project', source: files.includes('project.ts') ? { path: 'project.ts' } : undefined,
+    icon: 'project', semanticId: `project:${project.id}`, source: files.includes('project.ts') ? { path: 'project.ts' } : undefined,
     editors: ['diagram', 'source', 'signals', 'reports', 'hmi', 'targets', 'git'], related: [] }];
   for (const equipment of project.equipment) {
     const values: unknown[] = Object.values(equipment);
@@ -33,15 +35,15 @@ export function indexResources(workspace: { list(): string[]; read(path: string)
       !!v && typeof v === 'object' && 'id' in v && 'initial' in v).map(s => s.id));
     const connected = [...project.pipes, ...project.cables ?? []].filter(e => e.from.device === equipment.id || e.to.device === equipment.id);
     for (const edge of connected) { const signal = edge.kind === 'pipe' ? edge.flow : edge.signal; if (signal) signals.add(signal.id); }
-    resources.push({ uri: uri('device', equipment.id), kind: 'device', icon: equipment.kind,
-      name: { en: text(equipment.label, 'en'), ru: text(equipment.label, 'ru') }, entityId: equipment.id, source: sourceOf(equipment.id), parent: root,
+    resources.push({ uri: deviceUri(equipment.id), kind: 'device', icon: equipment.kind,
+      name: { en: text(equipment.label, 'en'), ru: text(equipment.label, 'ru') }, entityId: equipment.id, semanticId: deviceIdentity.get(equipment.id), source: sourceOf(equipment.id), parent: root,
       editors: ['diagram', 'source', 'signals'], related: [...new Set([
-        ...connected.flatMap(e => [e.from.device, e.to.device]).filter(id => id !== equipment.id).map(id => uri('device', id)),
+        ...connected.flatMap(e => [e.from.device, e.to.device]).filter(id => id !== equipment.id).map(deviceUri),
         ...(project.reports ?? []).filter(r => Object.values(r.columns).some(c => signals.has(c.signal.id))).map(r => uri('report', r.id)),
       ])] });
   }
   for (const report of project.reports ?? []) resources.push({ uri: uri('report', report.id), kind: 'report', icon: 'report',
-    name: { en: text(report.label, 'en'), ru: text(report.label, 'ru') }, entityId: report.id, source: sourceOf(report.id), parent: root,
+    name: { en: text(report.label, 'en'), ru: text(report.label, 'ru') }, entityId: report.id, semanticId: `report:${report.id}`, source: sourceOf(report.id), parent: root,
     editors: ['reports', 'source'], related: resources.filter(r => r.related.includes(uri('report', report.id))).map(r => r.uri) });
 
   // A single-file device is ONE entry, not a device entry plus a duplicate .ts entry.
