@@ -1,6 +1,6 @@
 /** File-like views of the existing project. This index is derived, never persisted as a second project. */
 export type ResourceKind = 'project' | 'device' | 'report' | 'plugin' | 'target' | 'hmi' | 'file';
-export type EditorId = 'diagram' | 'source' | 'signals' | 'reports' | 'hmi' | 'targets' | 'git';
+export type EditorId = 'diagram' | 'source' | 'signals' | 'reports' | 'hmi' | 'docs' | 'targets' | 'git';
 export type ShellHost = 'browser' | 'terminal';
 export interface SourceLocation { path: string; from?: number; to?: number }
 export interface ProjectResource {
@@ -27,7 +27,7 @@ export type ShellLocale = keyof ProjectResource['name'];
 export const editorNames: Record<EditorId, { en: string; ru: string }> = {
   diagram: { en: 'Diagram', ru: 'Схема' }, source: { en: 'Source', ru: 'Исходник' },
   signals: { en: 'Signals', ru: 'Сигналы' }, reports: { en: 'Reports', ru: 'Отчёты' },
-  hmi: { en: 'HMI', ru: 'HMI' }, targets: { en: 'Environment', ru: 'Среда' }, git: { en: 'Git', ru: 'Git' },
+  hmi: { en: 'HMI', ru: 'HMI' }, docs: { en: 'Documentation', ru: 'Документация' }, targets: { en: 'Environment', ru: 'Среда' }, git: { en: 'Git', ru: 'Git' },
 };
 export const resourceUri = (project: string, kind: ResourceKind, id: string): string =>
   `saturn://${encodeURIComponent(project)}/${kind}/${encodeURIComponent(id)}`;
@@ -42,4 +42,4 @@ export function findResources(catalog: ResourceCatalog, query: string, locale: S
 }
 /** No private-use font required in SSH, CI or plain terminals. */
 export const terminalIcon = (icon: string): string => ({ pump: 'PMP', tank: 'TNK', valve: 'VLV', plc: 'PLC',
-  report: 'RPT', plugin: 'EXT', target: 'ENV', hmi: 'HMI', project: 'PRJ', file: 'TS' }[icon] ?? 'DEV');
+  report: 'RPT', plugin: 'EXT', target: 'ENV', hmi: 'HMI', docs: 'DOC', project: 'PRJ', file: 'TS' }[icon] ?? 'DEV');
