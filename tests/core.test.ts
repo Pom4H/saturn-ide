@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { device, project, pump, signal, terminal, terminalFromAnchor, validateValue } from '../src/core';
+import { device, equipmentCommands, project, pump, signal, terminal, terminalFromAnchor, validateValue } from '../src/core';
 import demo from '../project/project';
 import { routeConnection, related } from '../src/topology';
 test('one inferred engineering model, explicit ports and report relationships',()=>{
@@ -44,6 +44,21 @@ test('vendor port constructors preserve physical literal types without local fra
   expect(b).toEqual({x:4,y:5,z:6,side:'down',medium:'bus',family:'rs485',role:'passive',max:32});
 });
 
+
+test('device classes own knowledge, writable commands and default alarms',()=>{
+  const sensorClass=device({
+    id:'acme.sensor',icon:'sensor',ports:{},
+    signals:{value:signal({initial:0,unit:'bar'}),reset:signal({initial:false,writable:true})},
+    knowledge:{summary:{ru:'Датчик давления',en:'Pressure sensor'},commissioning:[{ru:'Проверить ноль',en:'Verify zero'}],constraints:[{id:'range',severity:'warning',label:{ru:'Проверить диапазон',en:'Verify range'}}]},
+    alarms:{high:{label:{ru:'Высокое давление',en:'High pressure'},signal:'value',above:10,hysteresis:1}},
+  });
+  const sensor=sensorClass('PT-1',{label:'PT-1',x:0,y:0});
+  expect(equipmentCommands(sensor).map(signal=>signal.id)).toEqual(['PT-1.reset']);
+  expect(sensor.knowledge.summary).toEqual({ru:'Датчик давления',en:'Pressure sensor'});
+  expect(sensor.alarms[0]?.id).toBe('PT-1.high');
+  const p=project({id:'knowledge',label:'Knowledge',equipment:[sensor],pipes:[],reports:[]});
+  expect(p.alarms[0]?.signal).toBe(sensor.value);
+});
 
 test('device() is the only class constructor for built-in and project-owned equipment',()=>{
   const custom=device({id:'acme.sensor',icon:'sensor',ports:{},signals:{value:signal({initial:0})},capabilities:{diagram:{width:40,height:40}}});
