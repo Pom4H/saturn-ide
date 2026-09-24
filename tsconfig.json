@@ -36,6 +36,9 @@
       ],
       "@saturn/protocols/*": [
         "../saturn-plugins/protocols/*"
+      ],
+      "@saturn/importers/*": [
+        "../saturn-plugins/importers/*"
       ]
     }
   },
