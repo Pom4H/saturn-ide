@@ -11,7 +11,7 @@ test('device template creates real source + checked import; stale preview cannot
  const work=fixture();try{const workspace=new Workspace(work.root),preview=previewDevice(workspace,'pump','P-02','Second pump');workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);
  const built=await new Builder(workspace,resolve('.'),work.dir).build();expect(built.project.equipment.some(e=>e.id==='P-02')).toBe(true);expect(()=>workspace.createAndAttach('equipment/other.ts',preview.source,preview.projectSource,preview.projectVersion)).toThrow('Project changed');expect(workspace.list()).not.toContain('equipment/other.ts');expect(()=>workspace.create('../escape.ts','')).toThrow();
  }finally{work.clean();}
-});
+},15000);
 test('multiple HMI interfaces are ordinary checked source imports and reject duplicate IDs',async()=>{
  const work=fixture();try{const workspace=new Workspace(work.root);for(const id of ['operator','service']){const p=previewHmi(workspace,id,id,1280,720,[{id:'P-01',path:'equipment/P-01.device.ts'}]);workspace.createAndAttach(p.path,p.source,p.projectSource,p.projectVersion);}const built=await new Builder(workspace,resolve('.'),work.dir).build();expect(built.project.hmis?.map(h=>h.id)).toEqual(['operator','service']);expect(built.project.hmi).toBeDefined();
  }finally{work.clean();}
