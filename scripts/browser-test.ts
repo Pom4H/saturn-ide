@@ -8,7 +8,9 @@ const fixtureProject=fixture(),base='http://127.0.0.1:4017';mkdirSync('artifacts
 for(const args of [['init','-b','main'],['config','user.name','Saturn browser test'],['config','user.email','test@localhost'],['add','.'],['commit','-m','Initial project']])await execute(['git',...args],fixtureProject.root);
 const server=Bun.spawn(['bun','dev'],{env:{...Bun.env,SATURN_PROJECT:fixtureProject.root,PORT:'4017',DATABASE_URL:':memory:',SATURN_PREVIEW:'simulation'},stdout:'pipe',stderr:'pipe'});
 const stdout=new Response(server.stdout).text(),stderr=new Response(server.stderr).text();
-let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined;const checks:string[]=[],errors:string[]=[];\nconst captureArtifacts=Bun.env.SATURN_CAPTURE_ARTIFACTS==='1';\nconst screenshot=async(page:Page,path:string)=>{if(captureArtifacts)await page.screenshot({path});};
+let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined;const checks:string[]=[],errors:string[]=[];
+const captureArtifacts=Bun.env.SATURN_CAPTURE_ARTIFACTS==='1';
+const screenshot=async(page:Page,path:string)=>{if(captureArtifacts)await page.screenshot({path});};
 const state=async()=>await(await fetch(`${base}/api/state`)).json() as IDEState;
 const until=async(check:()=>Promise<boolean>,message:string)=>{for(let i=0;i<120;i++){if(await check().catch(()=>false))return;await Bun.sleep(250);}throw new Error(message);};
 async function hoverPump(page:Page){
