@@ -8,7 +8,7 @@ const fixtureProject=fixture(),base='http://127.0.0.1:4017';mkdirSync('artifacts
 for(const args of [['init','-b','main'],['config','user.name','Saturn browser test'],['config','user.email','test@localhost'],['add','.'],['commit','-m','Initial project']])await execute(['git',...args],fixtureProject.root);
 const server=Bun.spawn(['bun','dev'],{env:{...Bun.env,SATURN_PROJECT:fixtureProject.root,PORT:'4017',DATABASE_URL:':memory:',SATURN_PREVIEW:'simulation'},stdout:'pipe',stderr:'pipe'});
 const stdout=new Response(server.stdout).text(),stderr=new Response(server.stderr).text();
-let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined;const checks:string[]=[],errors:string[]=[];
+let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined;const checks:string[]=[],errors:string[]=[];\nconst captureArtifacts=Bun.env.SATURN_CAPTURE_ARTIFACTS==='1';\nconst screenshot=async(page:Page,path:string)=>{if(captureArtifacts)await page.screenshot({path});};
 const state=async()=>await(await fetch(`${base}/api/state`)).json() as IDEState;
 const until=async(check:()=>Promise<boolean>,message:string)=>{for(let i=0;i<120;i++){if(await check().catch(()=>false))return;await Bun.sleep(250);}throw new Error(message);};
 async function hoverPump(page:Page){
@@ -23,8 +23,8 @@ try{
   const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(e.message));await page.goto(base);
   await page.locator('[data-equipment="P-01"] [data-rpm="1450"]').waitFor({timeout:30000});
   const activityNav=page.getByRole('navigation',{name:'Рабочие разделы'});
-  const captureSurface=async(name:string,file:string,ready?:()=>Promise<void>)=>{await activityNav.getByRole('button',{name,exact:true}).click();if(ready)await ready();await page.screenshot({path:`artifacts/${file}`});};
-  await page.screenshot({path:'artifacts/menu-diagram.png'});
+  const captureSurface=async(name:string,file:string,ready?:()=>Promise<void>)=>{await activityNav.getByRole('button',{name,exact:true}).click();if(ready)await ready();await screenshot(page,`artifacts/${file}`);};
+  await screenshot(page,'artifacts/menu-diagram.png');
   await captureSurface('Исходник','menu-source.png',async()=>{await page.locator('.cm-content').waitFor();});
   await captureSurface('Сигналы','menu-signals.png');
   await captureSurface('Отчёты','menu-reports.png');
@@ -59,15 +59,15 @@ try{
   await page.getByRole('spinbutton',{name:'V-01.opening'}).fill('75');await page.getByRole('button',{name:'Отправить',exact:true}).click();await page.getByRole('button',{name:'Close alarms'}).click();checks.push('commands, measured SVG motion, reduced-motion and alarm acknowledgement use the actual runtime');
   const nav=page.getByRole('navigation',{name:'Рабочие разделы'});
   await nav.getByRole('button',{name:'Отчёты',exact:true}).click();await page.getByRole('button',{name:'Сформировать',exact:true}).click();await page.locator('.report-table tbody tr').first().waitFor();
-  assert(await page.locator('.report-table td[data-coverage]').count()>0,'report coverage missing');await page.screenshot({path:'artifacts/report.png'});checks.push('report surface reads SQL observations and displays missing-data coverage');
+  assert(await page.locator('.report-table td[data-coverage]').count()>0,'report coverage missing');await screenshot(page,'artifacts/report.png');checks.push('report surface reads SQL observations and displays missing-data coverage');
   await nav.getByRole('button',{name:'Сигналы',exact:true}).click();await page.getByRole('button',{name:'P-01.pressure',exact:true}).click();await page.locator('.trend [data-series]').waitFor();
   await nav.getByRole('button',{name:'Git',exact:true}).click();await page.getByRole('textbox',{name:'Описание коммита'}).fill('Move pump in Shell');await page.getByRole('button',{name:'Коммит',exact:true}).click();await until(async()=>!(await execute(['git','status','--porcelain'],fixtureProject.root)).trim(),'Git commit failed');checks.push('shared Shell navigation, archive chart and real Git commit');
   await page.keyboard.press('Control+k');await page.getByRole('textbox',{name:'Поиск',exact:true}).fill('P-01');await page.keyboard.press('Enter');await page.locator('[data-equipment="P-01"]').waitFor();checks.push('command palette finds equipment and opens its surface');
-  await page.getByRole('button',{name:'3D',exact:true}).click();await until(async()=>Number(await page.locator('.scene3d').getAttribute('data-frames'))>3,'3D renderer did not produce frames');assert(await page.locator('.scene3d').getAttribute('data-invalid-routes')==='0','3D graph differs from 2D');await page.screenshot({path:'artifacts/ide-3d.png'});checks.push('real WebGL 3D shares exact physical routes; no image substitution');
-  await page.getByRole('button',{name:'2D',exact:true}).click();await page.emulateMedia({colorScheme:'light',reducedMotion:'reduce'});await page.screenshot({path:'artifacts/ide-light.png'});await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:'artifacts/ide-dark.png'});
-  await page.getByRole('button',{name:'Код',exact:true}).click();await page.setViewportSize({width:1024,height:768});await page.screenshot({path:'artifacts/ide-ipad.png'});
-  await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'mobile horizontal overflow');await page.screenshot({path:'artifacts/ide-mobile.png'});
-  await page.setViewportSize({width:320,height:240});await page.goto(`${base}/hmi`);await page.locator('[data-equipment="P-01"]').waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&document.documentElement.scrollHeight<=innerHeight),'HMI overflow');await page.screenshot({path:'artifacts/hmi-320x240.png'});checks.push('real screenshots at desktop, tablet, phone and HMI viewports');
+  await page.getByRole('button',{name:'3D',exact:true}).click();await until(async()=>Number(await page.locator('.scene3d').getAttribute('data-frames'))>3,'3D renderer did not produce frames');assert(await page.locator('.scene3d').getAttribute('data-invalid-routes')==='0','3D graph differs from 2D');await screenshot(page,'artifacts/ide-3d.png');checks.push('real WebGL 3D shares exact physical routes; no image substitution');
+  await page.getByRole('button',{name:'2D',exact:true}).click();await page.emulateMedia({colorScheme:'light',reducedMotion:'reduce'});await screenshot(page,'artifacts/ide-light.png');await page.emulateMedia({colorScheme:'dark'});await screenshot(page,'artifacts/ide-dark.png');
+  await page.getByRole('button',{name:'Код',exact:true}).click();await page.setViewportSize({width:1024,height:768});await screenshot(page,'artifacts/ide-ipad.png');
+  await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'mobile horizontal overflow');await screenshot(page,'artifacts/ide-mobile.png');
+  await page.setViewportSize({width:320,height:240});await page.goto(`${base}/hmi`);await page.locator('[data-equipment="P-01"]').waitFor();assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&document.documentElement.scrollHeight<=innerHeight),'HMI overflow');await screenshot(page,'artifacts/hmi-320x240.png');checks.push('real screenshots at desktop, tablet, phone and HMI viewports');
   assert(errors.length===0,errors.join('\n'));console.log(checks.map(c=>`PASS ${c}`).join('\n'));
 }catch(error){errors.push(String(error));await browser?.contexts()[0]?.pages()[0]?.screenshot({path:'artifacts/failure.png'}).catch(()=>{});throw error;}
 finally{await Bun.write('artifacts/browser-report.json',JSON.stringify({checks,errors},null,2));await browser?.close();server.kill('SIGTERM');await server.exited;await Bun.write('artifacts/server.log',`${await stdout}\n${await stderr}`);fixtureProject.clean();}
