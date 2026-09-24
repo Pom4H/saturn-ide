@@ -2,6 +2,8 @@ name: MVP checks
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/screenshots/**'
   workflow_dispatch:
 
 concurrency:
@@ -9,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   check:
@@ -24,14 +26,12 @@ jobs:
           POSTGRES_DB: saturn
         ports: ['5432:5432']
         options: >-
-          --health-cmd pg_isready --health-interval 5s
+          --health-cmd "pg_isready -U saturn -d saturn" --health-interval 5s
           --health-timeout 5s --health-retries 10
     env:
       TEST_POSTGRES_URL: postgres://saturn:saturn@127.0.0.1:5432/saturn
     steps:
       - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -53,10 +53,26 @@ jobs:
       - name: Browser round trip and real screenshots
         run: bun run test:browser
 
-      - uses: actions/upload-artifact@v7.0.1
-        if: always()
-        with:
-          name: mvp-evidence
-          path: artifacts/
-          if-no-files-found: warn
-          retention-days: 14
+      - name: Store screenshots in Git
+        if: success()
+        run: |
+          mkdir -p docs/screenshots
+          cp artifacts/menu-diagram.png docs/screenshots/diagram.png
+          cp artifacts/menu-source.png docs/screenshots/source.png
+          cp artifacts/menu-signals.png docs/screenshots/signals.png
+          cp artifacts/menu-reports.png docs/screenshots/reports.png
+          cp artifacts/menu-hmi.png docs/screenshots/hmi.png
+          cp artifacts/menu-environment.png docs/screenshots/environment.png
+          cp artifacts/menu-git.png docs/screenshots/git.png
+          cp artifacts/ide-dark.png docs/screenshots/ide-dark.png
+          cp artifacts/ide-light.png docs/screenshots/ide-light.png
+          cp artifacts/ide-3d.png docs/screenshots/ide-3d.png
+          git add docs/screenshots
+          if git diff --cached --quiet; then
+            echo "Screenshots unchanged"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'docs: refresh verified Saturn screenshots'
+          git push origin HEAD:main
