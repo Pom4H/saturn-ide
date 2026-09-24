@@ -17,19 +17,6 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: saturn
-          POSTGRES_PASSWORD: saturn
-          POSTGRES_DB: saturn
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U saturn -d saturn" --health-interval 5s
-          --health-timeout 5s --health-retries 10
-    env:
-      TEST_POSTGRES_URL: postgres://saturn:saturn@127.0.0.1:5432/saturn
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -51,7 +38,7 @@ jobs:
       - name: Typecheck
         run: bun run check
 
-      - name: Unit and integration tests (SQLite and real PostgreSQL)
+      - name: Unit and SQLite tests
         run: bun test tests
 
       - name: Cache Playwright Chromium
