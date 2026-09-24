@@ -7,6 +7,11 @@ import type { DocumentPort, SourceFile } from './model/documents';
 export class ShellClient implements DocumentPort {
   private key = '';
   constructor(readonly base: string) {}
+  async requestText(path:string,signal?:AbortSignal):Promise<string> {
+    const response=await fetch(new URL(`/api/${path}`,this.base),{signal});
+    if(!response.ok){let message=`HTTP ${response.status}`;try{const value=await response.json() as {error?:string};message=value.error??message;}catch{}throw new Error(message);}
+    return response.text();
+  }
   async request<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const response = await fetch(new URL(`/api/${path}`, this.base), body === undefined ? { signal } : {
       method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'X-Saturn-Key': this.key }, body: JSON.stringify(body),
