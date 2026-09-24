@@ -1,8 +1,9 @@
 # Modbus, MQTT и OPC UA
 
 Плагины находятся в `project/plugins/protocols`. Копируйте нужный модуль вместе с
-`shared.ts` в свой проект и подключайте обычным import. Нет регистрации плагинов
-или отдельного списка тегов: используется `Signal.binding` и `acquire()`.
+`shared.ts` в свой проект; для Modbus нужен также `modbus-transport.ts`.
+Подключение — обычный import. Нет регистрации плагинов или отдельного списка
+тегов: используется `Signal.binding` и `acquire()`.
 
 SDK загружаются только внутри `connect()`. Импорт проекта, проверка и сборка не
 подключаются к приборам, не создают PKI и не открывают serial port.
@@ -12,10 +13,14 @@ SDK загружаются только внутри `connect()`. Импорт �
 В каталоге своего проекта установить только используемые SDK и сохранить bun.lock:
 
 ```sh
-bun add modbus-serial                  # Modbus TCP/RTU; RTU требует native serialport
+bun add modbus-serial                  # Modbus TCP/RTU
 bun add mqtt                           # MQTT
 bun add node-opcua-client node-opcua-certificate-manager  # OPC UA
 ```
+
+Для RTU дополнительно нужен Node.js в PATH (или `nodeExecutable` в конфигурации)
+и рабочий native binding serialport для выбранной ОС/архитектуры. Последовательный
+транспорт исполняется в отдельном Node-процессе. TCP не требует этого процесса.
 
 Для разработки IDE эти SDK и тестовые серверы установлены как devDependencies.
 В рабочем runtime они должны быть установлены по тому же lockfile. Bundle содержит
@@ -32,7 +37,10 @@ import { modbusTcp, modbusRtu } from './plugins/protocols/modbus';
 
 export const plc = modbusTcp('PLC-01', { host: '192.168.10.20', port: 502 }, { pollMs: 250 });
 // Альтернатива: одна сессия на всю последовательную шину, unit задан в адресах.
-export const bus = modbusRtu('RS485-01', { path: '/dev/ttyUSB0', baudRate: 19200, parity: 'even' });
+export const bus = modbusRtu('RS485-01', {
+  path: '/dev/ttyUSB0', baudRate: 19200, parity: 'even',
+  // nodeExecutable: '/usr/bin/node', // необязательно: по умолчанию node из PATH
+});
 
 export const pump1 = pump('P-01', {
   x: 100, y: 100, label: 'Насос',
@@ -50,7 +58,8 @@ export const pump1 = pump('P-01', {
 
 Чтения: FC1/2/3/4; записи: FC5/6/16. Форматы uint16/int16/uint32/int32/float32,
 порядки ABCD/CDAB/BADC/DCBA для 32 бит, преобразование `raw * scale + bias`.
-Обратное преобразование команды проверяет диапазон и целочисленность без усечения.
+Обратное преобразование команды проверяет диапазон и целочисленность без усечения;
+допускается только малая погрешность арифметики floating point, не квантование команды.
 Соседние регистры объединяются в пакеты до 125, биты до 2000. Разрывы адресов не
 запрашиваются, разные unit/area не объединяются. Broadcast запрещён.
 
@@ -58,6 +67,14 @@ Modbus exception делает соответствующие сигналы bad.
 закрытия и восстановления всей сессии. Для RTU это вся шина, а не независимое
 резервирование каждого slave; изоляция постоянно молчащего slave пока не реализована.
 Modbus TCP не зашифрован: подключать внутри защищённой сети, не публиковать в интернет.
+
+Реальный PTY-тест обнаружил падение Bun 1.4.2 при native вызове serialport
+`uv_default_loop`. Поэтому только serial SDK работает в Node-процессе через
+ограниченный request/reply канал. Сигналы, кодеки, очереди и reconnect остаются в
+существующем acquisition. Закрытие ждёт выхода процесса и освобождения serial handle;
+падение native-модуля не обрушает Bun. Код serial worker включён в driver bundle,
+исходная директория проекта после сборки ему не нужна. Это локальный транспортный
+адаптер, не отдельный сервис и не доказательство изоляции всего runtime от IDE.
 
 ## MQTT
 
@@ -86,7 +103,7 @@ Retained-пакет по умолчанию stale; можно указать `re
 QoS1 и retain=false, без SDK-reconnect и offline queue. PUBACK означает принятие
 брокером, не подтверждение исполнительного механизма. QoS не гарантирует
 exactly-once физическое действие; повтор на уровне устройства требует своего ID.
-После переподключения старые команды не переотправляются.
+После переподключения acquisition не переотправляет старые команды.
 
 ## OPC UA
 
@@ -131,12 +148,21 @@ export default acquire(plc, broker, ua);
 
 ## Проверки
 
+[Подтверждённый прогон и границы проверки](verification-protocols.md): реализация
+`62eb52d` прошла обе проверки TypeScript, architecture guard и Bun-тесты:
+**111 pass, 2 skip, 0 fail**. Пропущены только существующие PostgreSQL-тесты.
+
 `bun test tests/protocols.test.ts` использует настоящий TCP, MQTT-брокер Aedes,
 node-opcua сервер с защищённым каналом и Linux PTY для RTU. PTY проверяет программный
 serial/CRC путь, но не USB-адаптер, RS485 timing/noise или физический контроллер.
 Тесты кодеков используют независимые векторы, а не только encode/decode roundtrip.
-Наличие теста само по себе не означает его успешный запуск; результат CI фиксируется
-отдельно после выполнения. Аппаратной приёмки не проводилось.
+`tests/protocol-build.test.ts` проверяет внешний проект → сборка → retained driver →
+Modbus TCP → Runtime → SQLite, с настоящим SDK и установленными зависимостями.
+
+В этом прогоне MQTT проверен с брокером 3.1.1 по TCP; отдельного брокера MQTT 5,
+TLS/WS/WSS-стенда не было. OPC UA проверен с SignAndEncrypt/Basic256Sha256,
+анонимной сессией и явно доверенным сертификатом сервера. Другие политики,
+учётные записи, Windows/macOS serial и аппаратная приёмка здесь не проверялись.
 
 ## Первичные источники
 
@@ -145,3 +171,4 @@ serial/CRC путь, но не USB-адаптер, RS485 timing/noise или ф�
 - https://github.com/node-opcua/node-opcua
 - https://reference.opcfoundation.org/Core/Part4/v105/docs/7.11
 - https://bun.sh/docs/bundler (external packages)
+- https://github.com/oven-sh/bun/issues/18546 (POSIX libuv/native compatibility)
