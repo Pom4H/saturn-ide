@@ -1,31 +1,35 @@
 import type { ReactNode } from 'react';
 
-type IconDef = (p: { s: number }) => ReactNode;
-const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.65, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+type IconDef=()=>ReactNode;
+const p={fill:'none',stroke:'currentColor',strokeWidth:1.75,strokeLinecap:'round' as const,strokeLinejoin:'round' as const};
 
-const icons: Readonly<Record<string, IconDef>> = {
-  diagram: () => <><path {...common} d="M4 6h5v5H4zM15 13h5v5h-5z"/><path {...common} d="M9 8.5h3a3 3 0 0 1 3 3V13M6.5 11v6h8.5"/></>,
-  source: () => <><path {...common} d="m8 5-4 7 4 7M16 5l4 7-4 7"/><path {...common} d="m14 4-4 16"/></>,
-  signals: () => <><path {...common} d="M3 12h3l2.2-5 3.1 10 2.4-7 2 4H21"/></>,
-  reports: () => <><path {...common} d="M6 3h8l4 4v14H6z"/><path {...common} d="M14 3v5h5M9 16v-3M12 16v-5M15 16v-2"/></>,
-  hmi: () => <><rect {...common} x="3" y="4" width="18" height="13" rx="2"/><path {...common} d="M8 21h8M12 17v4"/><path {...common} d="M7 12h2l2-4 2 6 2-3h2"/></>,
-  targets: () => <><path {...common} d="M4 5h16v14H4z"/><path {...common} d="m8 9 3 3-3 3M13 15h3"/></>,
-  target: () => <><path {...common} d="M4 5h16v14H4z"/><path {...common} d="m8 9 3 3-3 3M13 15h3"/></>,
-  git: () => <><circle {...common} cx="6" cy="5" r="2"/><circle {...common} cx="18" cy="7" r="2"/><circle {...common} cx="6" cy="19" r="2"/><path {...common} d="M6 7v10M8 6h3a4 4 0 0 1 4 4v3M15 13l3-3"/></>,
-  pump: () => <><circle {...common} cx="9" cy="12" r="5"/><circle {...common} cx="9" cy="12" r="2"/><path {...common} d="M14 10h4l3 2-3 2h-4M9 7V4h5M4 17h12"/></>,
-  tank: () => <><ellipse {...common} cx="12" cy="5" rx="6" ry="2"/><path {...common} d="M6 5v14c0 1.1 2.7 2 6 2s6-.9 6-2V5"/><ellipse {...common} cx="12" cy="19" rx="6" ry="2"/><path {...common} d="M7 14h10"/></>,
-  valve: () => <><path {...common} d="M4 9l6 3-6 3zM20 9l-6 3 6 3z"/><path {...common} d="M10 12h4M12 12V7M9 7h6M12 7V4"/></>,
-  plc: () => <><rect {...common} x="5" y="5" width="14" height="14" rx="2"/><path {...common} d="M9 9h6v6H9zM9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></>,
-  plugin: () => <><path {...common} d="M8 3v4M16 3v4M6 7h12v5a6 6 0 0 1-12 0zM12 18v3"/></>,
-  file: () => <><path {...common} d="M6 3h8l4 4v14H6zM14 3v5h5"/><path {...common} d="m10 12-2 2 2 2M14 12l2 2-2 2"/></>,
-  project: () => <><path {...common} d="M3 6h7l2 2h9v11H3z"/></>,
-  report: () => <><path {...common} d="M6 3h8l4 4v14H6zM14 3v5h5"/><path {...common} d="M9 16v-3M12 16v-5M15 16v-2"/></>,
-  search: () => <><circle {...common} cx="11" cy="11" r="6"/><path {...common} d="m16 16 5 5"/></>,
-  '3d': () => <><path {...common} d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9"/></>,
+const icons:Readonly<Record<string,IconDef>>={
+  diagram:()=> <><rect {...p} x="3" y="3" width="7" height="7" rx="1"/><rect {...p} x="14" y="14" width="7" height="7" rx="1"/><path {...p} d="M7 10v4a3 3 0 0 0 3 3h4M17 14v-4a3 3 0 0 0-3-3h-4"/></>,
+  source:()=> <><path {...p} d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></>,
+  signals:()=> <path {...p} d="M3 12h3l2.2-6 3.4 12 3-9 2.2 5H21"/>,
+  reports:()=> <><path {...p} d="M6 2h8l4 4v16H6zM14 2v5h5"/><path {...p} d="M9 17v-3M12 17v-6M15 17v-4"/></>,
+  report:()=> <><path {...p} d="M6 2h8l4 4v16H6zM14 2v5h5"/><path {...p} d="M9 17v-3M12 17v-6M15 17v-4"/></>,
+  hmi:()=> <><rect {...p} x="3" y="4" width="18" height="13" rx="2"/><path {...p} d="M8 21h8M12 17v4"/></>,
+  targets:()=> <><rect {...p} x="3" y="4" width="18" height="16" rx="2"/><path {...p} d="m7 9 3 3-3 3M13 15h4"/></>,
+  target:()=> <><rect {...p} x="3" y="4" width="18" height="16" rx="2"/><path {...p} d="m7 9 3 3-3 3M13 15h4"/></>,
+  git:()=> <><circle {...p} cx="6" cy="4" r="2"/><circle {...p} cx="18" cy="6" r="2"/><circle {...p} cx="6" cy="20" r="2"/><path {...p} d="M6 6v12M8 5h4a4 4 0 0 1 4 4v5M13 11l3 3 3-3"/></>,
+  pump:()=> <><circle {...p} cx="10" cy="12" r="5"/><circle {...p} cx="10" cy="12" r="1.5"/><path {...p} d="M15 10h5v4h-5M10 7V4h4M5 17h12"/></>,
+  tank:()=> <><ellipse {...p} cx="12" cy="5" rx="6" ry="2.5"/><path {...p} d="M6 5v14c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5V5"/><path {...p} d="M6 14c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5"/></>,
+  valve:()=> <><path {...p} d="m4 9 6 3-6 3zM20 9l-6 3 6 3zM10 12h4M12 12V6M9 6h6"/></>,
+  plc:()=> <><rect {...p} x="5" y="5" width="14" height="14" rx="2"/><rect {...p} x="9" y="9" width="6" height="6" rx="1"/><path {...p} d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></>,
+  plugin:()=> <><path {...p} d="M8 3v4M16 3v4M6 7h12v5a6 6 0 0 1-12 0zM12 18v3"/></>,
+  file:()=> <><path {...p} d="M6 2h8l4 4v16H6zM14 2v5h5"/><path {...p} d="m10 12-2 2 2 2M14 12l2 2-2 2"/></>,
+  project:()=> <path {...p} d="M3 6h7l2 2h9v11H3z"/>,
+  search:()=> <><circle {...p} cx="11" cy="11" r="6"/><path {...p} d="m16 16 5 5"/></>,
+  bell:()=> <><path {...p} d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path {...p} d="M10 21h4"/></>,
+  sun:()=> <><circle {...p} cx="12" cy="12" r="4"/><path {...p} d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></>,
+  moon:()=> <path {...p} d="M21 12.8A8.5 8.5 0 1 1 11.2 3 6.7 6.7 0 0 0 21 12.8z"/>,
+  back:()=> <><path {...p} d="m15 18-6-6 6-6"/><path {...p} d="M9 12h11"/></>,
+  chevron:()=> <path {...p} d="m9 10 3 3 3-3"/>,
+  '3d':()=> <><path {...p} d="m12 3 8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9"/></>,
 };
-
-const fallback: IconDef = icons.file!;
-export function ResourceIcon({ icon, size = 18 }: { icon: string; size?: number }) {
-  const draw = icons[icon] ?? fallback;
-  return <svg className="resource-icon codex-icon" data-icon={icon} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">{draw({ s: size })}</svg>;
+const fallback=icons.file!;
+export function ResourceIcon({icon,size=18}:{icon:string;size?:number}){
+  const draw=icons[icon]??fallback;
+  return <svg className="resource-icon codex-icon" data-icon={icon} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">{draw()}</svg>;
 }
