@@ -154,6 +154,7 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
           if (op === 'hover') return json(builder.language.hover(file, source, position, b.locale === 'en' ? 'en' : 'ru'));
           if (op === 'complete') return json(builder.language.complete(file, source, position));
           if (op === 'diagnostics') return json(builder.language.diagnostics(file, source));
+          if (op === 'signal-hints') return json(builder.language.signalHints(file, source, authoringProject()));
           throw new HttpError(400, 'Unknown language operation');
         }
         if (path === '/api/command') {
