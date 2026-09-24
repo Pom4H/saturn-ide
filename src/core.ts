@@ -3,7 +3,7 @@ export type Locale = 'en' | 'ru';
 export type Text = string | Readonly<Record<Locale, string>>;
 export const text = (value: Text, locale: Locale): string => typeof value === 'string' ? value : value[locale];
 export type Value = number | boolean | string;
-export type Quality = 'good' | 'stale' | 'bad';
+export type Quality = 'good' | 'stale' | 'bad' | 'offline';
 /** Protocol-neutral origin of a domain signal. Transport addressing is metadata, not signal identity. */
 export type SignalOrigin =
   | { readonly kind:'hardware'; readonly device:string; readonly channel?:string }
@@ -26,6 +26,7 @@ export interface QualityState {
 export const qualityState = (quality:Quality):QualityState => quality==='good'
   ? {validity:'good',connection:'online',freshness:'fresh'}
   : quality==='stale' ? {validity:'uncertain',connection:'online',freshness:'stale'}
+  : quality==='offline' ? {validity:'bad',connection:'offline',freshness:'stale'}
   : {validity:'bad',connection:'online',freshness:'fresh'};
 export interface Signal<T extends Value = Value, ID extends string = string, W extends boolean = boolean> {
   readonly id: ID; readonly initial: T; readonly writable?: W; readonly unit?: string;
