@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { Runtime } from '../src/runtime/engine';
 import { Store } from '../src/runtime/store';
 import { Events } from '../src/runtime/events';
+import { project, signal } from '../src/core';
 import { model } from './helpers';
 async function setup(){const store=new Store(':memory:');await store.init();const events=new Events(),notices:string[]=[];const runtime=new Runtime(model(),store,events,id=>notices.push(id));await runtime.init();return{store,events,runtime,notices,close:async()=>{events.close();await store.close();}};}
 test('commands cannot masquerade as confirmed observations',async()=>{const t=await setup();try{
@@ -16,6 +17,22 @@ test('alarms preserve hysteresis, acknowledgement, durability and edge-only noti
   await t.runtime.ingest({pressure:11});expect(t.runtime.snapshot.alarms.high?.acknowledged).toBe(false);expect(t.notices).toEqual(['high','high']);
   await t.runtime.stale(Date.now()+20000);expect(t.runtime.snapshot.samples.pressure?.quality).toBe('stale');expect(t.runtime.snapshot.alarms.high?.active).toBe(true);
 }finally{await t.close();}});
+test('semantic identity keeps observations continuous across signal rename and restart',async()=>{
+  const store=new Store(':memory:');await store.init();const events=new Events();
+  try{
+    const oldSignal=signal('P-01.pressure',{initial:0,semanticId:'signal:equipment:booster-primary:pressure'});
+    const oldProject=project({id:'p',label:'P',signals:{pressure:oldSignal},equipment:[],pipes:[],alarms:[]});
+    const runtime=new Runtime(oldProject,store,events,()=>{});await runtime.init();await runtime.ingest({'P-01.pressure':7});
+    const renamed=signal('P-201.pressure',{initial:0,semanticId:'signal:equipment:booster-primary:pressure'});
+    const nextProject=project({id:'p',label:'P',signals:{pressure:renamed},equipment:[],pipes:[],alarms:[]});
+    runtime.apply(nextProject);
+    expect(runtime.snapshot.samples['P-201.pressure']?.value).toBe(7);
+    expect(runtime.snapshot.samples['P-201.pressure']?.semantic).toBe('signal:equipment:booster-primary:pressure');
+    const restored=new Runtime(nextProject,store,events,()=>{});await restored.init();
+    expect(restored.snapshot.samples['P-201.pressure']?.value).toBe(7);
+    expect((await store.history('signal:equipment:booster-primary:pressure')).map(sample=>sample.value)).toEqual([7]);
+  }finally{events.close();await store.close();}
+});
 test('SSE initial snapshot and cancellation cleanup',async()=>{const events=new Events();try{
   const response=events.response(new Request('http://localhost/api/events'),{ready:true}),reader=response.body!.getReader();
   expect(new TextDecoder().decode((await reader.read()).value)).toContain('data: {"ready":true}');events.emit('telemetry',{x:1});expect(new TextDecoder().decode((await reader.read()).value)).toContain('event: telemetry');await reader.cancel();expect(events.count).toBe(0);
