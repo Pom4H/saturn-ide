@@ -6,6 +6,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { isAttached, type ConnectionEnd, cableAppearance, equipmentSignal, interfaceProfile, validateProject, type Endpoint, type Equipment, type Point } from '../core';
 import { anchor, connectionTip } from '../topology';
 import { geometryRevision } from './model/geometry-revision';
+import { connectionHandleVisible } from './model/connection-picking';
 import { advancePhase, flowOf, numeric, rpmOf } from '../motion';
 import { projectPanelCable, roundedRoute } from './route3d';
 import { Scene, type SceneProps } from './scene';
@@ -231,7 +232,12 @@ export default function Scene3D(props:SceneProps){
     const release=(pointer:number)=>{controls.enabled=true;if(renderer.domElement.hasPointerCapture(pointer))renderer.domElement.releasePointerCapture(pointer);delete node.dataset.connectionTarget;delete node.dataset.dragPointer;delete node.dataset.dragKind;};
     const pointerDown=(e:globalThis.PointerEvent)=>{if(gesture)return;down=[e.clientX,e.clientY];renderer.domElement.focus({preventScroll:true});if(current.current.interaction!=='edit'||e.button!==0)return;
       aim(e);const plugHit=ray.intersectObjects(plugMeshes,false)[0],equipmentHit=ray.intersectObjects([...roots.values()],true)[0];
-      const hit=plugHit&&(!equipmentHit||plugHit.distance<=equipmentHit.distance+.01)?plugHit.object:equipmentHit?.object;
+      const candidate=plugHit?.object.userData.cablePlug as {id:string;end:'from'|'to'}|undefined;
+      const candidateEnd=candidate&&[...current.current.project.pipes,...current.current.project.cables??[]].find(edge=>edge.id===candidate.id)?.[candidate.end];
+      let obstacle:T.Object3D|null=equipmentHit?.object??null,obstaclePort:string|undefined;
+      while(obstacle){if(typeof obstacle.userData.port==='string')obstaclePort=obstacle.userData.port;if(obstacle.userData.equipment)break;obstacle=obstacle.parent;}
+      const occluder=equipmentHit?{distance:equipmentHit.distance,port:obstaclePort&&obstacle?{device:String(obstacle.userData.equipment),port:obstaclePort}:undefined}:undefined;
+      const hit=plugHit&&candidateEnd&&connectionHandleVisible(candidateEnd,plugHit.distance,occluder)?plugHit.object:equipmentHit?.object;
       const plug=hit?.userData.cablePlug as {id:string;end:'from'|'to'}|undefined;
       if(plug){
         current.current.select(plug.id);
