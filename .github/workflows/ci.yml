@@ -1,7 +1,7 @@
 name: IDE architecture and integration checks
 on:
   push:
-    branches: [main]
+    branches: [main, fix/foundation-shared-authoring]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -66,7 +66,7 @@ jobs:
         run: |
           mkdir -p offline-toolchain/bin
           cp "$(command -v bun)" offline-toolchain/bin/bun
-          tar -czf offline-toolchain/dependencies.tar.gz -C saturn-ide node_modules
+          tar --exclude='.git' --exclude='.npmrc' --exclude='.env*' -czf offline-toolchain/dependencies.tar.gz -C saturn-ide node_modules
       - name: Retain offline toolchain
         if: contains(github.event.head_commit.message, '[toolchain]')
         uses: actions/upload-artifact@v4
