@@ -88,7 +88,7 @@ test('device classes own knowledge, writable commands and default alarms',()=>{
 test('device() is the only class constructor for built-in and project-owned equipment',()=>{
   const custom=device({id:'pressure-sensor',icon:'sensor',ports:{},signals:{value:signal({initial:0})},capabilities:{diagram:{width:40,height:40}}});
   const sensor=custom('S-1',{label:'Sensor',x:1,y:2});
-  expect(sensor.kind).toBe('acme.sensor');
+  expect(sensor.kind).toBe('pressure-sensor');
   expect(sensor.value.id).toBe('S-1.value');
   expect(demo.equipment.every(e=>typeof e.kind==='string'&&typeof e.icon==='string'&&!!e.capabilities)).toBe(true);
 });
