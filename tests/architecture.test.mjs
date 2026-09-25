@@ -17,3 +17,16 @@ test('pure model must stay browser/runtime independent and explicitly typed', ()
   assert.equal(violations({'src/core.ts':"import React from 'react'"}).length,1);
   assert.equal(violations({'src/core/example.ts':'const x: any = 1;'}).length,1);
 });
+test('only graphical Shell may bundle documentation with an explicit text loader', () => {
+  const source = "import guide from '../../docs/dsl.md' with { type: 'text' };";
+  assert.deepEqual(violations({'src/shell/guide.ts':source}), []);
+  assert.ok(violations({'src/runtime/guide.ts':source}).length > 0);
+  assert.ok(violations({'src/shell/model/guide.ts':source.replace('../../docs', '../../../docs')}).length > 0);
+  for (const denied of [
+    "import guide from '../../docs/dsl.md';",
+    "import guide from '../../docs/dsl.md' with { type: 'json' };",
+    "import code from '../../docs/code.ts' with { type: 'text' };",
+    "import text from '../../private.md' with { type: 'text' };",
+    "import('../../docs/dsl.md');",
+  ]) assert.ok(violations({'src/shell/guide.ts':denied}).length > 0, denied);
+});

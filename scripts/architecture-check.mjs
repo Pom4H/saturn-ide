@@ -16,20 +16,25 @@ export function violations(sources) {
     const owner = layer(file), headless = file.replaceAll('\\','/').startsWith('src/shell/model/');
     const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith('tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
     if (!allowed[owner]) { errors.push(`${file}: unowned module`); continue; }
-    const check = specifier => {
+    const check = (specifier, declaration) => {
       if (!specifier.startsWith('.')) {
         if (headless || owner === 'core' || owner === 'runtime' && /^(typescript|@typescript\/|react|three|codemirror|@codemirror\/)/.test(specifier)) errors.push(`${file}: ${headless ? 'headless Shell' : owner} must not import ${specifier}`);
         return;
       }
       const target = relative(process.cwd(), resolve(dirname(file), specifier)).replaceAll('\\','/');
+      // Explicit text imports are inert Shell assets, not executable cross-layer modules.
+      const documentation = owner === 'shell' && !headless && /^docs\/.*\.md$/.test(target)
+        && ts.isImportDeclaration(declaration)
+        && declaration.attributes?.elements.some(attribute => attribute.name.text === 'type' && attribute.value.text === 'text');
+      if (documentation) return;
       const normalized = /\.[cm]?[tj]sx?$|\.html$/.test(target) ? target : target + '.ts';
       const destination = layer(normalized);
       if (!allowed[owner].includes(destination)) errors.push(`${file}: ${owner} -> ${destination} (${specifier})`);
       if (headless && destination !== 'core' && !normalized.startsWith('src/shell/model/')) errors.push(`${file}: headless Shell -> host-specific module (${specifier})`);
     };
     const visit = node => {
-      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) check(node.moduleSpecifier.text);
-      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) check(node.arguments[0].text);
+      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) check(node.moduleSpecifier.text, node);
+      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) check(node.arguments[0].text, node);
       if (node.kind === ts.SyntaxKind.AnyKeyword) errors.push(`${file}: explicit any`);
       if (headless && ts.isIdentifier(node) && ['window','document','localStorage','process','Bun'].includes(node.text)) errors.push(`${file}: headless Shell cannot use ${node.text}`);
       if (owner === 'runtime' && ts.isPropertyAccessExpression(node) && node.expression.getText(tree) === 'Bun' && node.name.text === 'build') errors.push(`${file}: runtime cannot build source`);
