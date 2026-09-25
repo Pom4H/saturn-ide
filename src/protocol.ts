@@ -1,12 +1,6 @@
 import type { Driver, Problem, Project, Snapshot } from "./core";
 import type { PositionSource } from "./source-edits";
-export interface AlarmEvent {
-  id: string;
-  active: boolean;
-  acknowledged: boolean;
-  at: number;
-  event: 'active' | 'clear' | 'ack';
-}
+export type { AlarmEvent } from './core/operational';
 export interface IDEState {
   project: Project;
   positions: Record<string, PositionSource>;

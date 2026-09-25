@@ -1,4 +1,5 @@
 import { text, type Locale, type Report, type Sample, type Value } from './core';
+import { sampleInterval } from './core/operational';
 export interface ReportBucket {from:number;to:number;values:Record<string,Value|null>;coverage:Record<string,number>}
 export interface ReportResult {id:string;label:Report['label'];from:number;to:number;generatedAt:number;revision:string;columns:Report['columns'];rows:ReportBucket[]}
 /** Zero-order hold, bounded by signal freshness. Missing intervals are never filled with zero. */
@@ -11,9 +12,10 @@ export function aggregateReport(report:Report,series:ReadonlyMap<string,readonly
     const accum=rows.map(()=>({duration:0,weighted:0,min:Infinity,max:-Infinity,last:null as Value|null}));
     for(let i=0;i<samples.length;i++){
       const s=samples[i]!,next=samples[i+1];
-      if(s.quality!=='good'||typeof s.value!==typeof column.signal.initial||typeof s.value==='number'&&!Number.isFinite(s.value))continue;
-      const lo=Math.max(from,s.at),hi=Math.min(to,next?.at??to,s.at+(column.signal.staleAfter??5000));
-      if(hi<=lo)continue;
+      if(typeof s.value!==typeof column.signal.initial||typeof s.value==='number'&&!Number.isFinite(s.value))continue;
+      const interval=sampleInterval(column.signal,s,next?.at??to,from,to);
+      if(!interval)continue;
+      const [lo,hi]=interval;
       const first=Math.max(0,Math.floor((lo-from)/report.bucketMs)),last=Math.min(rows.length-1,Math.ceil((hi-from)/report.bucketMs)-1);
       for(let index=first;index<=last;index++){
         const row=rows[index]!,a=accum[index]!,duration=Math.min(hi,row.to)-Math.max(lo,row.from);

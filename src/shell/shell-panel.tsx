@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type CSSProperties, type Dispatch, type KeyboardEvent } from 'react';
 import { text, type Equipment, type Locale, type Problem, type Project, type Snapshot, type Value } from '../core';
+import { alarmNeedsAttention } from '../core/operational';
 import type { AlarmEvent } from '../protocol';
 import { related } from '../topology';
 import { MultiTrend } from './multi-trend';
@@ -34,7 +35,7 @@ export function ShellPanel(props: Props) {
   const equipment=useMemo(()=>project.equipment.filter(item=>ids.includes(item.id)),[project,ids.join('\0')]);
   const signals=useMemo(()=>[...new Map(equipment.flatMap(item=>related(project,item).signals).map(signal=>[signal.id,signal])).values()],[project,equipment]);
   const plotted=signals.filter(signal=>typeof signal.initial==='number'||typeof signal.initial==='boolean');
-  const activeAlarms=Object.values(snapshot.alarms).filter(alarm=>alarm.active);
+  const activeAlarms=Object.values(snapshot.alarms).filter(alarmNeedsAttention);
   const count=activeAlarms.length+props.problems.length+(props.shellError?1:0)+(props.pluginUpdates?.length??0);
   const tabs:{id:PanelTab;label:string;icon:string;count?:number}[]=[
     {id:'equipment',label:ru?'Оборудование':'Equipment',icon:'plc'},
@@ -77,7 +78,7 @@ function EquipmentCard({project,equipment,snapshot,locale,connected,primary,onIn
 }
 
 function Notifications({pluginUpdates,openDependencies,project,snapshot,locale,connected,shellError,problems,events,historyError,acknowledge}:Props) {
-  const ru=locale==='ru',active=Object.values(snapshot.alarms).filter(alarm=>alarm.active);
+  const ru=locale==='ru',active=Object.values(snapshot.alarms).filter(alarmNeedsAttention);
   const [pending,setPending]=useState(''),[error,setError]=useState('');
   const ack=async(id:string)=>{setPending(id);setError('');try{await acknowledge(id);}catch(reason){setError(String(reason));}finally{setPending('');}};
   const label=(id:string)=>text(project.alarms.find(alarm=>alarm.id===id)?.label??id,locale);
@@ -86,8 +87,8 @@ function Notifications({pluginUpdates,openDependencies,project,snapshot,locale,c
     {shellError&&<p className="notification-message error" role="alert">{shellError}</p>}
     {problems.map((problem,index)=><div className="notification-message error" key={index}><strong>{problem.code}</strong><span>{problem.message[locale]}</span>{problem.path&&<code>{problem.path}</code>}</div>)}
     {(error||historyError)&&<p className="notification-message error" role="alert">{error||historyError}</p>}
-    <div className="notification-section-heading"><strong>{ru?'Активные тревоги':'Active alarms'}</strong><small>{active.length}</small></div>
-    {active.length?active.map(alarm=><div className="alarm-row" key={alarm.id}><ResourceIcon icon="bell" size={17}/><strong>{label(alarm.id)}</strong><time>{new Date(alarm.at).toLocaleTimeString()}</time>{alarm.acknowledged?<span className="muted">{ru?'Квитировано':'Acknowledged'}</span>:<button disabled={!connected||!!pending} onClick={()=>void ack(alarm.id)}>{pending===alarm.id?'…':ru?'Квитировать':'Acknowledge'}</button>}</div>):<p className="notification-empty">{ru?'Нет активных тревог':'No active alarms'}</p>}
+    <div className="notification-section-heading"><strong>{ru?'Требуют внимания':'Need attention'}</strong><small>{active.length}</small></div>
+    {active.length?active.map(alarm=><div className="alarm-row" key={alarm.id}><ResourceIcon icon="bell" size={17}/><strong>{label(alarm.id)}{!alarm.active&&<small className="muted"> — {ru?'Норма, не квитировано':'Normal, unacknowledged'}</small>}</strong><time>{new Date(alarm.at).toLocaleTimeString()}</time>{alarm.acknowledged?<span className="muted">{ru?'Квитировано':'Acknowledged'}</span>:<button disabled={!connected||!!pending} onClick={()=>void ack(alarm.id)}>{pending===alarm.id?'…':ru?'Квитировать':'Acknowledge'}</button>}</div>):<p className="notification-empty">{ru?'Нет тревог, требующих внимания':'No alarms need attention'}</p>}
     <div className="notification-section-heading"><strong>{ru?'Журнал событий':'Event history'}</strong><small>{events.length}</small></div>
     {events.length?events.map((event,index)=><div className="event-row" key={`${event.id}-${event.at}-${index}`}><time>{new Date(event.at).toLocaleTimeString()}</time><span className={event.event==='active'?'warning':'muted'}>{event.event==='active'?(ru?'Возникла':'Active'):event.event==='clear'?(ru?'Снята':'Cleared'):(ru?'Квитирована':'Acknowledged')}</span><span>{label(event.id)}</span><code>{event.id}</code></div>):<p className="notification-empty">{ru?'Событий пока нет':'No events yet'}</p>}
   </div>;

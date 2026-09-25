@@ -10,6 +10,7 @@ import { linter } from '@codemirror/lint';
 import { indentWithTab, isolateHistory } from '@codemirror/commands';
 import { api } from './api';
 import type { Locale, Problem, Signal, Snapshot } from '../core';
+import { signalHealth } from '../core/operational';
 const syntaxColors=HighlightStyle.define([
   {tag:tags.keyword,color:'var(--syntax-keyword)'},
   {tag:[tags.string,tags.regexp],color:'var(--syntax-string)'},
@@ -46,6 +47,17 @@ const liveValues=StateField.define<DecorationSet>({
   provide:field=>EditorView.decorations.from(field),
 });
 interface Props {path:string;source:string;locale:Locale;change:(source:string)=>void;save:()=>void;dragging:boolean;snapshot:Snapshot;signals:Record<string,Signal>;now:number}
+function decorateHints(hints: readonly SignalHint[], props: Props): LiveDecoration[] {
+  return hints.flatMap(hint => {
+    const definition = props.signals[hint.signal]; if (!definition) return [];
+    const sample = props.snapshot.samples[hint.signal], health = signalHealth(definition, sample, { now: props.now });
+    const value = health.ageMs === null ? undefined : sample?.value;
+    const formatted = typeof value === 'number' ? new Intl.NumberFormat(props.locale, { maximumFractionDigits: 2 }).format(value) : value === undefined ? '—' : String(value);
+    const unit = hint.unit ?? definition.unit, age = health.ageMs;
+    const ageText = age === null ? (props.locale === 'ru' ? 'нет данных' : 'no data') : age < 1000 ? `${age} ms` : `${(age / 1000).toFixed(age < 10000 ? 1 : 0)} s`;
+    return [{ at: hint.at, text: `${formatted}${unit ? ` ${unit}` : ''} · ${health.quality.toUpperCase()} · ${ageText}`, quality: health.quality }];
+  });
+}
 export function Editor(props:Props){
   const host=useRef<HTMLDivElement>(null),editor=useRef<EditorView|null>(null),current=useRef(props),dragSource=useRef<string|null>(null),hints=useRef<SignalHint[]>([]);current.current=props;
   useEffect(()=>{
@@ -65,7 +77,7 @@ export function Editor(props:Props){
       }catch{return null;}},{hoverTime:300}),
       linter(async view=>{try{const doc=view.state.doc,problems=await request<Problem[]>('diagnostics',doc.toString());if(doc!==view.state.doc)return [];return problems.map(p=>({from:Math.min(p.from??0,doc.length),to:Math.min(p.to??0,doc.length),severity:'error' as const,message:`${p.code}: ${p.message[current.current.locale]}`}));}catch{return [];}},{delay:650}),
       EditorView.theme({'&':{height:'100%',fontSize:'13px',backgroundColor:'var(--editor)',color:'var(--text)'},'.cm-scroller':{fontFamily:'var(--mono)'},'.cm-gutters':{backgroundColor:'var(--editor)',color:'var(--muted)',borderRight:'0'},'.cm-activeLine, .cm-activeLineGutter':{backgroundColor:'var(--hover)'},'.cm-tooltip':{backgroundColor:'var(--raised)',borderColor:'var(--border)',color:'var(--text)'},'.cm-content':{caretColor:'var(--text)'},'&.cm-focused .cm-cursor':{borderLeftColor:'var(--text)'},'.cm-live-value':{marginLeft:'1.5ch',fontStyle:'italic',color:'var(--muted)',opacity:'.82',pointerEvents:'none'},'.cm-live-value.good':{color:'var(--good)'},'.cm-live-value.stale':{color:'var(--warn)'},'.cm-live-value.bad':{color:'var(--bad)'}}),
-    ]})});editor.current=view;dragSource.current=null;
+    ]})});editor.current=view;dragSource.current=null;hints.current=[];
     return()=>{view.destroy();editor.current=null;};
   },[props.path]);
   useEffect(()=>{
@@ -85,11 +97,15 @@ export function Editor(props:Props){
   },[props.source,props.dragging]);
   useEffect(()=>{
     const view=editor.current;if(!view)return;const source=props.source;let cancelled=false;
-    void api<SignalHint[]>('language',{operation:'signal-hints',path:props.path,source,position:0,locale:props.locale}).then(next=>{if(cancelled||editor.current?.state.doc.toString()!==source)return;hints.current=next;const live=next.map(hint=>{const definition=props.signals[hint.signal],sample=props.snapshot.samples[hint.signal];const value=sample?.value;const formatted=typeof value==='number'?new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(value):value===undefined?'—':String(value);const unit=(hint.unit??definition?.unit)?` ${hint.unit??definition?.unit}`:'';const quality=sample?.quality??'stale';const age=sample?.at?Math.max(0,props.now-sample.at):0;const ageText=sample?.at?(age<1000?`${age} ms`:`${(age/1000).toFixed(age<10000?1:0)} s`):'no data';return {at:hint.at,text:`${formatted}${unit} · ${quality.toUpperCase()} · ${ageText}`,quality};});view.dispatch({effects:setLiveDecorations.of(live)});}).catch(()=>{});
+    void api<SignalHint[]>('language',{operation:'signal-hints',path:props.path,source,position:0,locale:props.locale}).then(next=>{
+      if(cancelled||editor.current?.state.doc.toString()!==source)return;
+      hints.current=next;view.dispatch({effects:setLiveDecorations.of(decorateHints(next,current.current))});
+    }).catch(()=>{});
     return()=>{cancelled=true;};
   },[props.path,props.source]);
   useEffect(()=>{
-    const view=editor.current;if(!view||!hints.current.length)return;const live=hints.current.map(hint=>{const definition=props.signals[hint.signal],sample=props.snapshot.samples[hint.signal];const value=sample?.value;const formatted=typeof value==='number'?new Intl.NumberFormat(undefined,{maximumFractionDigits:2}).format(value):value===undefined?'—':String(value);const unit=(hint.unit??definition?.unit)?` ${hint.unit??definition?.unit}`:'';const quality=sample?.quality??'stale';const age=sample?.at?Math.max(0,props.now-sample.at):0;const ageText=sample?.at?(age<1000?`${age} ms`:`${(age/1000).toFixed(age<10000?1:0)} s`):'no data';return {at:hint.at,text:`${formatted}${unit} · ${quality.toUpperCase()} · ${ageText}`,quality};});view.dispatch({effects:setLiveDecorations.of(live)});
-  },[props.snapshot,props.signals,props.now]);
+    const view=editor.current;if(!view||!hints.current.length)return;
+    view.dispatch({effects:setLiveDecorations.of(decorateHints(hints.current,props))});
+  },[props.snapshot,props.signals,props.now,props.locale]);
   return <div ref={host} className="editor" aria-label="TypeScript editor"/>;
 }

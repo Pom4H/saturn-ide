@@ -1,6 +1,7 @@
-import { qualityState, validateValue, type AlarmState, type Driver, type Project, type Sample, type Snapshot, type Value } from "../core";
+import { qualityState, validateValue, type Driver, type Project, type Sample, type Snapshot, type Value } from "../core";
 import { validateObservation, type Observation } from "../core/acquisition";
-import type { Store, AlarmEvent } from "./store";
+import { acknowledgeAlarm, projectSnapshot, transitionAlarm, type AlarmEvent } from '../core/operational';
+import type { Store } from "./store";
 import type { Events } from "./events";
 
 type RuntimeStore = Pick<Store, 'bindSemantic' | 'latest' | 'alarmStates' | 'append'>;
@@ -71,15 +72,10 @@ export class Runtime {
       for (const s of samples) nextSamples[s.signal] = s;
       const alarms = { ...this.snapshot.alarms }, changes: AlarmEvent[] = [];
       for (const rule of this.project.alarms) {
-        const sample = nextSamples[rule.signal.id];
-        if (!sample || sample.quality !== "good" || typeof sample.value !== "number") continue;
-        const previous = alarms[rule.id];
-        const active = previous?.active ? sample.value > rule.above - (rule.hysteresis ?? 0) : sample.value > rule.above;
-        if (active !== (previous?.active ?? false)) {
-          const state: AlarmState = { id: rule.id, active, acknowledged: false, at };
-          alarms[rule.id] = state;
-          changes.push({ ...state, event: active ? "active" : "clear" });
-        }
+        const state = transitionAlarm(rule, alarms[rule.id], nextSamples[rule.signal.id], at);
+        if (!state) continue;
+        alarms[rule.id] = state;
+        changes.push({ ...state, event: state.active ? "active" : "clear" });
       }
       await this.store.append(samples, changes);
       this.snapshot = { samples: nextSamples, alarms };
@@ -89,12 +85,12 @@ export class Runtime {
   }
   acknowledge(id: string): Promise<void> {
     return this.serial(async () => {
-      const state = this.snapshot.alarms[id];
-      if (!state?.active) throw new Error("Alarm is not active");
-      if (state.acknowledged) return;
-      const event: AlarmEvent = { ...state, acknowledged: true, at: this.clock = Math.max(Date.now(), this.clock + 1), event: "ack" };
+      const at = Math.max(Date.now(), this.clock + 1), state = acknowledgeAlarm(this.snapshot.alarms[id], at);
+      if (!state) return;
+      const event: AlarmEvent = { ...state, event: "ack" };
       await this.store.append([], [event]);
-      this.snapshot.alarms[id] = event;
+      this.clock = at;
+      this.snapshot = { ...this.snapshot, alarms: { ...this.snapshot.alarms, [id]: state } };
       this.events.emit("telemetry", this.snapshot);
       this.events.emit("alarm", event);
     });
@@ -109,14 +105,10 @@ export class Runtime {
   }
   async stale(now = Date.now()) {
     return this.serial(async () => {
-      const changes: Sample[] = [];
-      for (const def of Object.values(this.project.signals)) {
-        const s = this.snapshot.samples[def.id];
-        if (s?.quality === "good" && now - (s.receivedAt ?? s.at) > (def.staleAfter ?? 5000)) changes.push({ ...s, quality: "stale", state: qualityState('stale') });
-      }
-      if (!changes.length) return;
+      const next = projectSnapshot(this.project.signals, this.snapshot, { now });
+      if (next === this.snapshot) return;
       // Staleness is age-derived, not another observation at the old timestamp.
-      for (const s of changes) this.snapshot.samples[s.signal] = s;
+      this.snapshot = next;
       this.events.emit("telemetry", this.snapshot);
     });
   }

@@ -1,7 +1,7 @@
-import { text, type Locale, type Project, type Signal, type Text } from './core';
+import { equipmentSignals, text, type Hmi, type Locale, type Project, type Signal, type Text } from './core';
 import { canonical } from './core/artifact';
 
-export type SemanticKind='project'|'equipment'|'signal'|'connection'|'alarm'|'report';
+export type SemanticKind='project'|'equipment'|'signal'|'connection'|'alarm'|'report'|'hmi';
 export interface SemanticNode {
   semanticId:string; kind:SemanticKind; id:string; label:Text; signature:string;
   owner?:string; uses:readonly string[]; usedBy:readonly string[];
@@ -9,6 +9,7 @@ export interface SemanticNode {
 export interface SemanticGraph {
   nodes:readonly SemanticNode[];
   bySemanticId:ReadonlyMap<string,SemanticNode>;
+  /** Ambiguous human IDs are omitted; callers can always use a namespaced semantic ID. */
   byId:ReadonlyMap<string,SemanticNode>;
 }
 const equipmentIdentity=(value:{id:string;semanticId?:string})=>value.semanticId??`equipment:${value.id}`;
@@ -22,7 +23,7 @@ export function semanticGraph(project:Project):SemanticGraph {
   const equipmentIds=new Map(project.equipment.map(e=>[e.id,equipmentIdentity(e)]));
   const signalIds=new Map(Object.values(project.signals).map(s=>[s.id,signalIdentity(s)]));
   for(const equipment of project.equipment){
-    const owned=Object.values(equipment).filter((value):value is Signal=>!!value&&typeof value==='object'&&'id' in value&&'initial' in value).map(signalIdentity).sort();
+    const owned=equipmentSignals(equipment).map(signalIdentity).sort();
     drafts.push({semanticId:equipmentIdentity(equipment),kind:'equipment',id:equipment.id,label:equipment.label,signature:sig({kind:equipment.kind,icon:equipment.icon,x:equipment.x,y:equipment.y,z:equipment.z??0,description:equipment.description??null,ports:equipment.ports,capabilities:equipment.capabilities,knowledge:equipment.knowledge,alarms:equipment.alarms.map(alarm=>({id:alarm.id,signal:signalIdentity(alarm.signal),above:alarm.above,hysteresis:alarm.hysteresis??null,label:alarm.label}))}),uses:owned});
   }
   for(const signal of Object.values(project.signals)){
@@ -40,18 +41,37 @@ export function semanticGraph(project:Project):SemanticGraph {
   }
   for(const alarm of project.alarms)drafts.push({semanticId:`alarm:${alarm.id}`,kind:'alarm',id:alarm.id,label:alarm.label,signature:sig({above:alarm.above,hysteresis:alarm.hysteresis??null}),uses:[signalIds.get(alarm.signal.id)??signalIdentity(alarm.signal)]});
   for(const report of project.reports??[])drafts.push({semanticId:`report:${report.id}`,kind:'report',id:report.id,label:report.label,signature:sig({bucketMs:report.bucketMs,columns:Object.entries(report.columns).sort(([a],[b])=>a.localeCompare(b)).map(([key,column])=>({key,aggregate:column.aggregate,unit:column.unit??null,label:column.label}))}),uses:Object.values(report.columns).map(column=>signalIds.get(column.signal.id)??signalIdentity(column.signal)).sort()});
+  const screen=(id:string,value:Hmi,label:Text)=>drafts.push({semanticId:`hmi:${id}`,kind:'hmi',id,label,
+    signature:sig({...value,equipment:value.equipment.map(e=>equipmentIds.get(e.id)??equipmentIdentity(e)),elements:value.elements?.map(element=>({...element,signal:element.signal?signalIds.get(element.signal.id)??signalIdentity(element.signal):undefined}))}),
+    uses:[...value.equipment.map(e=>equipmentIds.get(e.id)??equipmentIdentity(e)),...(value.elements??[]).flatMap(element=>element.signal?[signalIds.get(element.signal.id)??signalIdentity(element.signal)]:[])]});
+  if(project.hmi)screen('default',project.hmi,'HMI');
+  for(const hmi of project.hmis??[])screen(hmi.id,hmi,hmi.label??hmi.id);
   const reverse=new Map<string,string[]>();
-  for(const node of drafts)for(const used of node.uses)reverse.set(used,[...reverse.get(used)??[],node.semanticId]);
-  const nodes=drafts.map(node=>({...node,usedBy:reverse.get(node.semanticId)??[]}));
-  return {nodes,bySemanticId:new Map(nodes.map(node=>[node.semanticId,node])),byId:new Map(nodes.map(node=>[node.id,node]))};
+  for(const node of drafts){
+    node.uses=[...new Set(node.uses)].sort();
+    for(const used of node.uses)reverse.set(used,[...reverse.get(used)??[],node.semanticId]);
+  }
+  const nodes=drafts.map(node=>({...node,usedBy:[...new Set(reverse.get(node.semanticId)??[])].sort()}));
+  const byId=new Map<string,SemanticNode>(),ambiguous=new Set<string>();
+  for(const node of nodes){if(byId.has(node.id))ambiguous.add(node.id);else byId.set(node.id,node);}
+  for(const id of ambiguous)byId.delete(id);
+  return {nodes,bySemanticId:new Map(nodes.map(node=>[node.semanticId,node])),byId};
 }
 export interface Impact { target:SemanticNode; direct:readonly SemanticNode[]; transitive:readonly SemanticNode[] }
+/** @ru Один обход используется диагностикой, рефакторингом и preview применения.
+ * @en Diagnostics, refactoring and apply preview share one traversal. */
+export function graphImpact(graph:SemanticGraph,idOrSemanticId:string):Impact|undefined {
+  const target=graph.bySemanticId.get(idOrSemanticId)??graph.byId.get(idOrSemanticId);if(!target)return;
+  const seen=new Set<string>([target.semanticId]),queue=[...target.usedBy],all:SemanticNode[]=[];
+  for(let cursor=0;cursor<queue.length;cursor++){
+    const id=queue[cursor]!;if(seen.has(id))continue;seen.add(id);
+    const node=graph.bySemanticId.get(id);if(!node)continue;all.push(node);queue.push(...node.usedBy);
+  }
+  return {target,direct:target.usedBy.map(id=>graph.bySemanticId.get(id)).filter((value):value is SemanticNode=>!!value&&value.semanticId!==target.semanticId),transitive:all};
+}
 /** @ru Вычисляет blast radius перед rename/delete/replace. @en Computes blast radius before rename/delete/replace. */
 export function impact(project:Project,idOrSemanticId:string):Impact|undefined {
-  const graph=semanticGraph(project),target=graph.bySemanticId.get(idOrSemanticId)??graph.byId.get(idOrSemanticId);if(!target)return;
-  const seen=new Set<string>(),queue=[...target.usedBy],all:SemanticNode[]=[];
-  while(queue.length){const id=queue.shift()!;if(seen.has(id))continue;seen.add(id);const node=graph.bySemanticId.get(id);if(!node)continue;all.push(node);queue.push(...node.usedBy);}
-  return {target,direct:target.usedBy.map(id=>graph.bySemanticId.get(id)).filter((value):value is SemanticNode=>!!value),transitive:all};
+  return graphImpact(semanticGraph(project),idOrSemanticId);
 }
 export interface SemanticChange {semanticId:string;kind:SemanticKind;type:'added'|'removed'|'renamed'|'changed';before?:string;after?:string;message:Record<Locale,string>}
 /** @ru Semantic diff следует stable identity: rename не превращается в delete+add.

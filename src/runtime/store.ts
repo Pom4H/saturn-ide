@@ -1,8 +1,9 @@
 import { SQL } from "bun";
 import type { AlarmState, Sample } from "../core";
+import type { AlarmEvent } from '../core/operational';
 import type { PushSubscription } from "web-push";
+export type { AlarmEvent } from '../core/operational';
 
-export interface AlarmEvent extends AlarmState { event: "active" | "clear" | "ack" }
 interface SampleRow { signal: string; semantic: string | null; at: number | string; value: string; quality: Sample["quality"]; details: string | null }
 type SampleDetails = Pick<Sample, 'sourceAt' | 'receivedAt' | 'sequence' | 'state'>;
 const decode = (r: SampleRow): Sample => ({ ...(r.details ? JSON.parse(r.details) as SampleDetails : {}),

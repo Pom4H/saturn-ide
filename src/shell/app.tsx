@@ -23,6 +23,9 @@ import { useAlarmHistory } from './use-alarm-history';
 import { ProjectDocument } from './project-document';
 import { PresentationView } from './presentation';
 import type { ScadaImporter } from '../core/importer';
+import { alarmNeedsAttention, projectSnapshot } from '../core/operational';
+import type { SemanticNode } from '../semantic';
+import { Signals } from './signals';
 import './resources.css';
 const Scene3D = lazy(() => import('./scene3d'));
 const surfaces = Object.keys(editorNames) as EditorId[];
@@ -31,7 +34,6 @@ interface Releases { checked: string | null; published: string | null; applied: 
 interface SemanticChange { semanticId:string; kind:string; type:'added'|'removed'|'renamed'|'changed'; before?:string; after?:string; message:Record<Locale,string> }
 interface RenamePreview { kind:'rename-equipment'; from:string; to:string; semanticId:string; source:string; affected:readonly {semanticId:string;id:string;kind:string}[] }
 const fmt = (v: Value | null | undefined) => v == null ? '—' : typeof v === 'number' ? Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(v) : String(v);
-const clock = (at?: number) => at ? new Date(at).toLocaleTimeString() : '—';
 
 type AppProps=Pick<SceneProps,'displays'>&{importers?:readonly ScadaImporter[]};
 export function App(props:AppProps) { return <MenuProvider><Workbench {...props}/></MenuProvider>; }
@@ -49,7 +51,8 @@ function Workbench({displays,importers}:AppProps) {
   });
   const systemDark = typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
   const dark = theme === 'dark' || theme === 'system' && systemDark;
-  const [now, setNow] = useState(Date.now()), [operator, setOperator] = useState(false);
+  const [clock, setClock] = useState(Date.now()), [operator, setOperator] = useState(false);
+  const now = Math.max(clock, Date.now());
   const [tree, setTree] = useState(true), [inspect, setInspect] = useState(false);
   const [panel,dispatchPanel]=useReducer(panelReducer,initialPanel);
   const alarmHistory=useAlarmHistory(state?.project.id,shell.alarmVersion,connected);
@@ -98,7 +101,7 @@ function Workbench({displays,importers}:AppProps) {
   const save = async (path = session.getSnapshot().source) => {
     try { await session.documents.save(path); await refresh(); void refreshGit(); return true; } catch (e) { fail(e); return false; }
   };
-  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => { document.documentElement.lang = locale; localStorage.setItem('saturn.locale', locale); }, [locale]);
   useEffect(() => {
     if (theme === 'system') delete document.documentElement.dataset.theme;
@@ -175,13 +178,11 @@ function Workbench({displays,importers}:AppProps) {
     const resource=catalog.resources.find(item=>item.kind==='device'&&item.entityId===selected);if(!resource||!renamePreview)return;
     setRenameBusy(true);try{await api('refactor/rename',{uri:resource.uri,nextId:renamePreview.to,version:renameVersion,apply:true});setRenamePreview(null);setRenameVersion('');await refresh();}catch(e){fail(e);}finally{setRenameBusy(false);}
   };  if (!state || !previewProject) return <main className="empty-state"><h1>Saturn IDE</h1><p>{error || (ru ? 'Подключение к рабочему проекту…' : 'Connecting to the workspace…')}</p></main>;
-  const definitions = new Map(Object.values(state.project.signals).map(s => [s.id, s]));
-  const snapshot: Snapshot = { ...state.snapshot, samples: Object.fromEntries(Object.entries(state.snapshot.samples).map(([id, sample]) => [id,
-    !connected || now - sample.at > (definitions.get(id)?.staleAfter ?? 5000) ? { ...sample, quality: 'stale' as const } : sample])) };
+  const snapshot: Snapshot = projectSnapshot(state.project.signals, state.snapshot, { now, connected });
   const equipment = state.project.equipment.find(e => e.id === selected), references = equipment ? related(state.project, equipment) : null;
   const activeResource = catalog.resources.find(r => r.uri === nav.active?.uri);
   const signal = Object.values(state.project.signals).find(s => s.id === nav.signal) ?? Object.values(state.project.signals)[0];
-  const activeAlarms = Object.values(snapshot.alarms).filter(a => a.active), file = documents.get(active);
+  const activeAlarms = Object.values(snapshot.alarms).filter(alarmNeedsAttention), file = documents.get(active);
   const mode = state.mode === 'simulation' ? (ru ? 'Симуляция' : 'Simulation') : state.mode === 'live' ? (ru ? 'Реальный драйвер' : 'Live driver') : (ru ? 'Нет драйвера' : 'No driver');
   const scene = { project: previewProject, displayProject: state.project, routes, snapshot, locale, selected, selectedIds, interaction, select: selectEquipment, fit, zoom, ports, begin, move, end,
     cablePreview,beginCable:(id:string,which:'from'|'to',x:number,y:number,z:number)=>{if(operator)return false;setCablePreview({id,end:which,x,y,z});return true;},
@@ -200,6 +201,15 @@ function Workbench({displays,importers}:AppProps) {
       <Scene {...scene} focus={shown?.id} begin={undefined} move={undefined} end={undefined}/><footer><button aria-label="Previous" disabled={devices.length < 2} onClick={() => session.selectEquipment(devices[(index + devices.length - 1) % devices.length]!.id)}>←</button>
       {cmd && <Control signal={cmd} sample={snapshot.samples[cmd.id]} locale={locale} enabled={connected} send={send}/>}<button aria-label="Next" disabled={devices.length < 2} onClick={() => session.selectEquipment(devices[(index + 1) % devices.length]!.id)}>→</button></footer></main>;
   }
+  const semanticResource = (node: SemanticNode) => catalog.resources.find(resource => resource.semanticId === node.semanticId || resource.entityId === node.id && resource.kind === (node.kind === 'equipment' ? 'device' : node.kind));
+  const canOpenSemantic = (node: SemanticNode, source = false) => source ? !operator && !!semanticResource(node)?.source : node.kind === 'signal' || node.kind === 'alarm' || !!semanticResource(node);
+  const openSemantic = (node: SemanticNode, source = false) => {
+    if (!canOpenSemantic(node, source)) return;
+    if (!source && node.kind === 'signal') { session.selectSignal(node.id); return; }
+    if (!source && node.kind === 'alarm') { dispatchPanel({ type: 'open', tab: 'notifications' }); return; }
+    const resource = semanticResource(node);
+    if (resource) void openResource(resource, source ? 'source' : undefined);
+  };
   const commands = [
     ...surfaces.filter(s => !operator || !['source', 'git', 'targets'].includes(s)).filter(s => editorNames[s][locale].toLowerCase().includes(query.toLowerCase())).map(s => ({ id: s, name: editorNames[s][locale], icon: s, run: () => chooseSurface(s) })),
     ...findResources(catalog, query, locale).filter(r => !operator || ['device', 'report', 'project'].includes(r.kind)).map(r => ({ id: r.uri, name: `${r.name[locale]} ${r.entityId ?? ''}`, icon: r.icon, run: () => void openResource(r) })),
@@ -277,7 +287,7 @@ function Workbench({displays,importers}:AppProps) {
             </div></aside>}
           </div>}
           {surface === 'source' && <div className="source-workspace">{sourcePanel}<div className="source-note"><strong>TypeScript</strong><span>UTF-8</span><kbd>⌘ S</kbd></div></div>}
-          {surface === 'signals' && <section className="signals-surface"><div className="table-scroll"><table><thead><tr><th>{ru ? 'Сигнал' : 'Signal'}</th><th>{ru ? 'Значение' : 'Value'}</th><th>{ru ? 'Качество' : 'Quality'}</th><th>{ru ? 'Получен' : 'Observed'}</th></tr></thead><tbody>{Object.values(state.project.signals).map(s => { const sample = snapshot.samples[s.id]; return <tr key={s.id} className={signal?.id === s.id ? 'active' : ''}><td><button className="text-button" onClick={() => {session.selectSignal(s.id);dispatchPanel({type:'open',tab:'graphs'});}}><code>{s.id}</code></button></td><td>{sample?.quality === 'good' ? fmt(sample.value) : '—'} <span className="muted">{s.unit}</span></td><td className={sample?.quality ?? 'stale'}>{sample?.quality ?? 'stale'}</td><td>{clock(sample?.at)}</td></tr>; })}</tbody></table></div></section>}
+          {surface === 'signals' && <Signals project={state.project} snapshot={state.snapshot} selected={signal?.id} locale={locale} now={now} connected={connected} select={id=>{session.selectSignal(id);dispatchPanel({type:'open',tab:'graphs'});}} open={openSemantic} canOpen={canOpenSemantic}/>}
           {surface === 'reports' && <Reports project={state.project} locale={locale} selected={nav.report} onSelect={id => session.selectReport(id)}/>}
           {surface === 'hmi' && <HmiSurface project={state.project} locale={locale} refresh={refresh}/>}
           {surface === 'docs' && <section className="documentation-surface">
