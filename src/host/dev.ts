@@ -31,10 +31,11 @@ import { previewCableDisconnect, previewCableEndpoint } from '../workspace/cable
 
 import type { AssistantInput, AssistantReply, AssistantStatus } from '../core/assistant';
 export interface AssistantService { status:()=>Promise<AssistantStatus>; send:(input:AssistantInput,context:{project:Project;snapshot:Runtime['snapshot'];applied:string|null})=>Promise<AssistantReply> }
-const appRoot = resolve(import.meta.dir, '../..');
+const defaultAppRoot = resolve(import.meta.dir, '../..');
 const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 'Проект не загружен' }, signals: {}, equipment: [], pipes: [], alarms: [] };
 /** Composition root for local development; runtime modules themselves know no workspace. */
-export async function createApp(options: { assistant?:AssistantService; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation' } = {}) {
+export async function createApp(options: { assistant?:AssistantService; appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation' } = {}) {
+  const appRoot=options.appRoot??defaultAppRoot;
   const workspace = new Workspace(options.projectDir ?? resolve(Bun.env.SATURN_PROJECT ?? '../saturn-examples/pumping-station'));
   const dataDir = options.dataDir ?? join(appRoot, '.saturn', hash(workspace.root).slice(0, 12));
   mkdirSync(dataDir, { recursive: true });

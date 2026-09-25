@@ -16,7 +16,9 @@
     "firmware": "bun scripts/firmware.ts",
     "deps:update": "bun update --latest",
     "release:build": "bun scripts/build-release.ts",
-    "release:deploy": "bun scripts/deploy-release.ts"
+    "release:deploy": "bun scripts/deploy-release.ts",
+    "standalone:build": "bun scripts/build-standalone.ts",
+    "standalone:video": "bun scripts/standalone-video.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.1",
