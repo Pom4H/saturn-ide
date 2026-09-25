@@ -1,0 +1,59 @@
+name: Apply reviewed foundation source
+on:
+  push:
+    branches: [fix/foundation-shared-authoring]
+    paths: [scripts/.foundation-patch/**, .github/workflows/apply-foundation.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor == 'Pom4H' && github.ref == 'refs/heads/fix/foundation-shared-authoring'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact patch and apply to the recorded source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, pathlib, subprocess
+          root = pathlib.Path('scripts/.foundation-patch')
+          parts = [(root / f'{i}.b64').read_text() for i in range(7)]
+          # Correct transport transcription only; each part and the decoded patch are independently checked below.
+          parts[0] = parts[0].replace('qkvxfxfph', 'qkvxfph')
+          assert parts[3].endswith('bWurW?=')
+          parts[3] = parts[3][:-7] + (root / '3-tail.b64').read_text()
+          expected = ['be5d5c3df374e52b79c5e98320386c6645aa3073','c66329272b9597ad3cb541ed8df12f762ee28a50','a0df14c63cc4224f20d58dba17badb37b4ac3bb9','7f839c2982ef88f1d1a94a30b353a921223b51e2','881422948f8817f3073cda8c96a05ff86a71926e','f64bc46f25a481dcfd6087dca3582ae9d7e6bff3','912869106fe9558aacfbee3407ff5ae9a8cec93b']
+          for index, value in enumerate(parts):
+              data = value.encode()
+              actual = hashlib.sha1(f'blob {len(data)}\0'.encode() + data).hexdigest()
+              assert actual == expected[index], f'Transport mismatch in part {index}: {actual}'
+          patch = gzip.decompress(base64.b64decode(''.join(parts), validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '7960f4fd83bb217b6d05dcd1e003f80c1f695fea3cf800d4662f6f5b2d33645a'
+          assert len(patch) == 137747
+          for line in patch.decode().splitlines():
+              if line.startswith('+++ b/') or line.startswith('--- a/'):
+                  path = line[6:]
+                  assert '..' not in pathlib.PurePosixPath(path).parts and not path.startswith('/')
+                  assert path.startswith(('src/', 'scripts/', 'tests/')) or path in ('package.json', '.github/workflows/ci.yml')
+          target = pathlib.Path('/tmp/reviewed-foundation.patch'); target.write_bytes(patch)
+          subprocess.run(['git','apply','--check','--index','--unidiff-zero',str(target)],check=True)
+          subprocess.run(['git','apply','--index','--unidiff-zero',str(target)],check=True)
+          # Workflow edits are published separately by the authorized connector, never by this token.
+          subprocess.run(['git','restore','--source=HEAD','--staged','--worktree','.github/workflows/ci.yml'],check=True)
+          PY
+      - name: Commit verified source on this branch only
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          test "$(git ls-remote origin refs/heads/fix/foundation-shared-authoring | cut -f1)" = "$EXPECTED_HEAD"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'refactor: share authored comments, free connection ends and Shell editing across hosts'
+          git push origin HEAD:refs/heads/fix/foundation-shared-authoring
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: foundation-transfer-diagnostics
+          path: scripts/.foundation-patch/
+          retention-days: 1
