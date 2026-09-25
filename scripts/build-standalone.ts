@@ -21,7 +21,12 @@ const result=await Bun.build({entrypoints:[join(root,'src/host/standalone.ts')],
 if(!result.success)throw new Error(result.logs.map(log=>log.message).join('\n'));
 
 const app=join(output,'app');mkdirSync(app,{recursive:true});
-for(const name of ['src','node_modules'])cpSync(join(root,name),join(app,name),{recursive:true});
+cpSync(join(root,'src'),join(app,'src'),{recursive:true});
+const modules=join(root,'node_modules'),normalizedModules=modules.replaceAll('\\','/');
+cpSync(modules,join(app,'node_modules'),{recursive:true,filter:path=>{
+  const normalized=path.replaceAll('\\','/');
+  return normalized!==normalizedModules+'/@saturn/core'&&!normalized.startsWith(normalizedModules+'/@saturn/core/');
+}});
 for(const name of ['package.json','bun.lock'])cpSync(join(root,name),join(app,name));
 const projects=join(output,'projects');mkdirSync(projects,{recursive:true});
 const projectOut=join(projects,basename(project));cpSync(project,projectOut,{recursive:true,filter:path=>!path.split(/[\\/]/).some(part=>part==='.git'||part==='node_modules'||part==='.saturn')});
