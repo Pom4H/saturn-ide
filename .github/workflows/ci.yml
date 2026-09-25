@@ -29,7 +29,7 @@ jobs:
           path: saturn-plugins
           ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
       - name: Snapshot exact source fixtures for manual reproduction
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[snapshot]')
         run: |
           mkdir checked-source
           for repo in saturn-ide saturn-examples saturn-plugins; do
@@ -37,7 +37,7 @@ jobs:
             git -C "$repo" rev-parse HEAD >> checked-source/revisions.txt
           done
       - name: Retain source-only verification inputs
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[snapshot]')
         uses: actions/upload-artifact@v4
         with:
           name: checked-source
