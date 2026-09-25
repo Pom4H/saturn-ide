@@ -4,13 +4,13 @@ import type { AlarmState, Project, Sample, Signal } from '../src/core';
 import type { AlarmEvent } from '../src/runtime/store';
 import { Runtime } from '../src/runtime/engine';
 
-function fixture() {
+function fixture(latest: Sample[] = []) {
   const signal: Signal<number> = { id: 'pressure', initial: 0, writable: true, staleAfter: 1000 };
   const project: Project = { id: 'plant', label: 'Plant', signals: { signal }, equipment: [], pipes: [], alarms: [{ id: 'high', label: 'High', signal, above: 10 }] };
   const writes: { samples: Sample[]; events: AlarmEvent[] }[] = [];
   let reject = false;
   const store = {
-    bindSemantic: async () => {}, latest: async (): Promise<Sample[]> => [], alarmStates: async (): Promise<AlarmState[]> => [],
+    bindSemantic: async () => {}, latest: async (): Promise<Sample[]> => latest, alarmStates: async (): Promise<AlarmState[]> => [],
     append: async (samples: Sample[], events: AlarmEvent[] = []) => { if (reject) throw new Error('storage unavailable'); writes.push({ samples, events }); },
   };
   const runtime = new Runtime(project, store, { emit: () => {} }, () => {});
@@ -57,4 +57,15 @@ test('driver acceptance is not a manufactured observed value', async () => {
   assert.deepEqual(dispatched, { id: 'pressure', value: 7 });
   assert.equal(runtime.snapshot, before);
   assert.equal(runtime.snapshot.samples.pressure!.value, 5);
+});
+
+
+test('a future persisted event clock cannot age a newly received measurement', async () => {
+  const future = Date.now() + 10_000;
+  const { runtime } = fixture([{ signal: 'pressure', value: 0, quality: 'good', at: future, receivedAt: Date.now() }]);
+  await runtime.init();
+  await runtime.ingest({ pressure: 12 });
+  assert.equal(runtime.snapshot.alarms.high?.active, true);
+  assert(runtime.snapshot.alarms.high!.at > future);
+  assert(runtime.snapshot.samples.pressure!.receivedAt! < future);
 });

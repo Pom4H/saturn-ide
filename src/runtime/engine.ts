@@ -71,9 +71,12 @@ export class Runtime {
       const nextSamples = { ...this.snapshot.samples };
       for (const s of samples) nextSamples[s.signal] = s;
       const alarms = { ...this.snapshot.alarms }, changes: AlarmEvent[] = [];
+      const evaluatedAt = Date.now();
       for (const rule of this.project.alarms) {
-        const state = transitionAlarm(rule, alarms[rule.id], nextSamples[rule.signal.id], at);
-        if (!state) continue;
+        const transition = transitionAlarm(rule, alarms[rule.id], nextSamples[rule.signal.id], evaluatedAt);
+        if (!transition) continue;
+        // Event ordering may lead the wall clock; it must not age measurements.
+        const state = { ...transition, at };
         alarms[rule.id] = state;
         changes.push({ ...state, event: state.active ? "active" : "clear" });
       }
