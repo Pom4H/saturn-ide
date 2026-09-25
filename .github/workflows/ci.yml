@@ -86,6 +86,17 @@ jobs:
       - name: Importer browser acceptance
         run: bun scripts/importer-browser-test.ts
         working-directory: saturn-ide
+      - name: Physical editor browser acceptance
+        run: bun scripts/physical-interaction-browser-test.ts
+        working-directory: saturn-ide
+      - name: Keep physical editor evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: physical-editor-evidence
+          path: saturn-ide/artifacts/physical-editor/
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Keep browser failure evidence
         if: failure()
         uses: actions/upload-artifact@v4
