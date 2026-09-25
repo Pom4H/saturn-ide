@@ -1,0 +1,38 @@
+name: Apply reviewed picking correction
+on:
+  push:
+    branches: [fix/foundation-shared-authoring]
+    paths: [.github/workflows/authoring-repro.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/fix/foundation-shared-authoring'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/foundation-shared-authoring
+      - name: Apply exact locally tested edit
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/shell/scene3d.tsx');s=p.read_text()
+          old="import { geometryRevision } from './model/geometry-revision';"
+          assert s.count(old)==1
+          s=s.replace(old,old+"\nimport { connectionHandleVisible } from './model/connection-picking';")
+          old="const hit=plugHit&&(!equipmentHit||plugHit.distance<=equipmentHit.distance+.01)?plugHit.object:equipmentHit?.object;"
+          new="""const candidate=plugHit?.object.userData.cablePlug as {id:string;end:'from'|'to'}|undefined;
+                const candidateEnd=candidate&&[...current.current.project.pipes,...current.current.project.cables??[]].find(edge=>edge.id===candidate.id)?.[candidate.end];
+                let obstacle:T.Object3D|null=equipmentHit?.object??null,obstaclePort:string|undefined;
+                while(obstacle){if(typeof obstacle.userData.port==='string')obstaclePort=obstacle.userData.port;if(obstacle.userData.equipment)break;obstacle=obstacle.parent;}
+                const occluder=equipmentHit?{distance:equipmentHit.distance,port:obstaclePort&&obstacle?{device:String(obstacle.userData.equipment),port:obstaclePort}:undefined}:undefined;
+                const hit=plugHit&&candidateEnd&&connectionHandleVisible(candidateEnd,plugHit.distance,occluder)?plugHit.object:equipmentHit?.object;"""
+          assert s.count(old)==1
+          p.write_text(s.replace(old,new))
+          PY
+          git diff --check
+          git add src/shell/scene3d.tsx
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix: let attached plugs be picked inside their own port target without x-ray selection'
+          git push origin HEAD:fix/foundation-shared-authoring
