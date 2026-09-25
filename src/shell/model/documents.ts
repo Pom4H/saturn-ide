@@ -3,6 +3,7 @@ export interface DocumentBuffer extends SourceFile { draft: string; saving: bool
 export interface DocumentPort {
   read(path: string): Promise<SourceFile>;
   save(file: SourceFile): Promise<SourceFile>;
+  saveMany?(files: readonly SourceFile[]): Promise<readonly SourceFile[]>;
 }
 /** One buffer per actual source path, even when several resource editors open that source. */
 export class Documents {
@@ -52,6 +53,22 @@ export class Documents {
       throw error;
     }).finally(() => this.writes.delete(path));
     this.writes.set(path, write); return write;
+  }
+  /** One host transaction, with all versions checked before any write. */
+  saveMany(paths:readonly string[]):Promise<void> {
+    const unique=[...new Set(paths)],changed=unique.map(path=>this.buffers.get(path)).filter((b):b is DocumentBuffer=>!!b&&b.draft!==b.source);
+    if(!changed.length)return Promise.resolve();
+    if(changed.length===1)return this.save(changed[0]!.path);
+    if(!this.port.saveMany)return Promise.reject(new Error('This host does not support a multi-document transaction'));
+    if(unique.some(path=>this.writes.has(path)))return Promise.reject(new Error('A document save is already running'));
+    for(const before of changed)this.put({...before,saving:true,error:undefined});
+    const write=this.port.saveMany(changed.map(before=>({path:before.path,source:before.draft,version:before.version}))).then(saved=>{
+      if(saved.length!==changed.length||changed.some(before=>!saved.some(file=>file.path===before.path)))throw new Error('Incomplete document transaction response');
+      for(const file of saved){const current=this.buffers.get(file.path)!;this.put({...file,draft:current.draft,saving:false});}
+    }).catch(error=>{
+      for(const before of changed){const current=this.buffers.get(before.path)!;this.put({...current,saving:false,error:String(error)});}throw error;
+    }).finally(()=>{for(const before of changed)this.writes.delete(before.path);});
+    for(const before of changed)this.writes.set(before.path,write);return write;
   }
   async reload(path: string, discard = false): Promise<void> {
     const before = this.buffers.get(path);

@@ -76,6 +76,13 @@
     "./operational": "./src/core/operational.ts",
     "./inspection": "./src/core/inspection.ts",
     "./history": "./src/core/history.ts",
-    "./diagnostics": "./src/core/diagnostics.ts"
+    "./diagnostics": "./src/core/diagnostics.ts",
+    "./authoring": "./src/core/authoring.ts",
+    "./shell/authoring": "./src/shell/authoring.ts",
+    "./scene3d": "./src/shell/scene3d.tsx",
+    "./source-model": "./src/workspace/source-model.ts",
+    "./source-operations": "./src/workspace/authoring-operations.ts",
+    "./browser-workspace": "./src/host/browser-workspace.ts",
+    "./browser-authoring-assets": "./scripts/browser-authoring-assets.ts"
   }
 }

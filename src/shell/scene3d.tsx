@@ -3,12 +3,12 @@ import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { cableAppearance, equipmentSignal, interfaceProfile, validateProject, type Endpoint, type Equipment, type Point } from '../core';
+import { isAttached, type ConnectionEnd, cableAppearance, equipmentSignal, interfaceProfile, validateProject, type Endpoint, type Equipment, type Point } from '../core';
 import { anchor, connectionTip } from '../topology';
 import { geometryRevision } from './model/geometry-revision';
 import { advancePhase, flowOf, numeric, rpmOf } from '../motion';
 import { projectPanelCable, roundedRoute } from './route3d';
-import type { SceneProps } from './scene';
+import { Scene, type SceneProps } from './scene';
 // Diagram x/y maps to world x/z; port elevation maps to world y. No independent 3D topology.
 const vector=(p:Point)=>new T.Vector3(p.x,p.z,p.y);
 export default function Scene3D(props:SceneProps){
@@ -171,10 +171,10 @@ export default function Scene3D(props:SceneProps){
     };
     const synchronize=()=>{
       dirty=false;const p=current.current;
-      const revision=geometryRevision(p.project,p.interaction);
+      const revision=geometryRevision(p.project,p.interaction)+JSON.stringify(p.inactive??[]);
       if(revision!==equipmentRevision){
         equipmentRevision=revision;dispose(equipmentResources);equipmentWorld.clear();roots.clear();buttonDrivers.clear();buttonScreens.clear();node.dataset.screenUpdates='0';
-        resources=equipmentResources;for(const e of p.project.equipment)buildEquipment(e);
+        resources=equipmentResources;for(const e of p.project.equipment){buildEquipment(e);if(p.inactive?.includes(e.id))roots.get(e.id)?.traverse(object=>{if(object instanceof T.Mesh){const fade=(material:T.Material)=>{const clone=material.clone();clone.transparent=true;clone.opacity=.4;clone.depthWrite=false;equipmentResources.materials.add(clone);return clone;};object.material=Array.isArray(object.material)?object.material.map(fade):fade(object.material);}});}
         node.dataset.equipmentBuilds=String(++equipmentBuilds);
       }
       // Pose-only edits retain equipment meshes, display drivers, textures and animation state.
@@ -187,8 +187,8 @@ export default function Scene3D(props:SceneProps){
       let pipeBends=0;
       for(const route of routes){
         const cable=route.kind==='cable'?p.project.cables?.find(edge=>edge.id===route.id):undefined;
-        const panelSide=(end:{device:string;port:string})=>{const equipment=p.project.equipment.find(e=>e.id===end.device);return equipment?.capabilities.scene3d?.kind==='control-panel'?Object.entries(equipment.ports).find(([id])=>id===end.port)?.[1].terminal.side??null:null;};
-        const points=route.kind==='cable'&&route.valid?projectPanelCable(route.points.map(vector),cable&&cable.unplugged!=='from'?panelSide(cable.from):null,cable&&cable.unplugged!=='to'?panelSide(cable.to):null):route.points.map(vector);
+        const panelSide=(end:ConnectionEnd)=>{if(!isAttached(end))return null;const equipment=p.project.equipment.find(e=>e.id===end.device);return equipment?.capabilities.scene3d?.kind==='control-panel'?Object.entries(equipment.ports).find(([id])=>id===end.port)?.[1].terminal.side??null:null;};
+        const points=route.kind==='cable'&&route.valid?projectPanelCable(route.points.map(vector),cable?panelSide(cable.from):null,cable?panelSide(cable.to):null):route.points.map(vector);
         const cableMaterial=cable?new T.MeshStandardMaterial({color:cableAppearance(cable.from.terminal.medium as 'control'|'power'|'bus',cable.from.terminal.family).color,roughness:.65}):wire;
         if(cable)resources.materials.add(cableMaterial);
         const m=route.valid?(route.kind==='pipe'?pipeShell:cableMaterial):invalid;
@@ -197,7 +197,7 @@ export default function Scene3D(props:SceneProps){
           const path=rounded.path;if(route.kind==='pipe')pipeBends+=rounded.bends;
           mesh(routeWorld,new T.TubeGeometry(path,Math.max(24,Math.ceil(path.getLength()/4)),route.kind==='pipe'?6:1.8,route.kind==='pipe'?16:8,false),m,0,0,0);
         }else for(let i=1;i<points.length;i++)tube(routeWorld,points[i-1]!,points[i]!,route.kind==='pipe'?5:1.5,m);
-        if(route.kind==='cable'&&p.interaction==='edit')for(const end of ['from','to'] as const){const point=end==='from'?points[0]:points.at(-1);if(!point)continue;const handle=mesh(routeWorld,new T.SphereGeometry(6,16,10),amber,point.x,point.y,point.z);handle.userData.cablePlug={id:route.id,end};plugMeshes.push(handle);}
+        if(p.interaction==='edit')for(const end of ['from','to'] as const){const point=end==='from'?points[0]:points.at(-1);if(!point)continue;const handle=mesh(routeWorld,new T.SphereGeometry(6,16,10),amber,point.x,point.y,point.z);handle.userData.cablePlug={id:route.id,end};plugMeshes.push(handle);}
         if(route.kind!=='pipe'||!route.valid)continue;
         const edge=p.project.pipes.find(e=>e.id===route.id)!;
         // The moving indicators follow the rendered curve, including its vertical risers and bends.
@@ -210,7 +210,7 @@ export default function Scene3D(props:SceneProps){
       node.dataset.pipeBends=String(pipeBends);
     };
     rebuild.current=()=>{dirty=true;};
-    fit.current=()=>{if(dirty)synchronize();world.updateWorldMatrix(true,true);const box=new T.Box3();for(const root of roots.values())box.expandByObject(root);if(box.isEmpty())return;const center=box.getCenter(new T.Vector3()),radius=box.getSize(new T.Vector3()).length()/2;
+    fit.current=()=>{if(dirty)synchronize();world.updateWorldMatrix(true,true);const box=new T.Box3();for(const root of roots.values())box.expandByObject(root);box.expandByObject(routeWorld);if(box.isEmpty())return;const center=box.getCenter(new T.Vector3()),radius=box.getSize(new T.Vector3()).length()/2;
       if(node.clientWidth&&node.clientHeight)camera.aspect=node.clientWidth/node.clientHeight;
       const vertical=T.MathUtils.degToRad(camera.fov),horizontal=2*Math.atan(Math.tan(vertical/2)*camera.aspect);
       const direction=new T.Vector3(-.55,.85,1).normalize(),right=new T.Vector3(0,1,0).cross(direction).normalize(),up=direction.clone().cross(right).normalize();
@@ -234,13 +234,13 @@ export default function Scene3D(props:SceneProps){
       const hit=plugHit&&(!equipmentHit||plugHit.distance<=equipmentHit.distance+.01)?plugHit.object:equipmentHit?.object;
       const plug=hit?.userData.cablePlug as {id:string;end:'from'|'to'}|undefined;
       if(plug){
-        const project=current.current.project,edge=project.cables?.find(item=>item.id===plug.id);if(!edge)return;
-        if(edge.unplugged&&edge.unplugged!==plug.end){setError(current.current.locale==='ru'?'Сначала подключите свободный конец кабеля.':'Reconnect the loose cable end first.');return;}
+        current.current.select(plug.id);
+        const project=current.current.project,edge=[...project.pipes,...project.cables??[]].find(item=>item.id===plug.id);if(!edge)return;
         // The old implementation used local terminal coordinates, jumping when the device was translated/elevated.
         const tip=connectionTip(project,edge,plug.end),origin=ground(e,tip.z*.01);if(!origin)return;
         if(current.current.beginCable?.(plug.id,plug.end,tip.x,tip.y,tip.z)){
           const targets=project.equipment.flatMap(device=>Object.values(device.ports)).filter(target=>{
-            try{validateProject({...project,cables:project.cables!.map(cable=>cable.id===plug.id?{...cable,[plug.end]:target,unplugged:undefined,looseEnd:undefined}:cable)});return true;}catch{return false;}
+            try{validateProject({...project,pipes:project.pipes.map(cable=>cable.id===plug.id?{...cable,[plug.end]:target}:cable),cables:project.cables?.map(cable=>cable.id===plug.id?{...cable,[plug.end]:target}:cable)});return true;}catch{return false;}
           });
           gesture={kind:'plug',pointer:e.pointerId,...plug,moved:false,height:tip.z*.01,point:tip,offset:vector(tip).multiplyScalar(.01).sub(origin),lastY:e.clientY,vertical:false,targets};capture(e);
         }return;
@@ -325,5 +325,5 @@ export default function Scene3D(props:SceneProps){
     return()=>{pointerCancel();window.removeEventListener('blur',pointerCancel);cancelAnimationFrame(frame);resize.disconnect();theme.removeEventListener('change',applyTheme);renderer.domElement.removeEventListener('pointerdown',pointerDown,true);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerup',pointerUp);renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('lostpointercapture',pointerCancel);renderer.domElement.removeEventListener('dblclick',focusEquipment);renderer.domElement.removeEventListener('keydown',keyDown);controls.dispose();for(const helper of selections.values()){helper.geometry.dispose();helper.material.dispose();}dragGeometry.dispose();dragMaterial.dispose();environment.dispose();dispose(equipmentResources);dispose(routeResources);for(const m of materials)m.dispose();floor.geometry.dispose();floor.material.dispose();grid.geometry.dispose();for(const m of Array.isArray(grid.material)?grid.material:[grid.material])m.dispose();renderer.dispose();renderer.domElement.remove();rebuild.current=()=>{};fit.current=()=>{};};
   },[]);
   useEffect(()=>rebuild.current(),[props.project,props.routes,props.interaction]);useEffect(()=>fit.current(),[props.fit]);
-  return <div ref={host} className="scene3d" aria-label="3D process model">{error&&<div role="alert">WebGL: {error}</div>}</div>;
+  return error ? <div className="scene3d-fallback"><Scene {...props}/><p role="status">{props.locale==='ru'?'3D недоступна. Продолжаем в 2D.':'3D unavailable. Continuing in 2D.'}</p></div> : <div ref={host} className="scene3d" aria-label="3D process model"/>;
 }

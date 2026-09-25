@@ -24,7 +24,7 @@ export class Language {
   }
   clear() { this.overlays.clear(); }
   dispose() { this.service.dispose(); }
-  private set(path: string, source: string) { const file = this.workspace.file(path), previous = this.overlays.get(file); if (previous?.text !== source) this.overlays.set(file, { text: source, version: ++this.revision }); return file; }
+  set(path: string, source: string) { const file = this.workspace.file(path), previous = this.overlays.get(file); if (previous?.text !== source) this.overlays.set(file, { text: source, version: ++this.revision }); return file; }
   diagnostics(path?: string, source?: string): Problem[] {
     if (path !== undefined && source !== undefined) this.set(path, source);
     const files = path ? [path] : this.workspace.list().filter(p => /\.tsx?$/.test(p));

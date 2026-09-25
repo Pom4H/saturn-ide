@@ -11,16 +11,18 @@ const input=fixture(),artifacts='artifacts/physical-editor';mkdirSync(artifacts,
 console.log('STAGE start host');
 const app=await createApp({projectDir:input.root,dataDir:join(input.dir,'data'),databaseUrl:':memory:',port:0,preview:'simulation'});
 console.log('STAGE start Chromium');
-const browser=await chromium.launch({headless:true,channel:process.env.CI?'chrome':undefined,args:['--no-sandbox','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({headless:true,channel:process.env.CI?'chrome':undefined,args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const context=await browser.newContext({viewport:{width:1440,height:960},recordVideo:{dir:join(artifacts,'video')}});
 const page=await context.newPage(),errors:string[]=[],checks:string[]=[];
 page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(20000);
-page.on('pageerror',error=>errors.push(error.message));
+page.on('pageerror',error=>{errors.push(error.message);console.error('PAGE',error.message);});
+page.on('console',message=>{if(message.type()==='error')console.error('BROWSER',message.text());});
+page.on('requestfailed',request=>console.error('REQUEST',request.url(),request.failure()?.errorText));
 const until=async(check:()=>Promise<boolean>,message:string)=>{
   for(let i=0;i<200;i++){if(await check())return;await page.waitForTimeout(50);}throw new Error(message);
 };
 const state=async()=>await(await fetch(new URL('/api/state',app.server.url))).json() as IDEState;
-const scene=page.locator('.scene3d'),data=async(key:string)=>await scene.getAttribute(`data-${key}`);
+const scene=page.locator('.scene3d'),data=async(key:string)=>await scene.count()?await scene.getAttribute(`data-${key}`,{timeout:30000}):null;
 type ScreenPoint={x:number;y:number};
 type Tip=ScreenPoint&{z:number};
 try{
@@ -29,6 +31,7 @@ try{
   await page.locator('[data-equipment="P-01"]').waitFor({timeout:30000});
   await page.getByRole('button',{name:'Edit',exact:true}).click();
   await page.getByRole('button',{name:'3D',exact:true}).click();
+  await scene.waitFor({timeout:45000});
   await until(async()=>Number(await data('frames'))>35,'3D did not produce real frames');
   console.log('STAGE 3D ready');
   const original=await state(),equipment=original.project.equipment.find(e=>e.id==='P-01');assert(equipment);

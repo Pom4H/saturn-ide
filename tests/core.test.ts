@@ -1,3 +1,8 @@
+import { free } from '../src/core';
+import { isAttached, type ConnectionEnd } from '../src/core';
+const attachedPort = (end:ConnectionEnd|undefined) => end && isAttached(end) ? end.port : undefined;
+const attachedDevice = (end:ConnectionEnd|undefined) => end && isAttached(end) ? end.device : undefined;
+const isFree = (end:ConnectionEnd|undefined) => !!end && !isAttached(end);
 import { expect, test } from 'bun:test';
 import { device, equipmentCommands, project, pump, signal, standardInterfaces, terminal, terminalFromAnchor, validateProject, validateValue } from '../src/core';
 import demo from '@saturn/example';
@@ -6,8 +11,8 @@ import { semanticDiff } from '../src/semantic';
 import { projectDocumentation } from '../src/documentation';
 test('one inferred engineering model, explicit ports and report relationships',()=>{
   expect(demo.equipment).toHaveLength(4);
-  expect(demo.pipes[0]?.from.device).toBe('TK-01');
-  expect(demo.pipes[0]?.from.port).toBe('outlet');
+  expect(attachedDevice(demo.pipes[0]?.from)).toBe('TK-01');
+  expect(attachedPort(demo.pipes[0]?.from)).toBe('outlet');
   expect(demo.cables).toHaveLength(2);
   const edge=demo.pipes[0]!,booster=demo.equipment.find(e=>e.id==='P-01')!;
   expect(routeConnection(demo,edge).points).not.toEqual(routeConnection({...demo,equipment:demo.equipment.map(e=>e.id===booster.id?{...e,x:e.x+50}:e)},edge).points);
@@ -15,12 +20,12 @@ test('one inferred engineering model, explicit ports and report relationships',(
 });
 test('unplugging a cable removes its signal from the detached equipment context',()=>{
   const controller=demo.equipment.find(e=>e.id==='PLC-01')!;
-  const disconnected={...demo,cables:demo.cables!.map(edge=>edge.id==='run-command'?{...edge,unplugged:'from' as const,looseEnd:{x:80,y:80,z:0}}:edge)};
+  const disconnected={...demo,cables:demo.cables!.map(edge=>edge.id==='run-command'?{...edge,from:free(edge.from,{x:80,y:80,z:0})}:edge)};
   validateProject(disconnected);
   expect(related(demo,controller).signals.some(signal=>signal.id==='P-01.run')).toBe(true);
   expect(related(disconnected,controller).signals.some(signal=>signal.id==='P-01.run')).toBe(false);
   expect(semanticDiff(demo,disconnected).some(change=>change.semanticId==='connection:run-command'&&change.type==='changed')).toBe(true);
-  expect(projectDocumentation(disconnected,{locale:'en'})).toContain('run-command`: PLC-01.DO1 → P-01.run (cable · unplugged from source)');
+  expect(projectDocumentation(disconnected,{locale:'en'})).toContain('run-command`: free(80, 80, 0) → P-01.run (cable · free end)');
 });
 test('invalid values and duplicate IDs fail at the model boundary',()=>{
   expect(()=>validateValue(signal('x',{initial:2,min:0,max:5}),7)).toThrow();

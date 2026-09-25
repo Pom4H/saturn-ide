@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { qualityState, type Driver, type Project, type Snapshot } from '../core';
+import { isAttached, type ConnectionEnd, qualityState, type Driver, type Project, type Snapshot } from '../core';
 import { canonical, type BuildArtifact } from '../core/artifact';
 import { validateObservation, type AcquisitionContext, type Observation, type Observe } from '../core/acquisition';
 import { decodeProject } from './decode-project';
@@ -25,7 +25,7 @@ export class ProjectInstallation implements Installation {
   private constructor(readonly artifact: BuildArtifact, readonly project: Project, public driver: Driver | undefined, private readonly engine: Runtime) {
     // Only presentation/report/alarm edits can adopt acquisition. Signal semantics and physical
     // connectivity (not drawn waypoints) remain in the acquisition identity.
-    const endpoint = (e: { device: string; port: string }) => [e.device, e.port];
+    const endpoint = (e: ConnectionEnd) => isAttached(e) ? { kind: 'attached', device: e.device, port: e.port } : { kind: 'free', terminal: e.terminal };
     this.acquisitionKey = canonical({ driver: artifact.driver?.hash ?? null, signals: project.signals,
       equipment: project.equipment.map(({ x, y, z, label, ...e }) => e),
       pipes: project.pipes.map(({ id, from, to, flow }) => ({ id, from: endpoint(from), to: endpoint(to), flow: flow.id })),

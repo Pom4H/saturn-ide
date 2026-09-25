@@ -1,4 +1,4 @@
-import { text, type Locale, type Project, type Signal, type SignalOrigin } from './core';
+import { isConnected, endLabel, text, type Locale, type Project, type Signal, type SignalOrigin } from './core';
 import { semanticGraph } from './semantic';
 
 export interface DocumentationOptions { locale?:Locale }
@@ -44,8 +44,8 @@ export function projectDocumentation(project:Project,options:DocumentationOption
     if(equipment.alarms.length){lines.push('**'+h('Тревоги класса','Class alarms')+'**','');for(const alarm of equipment.alarms)lines.push('- `'+alarm.id+'`: '+text(alarm.label,locale)+' → `'+alarm.signal.id+'` > '+alarm.above+(alarm.hysteresis?' ± '+alarm.hysteresis:''));lines.push('');}
   }
   if(project.pipes.length||(project.cables?.length??0)){lines.push('## '+h('Физические связи','Physical connections'),'');for(const edge of [...project.pipes,...project.cables??[]]){
-    const state=edge.kind==='cable'&&edge.unplugged?' · '+(edge.unplugged==='from'?h('отключено от начала','unplugged from source'):h('отключено от конца','unplugged from destination')):'';
-    lines.push('- `'+edge.id+'`: '+edge.from.device+'.'+edge.from.port+' → '+edge.to.device+'.'+edge.to.port+' ('+edge.kind+state+')');
+    const state=!isConnected(edge)?' · '+h('свободный конец','free end'):'';
+    lines.push('- `'+edge.id+'`: '+endLabel(edge.from)+' → '+endLabel(edge.to)+' ('+edge.kind+state+')');
   }lines.push('');}
   if(project.alarms.length){lines.push('## '+h('Тревоги','Alarms'),'');for(const alarm of project.alarms)lines.push('- **'+text(alarm.label,locale)+'** (`'+alarm.id+'`): `'+alarm.signal.id+'` > '+alarm.above+(alarm.hysteresis?' ± '+alarm.hysteresis:''));lines.push('');}
   if((project.reports?.length??0)>0){lines.push('## '+h('Отчёты','Reports'),'');for(const report of project.reports??[])lines.push('- **'+text(report.label,locale)+'** (`'+report.id+'`): '+Object.values(report.columns).map(column=>'`'+column.signal.id+'` / '+column.aggregate).join(', '));lines.push('');}

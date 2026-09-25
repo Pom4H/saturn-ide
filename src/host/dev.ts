@@ -1,7 +1,9 @@
+import { planSourceOperation } from './authoring';
+import { readAuthoredFiles } from '../core/authoring';
 import { mkdirSync, watch } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { browserAssets } from './browser-build';
-import { text, validateProject, type Driver, type Endpoint, type Problem, type Project } from '../core';
+import { free, text, validateProject, type Driver, type Endpoint, type Problem, type Project } from '../core';
 import type { IDEState } from '../protocol';
 import { Workspace, HttpError, hash } from '../workspace/files';
 import { Builder, BuildError, type DraftBuild } from '../workspace/build';
@@ -61,7 +63,7 @@ export async function createApp(options: { assistant?:AssistantService; appRoot?
   const mode = (): Driver['mode'] | 'offline' => manager.phase === 'running' ? active()?.driver?.mode ?? 'offline' : 'offline';
   const authoringProject = () => draft?.project ?? runtime.project;
   const state = (): IDEState => ({ project: runtime.project, snapshot: runtime.snapshot, revision: (manager.applied ?? releaseState.applied)?.slice(7) ?? '',
-    positions: draft?.artifact.hash === manager.applied ? draft.positions : {}, problems, mode: mode(), adapter: store.adapter, key, pushPublicKey: push.publicKey });
+    authoring:draft?.authoring,editorError:draft?.editorError,positions:draft?.authoring?.positions??draft?.positions??{}, problems, mode: mode(), adapter: store.adapter, key, pushPublicKey: push.publicKey });
   function reportError(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     problems = [{ code: 'RUNTIME', message: { en: message, ru: message } }];
@@ -196,6 +198,12 @@ export async function createApp(options: { assistant?:AssistantService; appRoot?
           const file=workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);
           savedVersions.set(file.path,file.version);savedVersions.set('project.ts',workspace.read('project.ts').version);await reload();return json({file,state:state()});
         }
+        if(path==='/api/authoring/plan')return json(await planSourceOperation(workspace,draft?.authoring,b,appRoot,dataDir));
+        if(path==='/api/files/save'){
+          const files=workspace.saveMany(readAuthoredFiles(b.files));
+          for(const file of files)savedVersions.set(file.path,file.version);
+          await reload();return json({files,state:state()});
+        }
         if (path === '/api/file') { const file = workspace.save(field(b, 'path'), field(b, 'source'), field(b, 'version')); savedVersions.set(file.path, file.version); await reload(); return json({ file, state: state() }); }
         if (path === '/api/refactor/rename') {
           const uri=field(b,'uri'),nextId=field(b,'nextId'),catalog=indexResources(workspace,authoringProject(),draft?.artifact.hash??manager.applied??'');
@@ -212,11 +220,11 @@ export async function createApp(options: { assistant?:AssistantService; appRoot?
           const project=authoringProject(),cable=project.cables?.find(item=>item.id===id);if(!cable)throw new HttpError(404,'Unknown cable');
           let preview;
           if(b.disconnect===true){if(![b.x,b.y,b.z].every(value=>typeof value==='number'&&Number.isFinite(value)))throw new HttpError(400,'Invalid loose end');const point={x:b.x as number,y:b.y as number,z:b.z as number};
-            validateProject({...project,cables:project.cables!.map(item=>item.id===id?{...item,unplugged:end,looseEnd:point}:item)});
+            validateProject({...project,cables:project.cables!.map(item=>item.id===id?{...item,[end]:free(item[end],point)}:item)});
             preview=previewCableDisconnect(workspace,project,id,end,point);
           }else{const device=field(b,'device'),port=field(b,'port'),equipment=project.equipment.find(item=>item.id===device),target=equipment?.ports[port] as Endpoint|undefined;
             if(!target)throw new HttpError(404,'Unknown port');
-            validateProject({...project,cables:project.cables!.map(item=>item.id===id?{...item,[end]:target,unplugged:undefined,looseEnd:undefined}:item)});
+            validateProject({...project,cables:project.cables!.map(item=>item.id===id?{...item,[end]:target}:item)});
             preview=previewCableEndpoint(workspace,project,id,end,target);
           }
           if(b.apply!==true)return json(preview);

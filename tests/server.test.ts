@@ -1,3 +1,7 @@
+import { isAttached, type ConnectionEnd } from '../src/core';
+const attachedPort = (end:ConnectionEnd|undefined) => end && isAttached(end) ? end.port : undefined;
+const attachedDevice = (end:ConnectionEnd|undefined) => end && isAttached(end) ? end.device : undefined;
+const isFree = (end:ConnectionEnd|undefined) => !!end && !isAttached(end);
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from 'bun:test';
@@ -17,22 +21,22 @@ test('cable plug edit rewrites one authored endpoint and checks port compatibili
     const post=(body:unknown)=>fetch(new URL('api/cable/endpoint',app.server.url),{method:'POST',headers:{'Content-Type':'application/json','X-Saturn-Key':key},body:JSON.stringify(body)});
     const request={id:'run-command',end:'from',device:'PLC-01',port:'DO2'};
     const preview=await (await post(request)).json() as {path:string;version:string;source:string;from:string;to:string};
-    expect(preview.path).toBe('project.ts');expect(preview.from).toBe('controller.ports.DO1');expect(preview.to).toBe('controller.ports.DO2');
+    expect(preview.path).toBe('project.ts');expect(preview.source).toContain('controller.ports.DO2');
     expect(app.workspace.read('project.ts').source).toBe(before.source);
     expect((await post({...request,version:'0'.repeat(64),apply:true})).status).toBe(409);
     expect((await post({...request,version:preview.version,apply:true})).status).toBe(200);
     expect(app.workspace.read('project.ts').source).toContain('from: controller.ports.DO2');
-    expect(app.state().project.cables?.find(item=>item.id==='run-command')?.from.port).toBe('DO2');
+    expect(attachedPort(app.state().project.cables?.find(item=>item.id==='run-command')?.from)).toBe('DO2');
     const detached={id:'run-command',end:'from',disconnect:true,x:210,y:115,z:26};
     const loose=await (await post(detached)).json() as {path:string;version:string;source:string};
-    expect(loose.source).toContain("unplugged: 'from'");
+    expect(loose.source).toContain("__saturnFree(controller.ports.DO2");
     expect((await post({...detached,version:loose.version,apply:true})).status).toBe(200);
-    expect(app.state().project.cables?.find(item=>item.id==='run-command')?.unplugged).toBe('from');
+    expect(isFree(app.state().project.cables?.find(item=>item.id==='run-command')?.from)).toBe(true);
     const reconnect={id:'run-command',end:'from',device:'PLC-01',port:'DO1'};
     const attached=await (await post(reconnect)).json() as {path:string;version:string;source:string};
     expect(attached.source).not.toContain('looseEnd');
     expect((await post({...reconnect,version:attached.version,apply:true})).status).toBe(200);
-    expect(app.state().project.cables?.find(item=>item.id==='run-command')?.unplugged).toBeUndefined();
+    expect(isFree(app.state().project.cables?.find(item=>item.id==='run-command')?.from)).toBe(false);
     expect((await post({id:'run-command',end:'from',device:'PLC-01',port:'ETH'})).status).toBe(400);
   }finally{await app.close();f.clean();}
 },60000);

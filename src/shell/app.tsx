@@ -1,5 +1,7 @@
+import { previewScene } from '../core/authoring';
+import { useSourceEditing } from './use-source-editing';
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { equipmentSignals, interfaceProfile, text, type Equipment, type Locale, type Project, type Snapshot, type Text, type Value } from '../core';
+import { endLabel, isAttached, equipmentSignals, interfaceProfile, text, type Equipment, type Locale, type Project, type Snapshot, type Text, type Value } from '../core';
 import { availableEditors, editorNames, findResources, type EditorId, type ProjectResource } from '../core/resources';
 import { related, routeConnections, type PhysicalRoute } from '../topology';
 import { api, browserClient } from './api';
@@ -63,7 +65,7 @@ function Workbench({displays,importers}:AppProps) {
   const alarmHistory=useAlarmHistory(state?.project.id,shell.alarmVersion,connected);
   const [dimension, setDimension] = useState<'2d' | '3d'>('2d'), [interaction, setInteraction] = useState<'select'|'edit'>('select'), [selectedIds,setSelectedIds]=useState<string[]>([]), [ports, setPorts] = useState(false), [fit, setFit] = useState(0);
   const [zoom,setZoom]=useState({step:0,factor:1});
-  const [cablePreview,setCablePreview]=useState<{id:string;end:'from'|'to';x:number;y:number;z:number}|null>(null);
+  const sourceEditing = useSourceEditing(shell, operator);
   const [git, setGit] = useState<GitState | null>(null), [message, setMessage] = useState(''), [gitBusy, setGitBusy] = useState(false);
   const [releases, setReleases] = useState<Releases | null>(null);
   const [documentation, setDocumentation] = useState(''), [semanticChanges, setSemanticChanges] = useState<SemanticChange[]>([]);
@@ -101,7 +103,7 @@ function Workbench({displays,importers}:AppProps) {
   const selectEquipment = (id: string, additive=false) => {
     setSelectedIds(previous=>additive?(previous.includes(id)?previous.filter(item=>item!==id):[...previous,id]):[id]);
     const resource = catalog.resources.find(r => r.kind === 'device' && r.entityId === id);
-    if (resource) void openResource(resource, 'diagram', true); else session.selectEquipment(id);
+    if (resource) void openResource(resource, 'diagram', true); else {session.selectEquipment(id);const origin=state?.authoring?.sources.find(source=>source.id===id);if(origin)session.selectSource(origin.path);}
   };
   const save = async (path = session.getSnapshot().source) => {
     try { await session.documents.save(path); await refresh(); void refreshGit(); return true; } catch (e) { fail(e); return false; }
@@ -145,19 +147,7 @@ function Workbench({displays,importers}:AppProps) {
   }, [operator, session, surface]);
   useEffect(()=>{if(operator)setInteraction('select');},[operator]);
   useEffect(()=>{if(interaction!=='edit'||!state)return;for(const path of new Set(Object.values(state.positions).map(position=>position.path)))if(!session.documents.getSnapshot().has(path))void session.documents.open(path).catch(fail);},[interaction,state?.positions,session]);
-  const finishCable=async(target?:{device:string;port:string},cancel=false)=>{
-    const pending=cablePreview;setCablePreview(null);if(!pending||cancel)return;
-    try{
-      const request=target?{id:pending.id,end:pending.end,...target}:{id:pending.id,end:pending.end,disconnect:true,x:pending.x,y:pending.y,z:pending.z};
-      const result=await api<{path:string;version:string;source:string}>('cable/endpoint',request);
-      const buffer=session.documents.getSnapshot().get(result.path);
-      if(buffer&&(buffer.saving||buffer.draft!==buffer.source||buffer.version!==result.version))throw new Error(ru?'Сохраните или перечитайте исходник кабеля перед подключением.':'Save or reload the cable source before reconnecting.');
-      await api('cable/endpoint',{...request,version:result.version,apply:true});
-      if(buffer)await session.documents.reload(result.path,true);
-      await refresh();setError('');
-    }catch(error){fail(error);}
-  };
-  const previewProject = useMemo(()=>state?{...state.project,equipment:state.project.equipment.map(e=>previews[e.id]?{...e,...previews[e.id]}:e)}:null,[state?.project,previews]);
+  const previewProject = useMemo(()=>state?(state.authoring&&!operator?previewScene(state.authoring,previews,sourceEditing.cablePreview):{...state.project,equipment:state.project.equipment.map(e=>previews[e.id]?{...e,...previews[e.id]}:e)}):null,[state?.project,state?.authoring,operator,previews,sourceEditing.cablePreview]);
   const routes = useMemo(()=>previewProject?routeConnections(previewProject,routeCache.current??undefined):[],[previewProject]);
   useLayoutEffect(()=>{if(previewProject)routeCache.current={project:previewProject,routes};},[previewProject,routes]);
   const send = async (id: string, value: Value) => { await api('command', { signal: id, value, expectedApplied: state?.revision ? `sha256:${state.revision}` : null }); };
@@ -184,18 +174,17 @@ function Workbench({displays,importers}:AppProps) {
     setRenameBusy(true);try{await api('refactor/rename',{uri:resource.uri,nextId:renamePreview.to,version:renameVersion,apply:true});setRenamePreview(null);setRenameVersion('');await refresh();}catch(e){fail(e);}finally{setRenameBusy(false);}
   };  if (!state || !previewProject) return <main className="empty-state"><h1>Saturn IDE</h1><p>{error || (ru ? 'Подключение к рабочему проекту…' : 'Connecting to the workspace…')}</p></main>;
   const snapshot: Snapshot = projectSnapshot(state.project.signals, state.snapshot, { now, connected });
-  const equipment = state.project.equipment.find(e => e.id === selected), references = equipment ? related(state.project, equipment) : null;
+  const equipment = previewProject.equipment.find(e => e.id === selected), references = equipment ? related(state.project, equipment) : null;
   const activeResource = catalog.resources.find(r => r.uri === nav.active?.uri);
   const signal = Object.values(state.project.signals).find(s => s.id === nav.signal) ?? Object.values(state.project.signals)[0];
   const activeAlarms = Object.values(snapshot.alarms).filter(alarmNeedsAttention), file = documents.get(active);
   const mode = state.mode === 'simulation' ? (ru ? 'Симуляция' : 'Simulation') : state.mode === 'live' ? (ru ? 'Реальный драйвер' : 'Live driver') : (ru ? 'Нет драйвера' : 'No driver');
-  const scene = { project: previewProject, displayProject: state.project, routes, snapshot, locale, selected, selectedIds, interaction, select: selectEquipment, fit, zoom, ports, begin, move, end,
-    cablePreview,beginCable:(id:string,which:'from'|'to',x:number,y:number,z:number)=>{if(operator)return false;setCablePreview({id,end:which,x,y,z});return true;},
-    moveCable:(x:number,y:number,z:number)=>setCablePreview(previous=>previous?{...previous,x,y,z}:null),endCable:(target?:{device:string;port:string},cancel?:boolean)=>void finishCable(target,cancel),displays };
+  const scene = { inactive:operator?[]:state.authoring?.inactive.map(item=>item.source.id), project: previewProject, displayProject: operator?state.project:state.authoring?.project??state.project, routes, snapshot, locale, selected, selectedIds, interaction, select: selectEquipment, fit, zoom, ports, begin, move, end,
+    cablePreview:sourceEditing.cablePreview,beginCable:sourceEditing.beginCable,moveCable:sourceEditing.moveCable,endCable:sourceEditing.endCable,displays };
   const controlFor = (e?: Equipment) => e ? equipmentSignals(e).find(signal=>signal.writable) : undefined;
   const control = controlFor(equipment);
   const sourcePanel = <section className="code-pane"><div className="pane-heading"><code title={active}>{active}</code><button disabled={!file || file.draft === file.source || file.saving || dragging} onClick={() => void save()}>{file?.saving ? '…' : ru ? 'Сохранить' : 'Save'}</button></div>
-    {file ? <Editor path={active} source={file.draft} locale={locale} dragging={dragging} snapshot={snapshot} signals={state.project.signals} now={now} change={draft => session.documents.edit(active, draft)} save={() => void save()}/> : <p>{ru ? 'Откройте исходник объекта' : 'Open an object source'}</p>}</section>;
+    {file ? <Editor language={(operation,path,source,position,locale)=>api('language',{operation,path,source,position,locale})} path={active} source={file.draft} locale={locale} dragging={dragging} snapshot={snapshot} signals={state.project.signals} now={now} change={draft => session.documents.edit(active, draft)} save={() => void save()}/> : <p>{ru ? 'Откройте исходник объекта' : 'Open an object source'}</p>}</section>;
   if (location.pathname === '/hmi') {
     const requested=new URLSearchParams(location.search).get('screen')??'default',screen=requested==='default'?state.project.hmi:state.project.hmis?.find(h=>h.id===requested);
     if(requested!=='default'&&!screen)return <main className="empty-state"><h1>HMI</h1><p>{ru?'Интерфейс не найден':'Interface not found'}</p></main>;
@@ -255,6 +244,7 @@ function Workbench({displays,importers}:AppProps) {
         })}<MenuButton className="tab-actions icon-button" label={ru?'Действия вкладки':'Tab actions'} icon="more" items={nav.active?tabMenu(nav.active):[{id:'open',label:ru?'Открыть схему':'Open diagram',icon:'diagram',run:()=>chooseSurface('diagram')}]} /></nav>}
         {nav.active&&<div className="surface-toolbar"><strong>{editorNames[surface][locale]}</strong>
           {surface === 'diagram' && <><div className="segmented"><button aria-pressed={dimension === '2d'} onClick={() => setDimension('2d')}>2D</button><button aria-pressed={dimension === '3d'} onClick={() => setDimension('3d')}>3D</button></div><div className="segmented" aria-label={ru?'Режим схемы':'Diagram mode'}><button aria-pressed={interaction==='select'} onClick={()=>setInteraction('select')}>S · Select</button><button aria-pressed={interaction==='edit'} disabled={operator} onClick={()=>setInteraction('edit')}>Edit</button></div></>}
+          {surface==='diagram'&&!operator&&state.authoring&&(()=>{const item=state.authoring.sources.find(item=>item.id===selected);if(!item)return null;const dormant=state.authoring.inactive.some(item=>item.source.id===selected);return <button disabled={sourceEditing.busy||dragging} onClick={()=>sourceEditing.execute({kind:'enabled',id:selected,entity:item.kind,enabled:dormant})}>{dormant?(ru?'Вернуть из //':'Restore //'):(ru?'Оставить на полу //':'Comment //')}</button>;})()}
           <span className="spacer"/><MenuButton className="view-menu" label={ru?'Действия':'Actions'} items={viewItems}>{ru?'Вид':'View'}</MenuButton>
           <div className="toolbar-actions">
             {surface === 'diagram' && <>
@@ -286,7 +276,7 @@ function Workbench({displays,importers}:AppProps) {
                 {renamePreview&&<div className="rename-preview"><strong>{renamePreview.from} → {renamePreview.to}</strong><span>{ru?'Затронуто: ':'Affected: '}{renamePreview.affected.length}</span><small>{renamePreview.affected.slice(0,6).map(item=>item.id).join(', ')||'—'}</small><button disabled={renameBusy} onClick={()=>void applyRename()}>{ru?'Применить AST-изменение':'Apply AST change'}</button></div>}
               </div>}
               <h3>{ru ? 'Сигналы' : 'Signals'}</h3>{references?.signals.map(s => <button className="reference" key={s.id} onClick={() => {session.selectSignal(s.id);dispatchPanel({type:'open',tab:'graphs'});}}><code>{s.id}</code><strong>{snapshot.samples[s.id]?.quality === 'good' ? fmt(snapshot.samples[s.id]?.value) : '—'} <small>{s.unit}</small></strong></button>)}
-              <h3>{ru ? 'Соединения' : 'Connections'}</h3>{references?.connections.map(c => <div className="connection-reference" key={c.id}><strong>{c.kind} · {c.id}</strong><button onClick={() => selectEquipment(c.from.device)}>{c.from.device}.{c.from.port}</button> → <button onClick={() => selectEquipment(c.to.device)}>{c.to.device}.{c.to.port}</button></div>)}
+              <h3>{ru ? 'Соединения' : 'Connections'}</h3>{references?.connections.map(c => <div className="connection-reference" key={c.id}><strong>{c.kind} · {c.id}</strong><button disabled={!isAttached(c.from)} onClick={() => {if(isAttached(c.from))selectEquipment(c.from.device);}}>{endLabel(c.from)}</button> → <button disabled={!isAttached(c.to)} onClick={() => {if(isAttached(c.to))selectEquipment(c.to.device);}}>{endLabel(c.to)}</button></div>)}
               <h3>{ru ? 'Интерфейсы' : 'Interfaces'}</h3>{Object.values(equipment.ports).map(port=><div className="connection-reference" key={port.port} data-interface={port.terminal.interfaceId??port.terminal.family}><strong>{port.port} · {port.terminal.interfaceId?interfaceProfile(port.terminal.interfaceId).label:port.terminal.family}</strong><span>{port.terminal.family} · {port.terminal.role}{port.terminal.unit?` · ${port.terminal.unit}`:''}{port.terminal.valueType?` · ${port.terminal.valueType}`:''}</span></div>)}
               <h3>{ru ? 'Связанные объекты' : 'Related resources'}</h3>{catalog.resources.find(r => r.kind === 'device' && r.entityId === equipment.id)?.related.map(uri => { const r = catalog.resources.find(r => r.uri === uri); return r ? <button className="reference resource-link" key={uri} onClick={() => void openResource(r)}><ResourceIcon icon={r.icon}/>{r.name[locale]} ↗</button> : null; })}
             </div></aside>}

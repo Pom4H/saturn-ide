@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import type { TextareaRenderable } from '@opentui/core';
 import { availableEditors, editorNames, findResources, terminalIcon, type ShellLocale, type EditorId } from '../core/resources';
-import { text } from '../core';
+import { isAttached, endLabel, text } from '../core';
 import type { IDEState } from '../protocol';
 import type { ReportResult } from '../reports';
 import { ShellSession } from './model/session';
@@ -72,7 +72,7 @@ export function TerminalView({ client, session, state, connected, connectionErro
     if (key.name === 'f8') setLocale(l => l === 'ru' ? 'en' : 'ru');
   });
   const equipment = state.project.equipment.find(e => e.id === nav.selected);
-  const edges = [...state.project.pipes, ...state.project.cables ?? []].filter(e => !equipment || [e.from.device, e.to.device].includes(equipment.id));
+  const edges = [...state.project.pipes, ...state.project.cables ?? []].filter(e => !equipment || [e.from, e.to].filter(isAttached).map(end => end.device).includes(equipment.id));
   const signalLines = Object.values(state.project.signals).map(signal => {
     const sample = state.snapshot.samples[signal.id];
     const good = connected && sample?.quality === 'good' && now - sample.at <= (signal.staleAfter ?? 5000);
@@ -81,7 +81,7 @@ export function TerminalView({ client, session, state, connected, connectionErro
   const detail = nav.surface === 'signals' ? signalLines.join('\n')
     : nav.surface === 'reports' || nav.surface === 'git' ? output || 'Loading…'
     : nav.surface === 'targets' ? `Local ${state.mode}\nApplied ${state.revision || '—'}\nStorage ${state.adapter}`
-    : `${resource?.name[locale] ?? ''}\n${resource?.source?.path ?? ''}\n\n${edges.map(e => `${e.kind}: ${e.from.device}.${e.from.port} -> ${e.to.device}.${e.to.port}`).join('\n')}\n\n${signalLines.join('\n')}`;
+    : `${resource?.name[locale] ?? ''}\n${resource?.source?.path ?? ''}\n\n${edges.map(e => `${e.kind}: ${endLabel(e.from)} -> ${endLabel(e.to)}`).join('\n')}\n\n${signalLines.join('\n')}`;
   return <box width="100%" height="100%" flexDirection="column">
     <box height={3} border paddingLeft={1}><text><strong>Saturn</strong>  {text(state.project.label, locale)}  [{state.mode}]  {connected ? 'SSE' : 'OFFLINE'}</text></box>
     <box flexGrow={1} flexDirection="row">

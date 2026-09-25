@@ -50,6 +50,15 @@ export class Workspace {
     renameSync(temp, full);
     return { path, source, version: hash(source) };
   }
+  /** Compare every version before replacing any file. The host reloads once after the batch.
+   * Ordinary filesystem atomic replacements are per-file, not crash-atomic across files. */
+  saveMany(files:readonly SourceFile[]):SourceFile[] {
+    if(!files.length||files.length>64||new Set(files.map(file=>file.path)).size!==files.length)throw new HttpError(400,'Invalid document transaction');
+    const before=files.map(file=>{const old=this.read(file.path);if(old.version!==file.version)throw new HttpError(409,'Source changed before document transaction');if(Buffer.byteLength(file.source)>256000)throw new HttpError(413,'File exceeds editor size limit');return old;});
+    const saved:SourceFile[]=[];
+    try{for(const file of files)saved.push(this.save(file.path,file.source,file.version));return saved;}
+    catch(error){for(let i=saved.length-1;i>=0;i--){const old=before[i]!;this.save(old.path,old.source,saved[i]!.version);}throw error;}
+  }
   create(path:string,source:string):SourceFile {
     if(!/^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(ts|tsx|md|json)$/.test(path)||path.split('/').some(part=>part.startsWith('.')||part==='node_modules'))throw new HttpError(400,'Unsupported project path');
     if(Buffer.byteLength(source)>256_000)throw new HttpError(413,'File exceeds editor size limit');

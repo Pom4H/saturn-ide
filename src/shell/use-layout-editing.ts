@@ -11,8 +11,8 @@ export function useLayoutEditing(shell: ReturnType<typeof useShell>, operator: b
   const fail = (error: unknown) => setError(error instanceof Error ? error.message : String(error));
 
   useEffect(() => {
-    if (state) editing.reconcile(state.project.equipment);
-  }, [editing, state?.project, documents, snapshot.dragging]);
+    if (state) editing.reconcile((operator?state.project:state.authoring?.scene??state.project).equipment);
+  }, [editing, state?.project, state?.authoring, operator, documents, snapshot.dragging]);
 
   const begin = (id: string) => {
     const position = state?.positions[id];

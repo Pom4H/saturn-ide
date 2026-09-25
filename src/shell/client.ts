@@ -23,6 +23,7 @@ export class ShellClient implements DocumentPort {
   catalog(): Promise<ResourceCatalog> { return this.request('resources'); }
   read(path: string): Promise<SourceFile> { return this.request(`file?path=${encodeURIComponent(path)}`); }
   async save(file: SourceFile): Promise<SourceFile> { return (await this.request<{ file: SourceFile }>('file', file)).file; }
+  async saveMany(files:readonly SourceFile[]):Promise<readonly SourceFile[]>{return (await this.request<{files:SourceFile[]}>('files/save',{files})).files;}
   /** Key changes on server restart; a reconnect snapshot replaces it before further writes. */
   async events(signal: AbortSignal, onEvent: (event: string, value: unknown) => void, onConnection: (connected: boolean) => void): Promise<void> {
     while (!signal.aborted) {

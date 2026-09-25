@@ -1,3 +1,5 @@
+import { buildAuthoring } from './editor-build';
+import type { AuthoringFrame } from '../core/authoring';
 import { projectImports } from './imports';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -8,7 +10,7 @@ import type { PositionSource } from '../source-edits';
 import { Workspace } from './files';
 import { Language } from './language';
 import { execute } from './git';
-export interface DraftBuild { artifact: BuildArtifact; project: Project; positions: Record<string, PositionSource> }
+export interface DraftBuild { artifact: BuildArtifact; project: Project; positions: Record<string, PositionSource>; authoring?: AuthoringFrame; editorError?: string }
 function buildFailure(error:unknown){
   const message=(value:unknown)=>value instanceof Error?value.message:value&&typeof value==='object'&&'message' in value?String((value as {message:unknown}).message):String(value);
   return error instanceof AggregateError?error.errors.map(message).join('\n'):message(error);
@@ -57,7 +59,9 @@ export class Builder {
     const sourceRevision = await execute(['git', 'rev-parse', 'HEAD'], this.workspace.root).then(s => s.trim()).catch(() => null);
     const driver = result.outputs.find(o => o.path.endsWith('server.mjs'));
     const artifact = await createArtifact(project, driver ? await driver.text() : null, { sourceRevision, sourceDigest, coreHash, lockHash, bunVersion: Bun.version });
-    return { artifact, project, positions: this.workspace.positions(project.equipment.map(e => e.id)) };
+    const positions = this.workspace.positions(project.equipment.map(e => e.id));
+    try { return {artifact,project,positions,authoring:await buildAuthoring(this.workspace,this.appRoot,this.dataDir,project)}; }
+    catch(error) { return {artifact,project,positions,editorError:buildFailure(error)}; }
   }
   close() { this.language.dispose(); }
 }

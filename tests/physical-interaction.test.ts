@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Equipment, Pipe, Cable, Point, Project } from '../src/core';
+import { free, type Equipment, type Pipe, type Cable, type Point, type Project } from '../src/core';
 import { connectionTip, routeConnections, type PhysicalRoute } from '../src/topology';
 import { geometryRevision } from '../src/shell/model/geometry-revision';
 
@@ -68,13 +68,13 @@ test('a translated and elevated device exposes a world-space connection tip',()=
   assert.deepEqual(connectionTip(project,project.cables![0]!,'from'),{x:1100,y:250,z:300});
 });
 test('a loose cable end keeps its authored world-space height and placement',()=>{
-  const project=fixture('cable'),at={x:650,y:260,z:40};project.cables![0]={...project.cables![0]!,unplugged:'to',looseEnd:at};
+  const project=fixture('cable'),at={x:650,y:260,z:40};project.cables![0]={...project.cables![0]!,to:free(project.cables![0]!.to,at)};
   assert.deepEqual(connectionTip(project,project.cables![0]!,'to'),at);
   const routes=routeConnections(project);assert.equal(routes[0]!.valid,true);assert.deepEqual(routes[0]!.points.at(-1),at);
   assert(routes[0]!.points.length>2);
 });
 test('a loose end placed inside equipment is not reported as a valid straight cable',()=>{
-  const project=fixture('cable');project.cables![0]={...project.cables![0]!,unplugged:'to',looseEnd:{x:450,y:100,z:0}};
+  const project=fixture('cable');project.cables![0]={...project.cables![0]!,to:free(project.cables![0]!.to,{x:450,y:100,z:0})};
   assert.equal(routeConnections(project)[0]!.valid,false);
 });
 test('3D geometry identity ignores placement, but retains definition and port changes',()=>{

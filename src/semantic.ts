@@ -1,4 +1,4 @@
-import { equipmentSignals, text, type Hmi, type Locale, type Project, type Signal, type Text } from './core';
+import { isAttached, type ConnectionEnd, equipmentSignals, text, type Hmi, type Locale, type Project, type Signal, type Text } from './core';
 import { canonical } from './core/artifact';
 
 export type SemanticKind='project'|'equipment'|'signal'|'connection'|'alarm'|'report'|'hmi';
@@ -33,9 +33,9 @@ export function semanticGraph(project:Project):SemanticGraph {
   }
   for(const edge of [...project.pipes,...project.cables??[]]){
     const signal=edge.kind==='pipe'?edge.flow:edge.signal;
-    drafts.push({semanticId:`connection:${edge.id}`,kind:'connection',id:edge.id,label:edge.id,signature:sig({kind:edge.kind,from:{device:equipmentIds.get(edge.from.device)??edge.from.device,port:edge.from.port},to:{device:equipmentIds.get(edge.to.device)??edge.to.device,port:edge.to.port},via:edge.via??[],unplugged:edge.kind==='cable'?edge.unplugged??null:null,looseEnd:edge.kind==='cable'?edge.looseEnd??null:null}),uses:[
-      ...(edge.kind==='pipe'||edge.unplugged!=='from'?[equipmentIds.get(edge.from.device)??`equipment:${edge.from.device}`]:[]),
-      ...(edge.kind==='pipe'||edge.unplugged!=='to'?[equipmentIds.get(edge.to.device)??`equipment:${edge.to.device}`]:[]),
+    const describe=(end:ConnectionEnd)=>isAttached(end)?{kind:'attached',device:equipmentIds.get(end.device)??end.device,port:end.port}:{kind:'free',position:end.position,terminal:end.terminal};
+    drafts.push({semanticId:`connection:${edge.id}`,kind:'connection',id:edge.id,label:edge.id,signature:sig({kind:edge.kind,from:describe(edge.from),to:describe(edge.to),via:edge.via??[]}),uses:[
+      ...[edge.from,edge.to].flatMap(end=>isAttached(end)?[equipmentIds.get(end.device)??`equipment:${end.device}`]:[]),
       ...(signal?[signalIds.get(signal.id)??signalIdentity(signal)]:[]),
     ]});
   }

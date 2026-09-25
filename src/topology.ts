@@ -1,26 +1,27 @@
-import type { Cable, Endpoint, Equipment, Pipe, Point, Project } from './core';
+import { isAttached, type ConnectionEnd, type Cable, type Endpoint, type Equipment, type Pipe, type Point, type Project } from './core';
 export interface PhysicalRoute {id:string;kind:'pipe'|'cable';points:Point[];valid:boolean;error?:string}
 interface Box {id:string;x:number;y:number;right:number;bottom:number}
 export const connections=(project:Project)=>([...project.pipes,...project.cables??[]]);
 const size=(e:Equipment)=>({width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150});
 const boxesFor=(project:Project,clearance:number):Box[]=>project.equipment.map(e=>{const g=size(e);return{id:e.id,x:e.x-clearance,y:e.y-clearance-28,right:e.x+g.width+clearance,bottom:e.y+g.height+clearance};});
 const blocked=(boxes:readonly Box[],a:Point,b:Point,ignore='')=>boxes.some(r=>r.id!==ignore&&(a.x===b.x?a.x>r.x+.01&&a.x<r.right-.01&&Math.max(a.y,b.y)>r.y+.01&&Math.min(a.y,b.y)<r.bottom-.01:a.y===b.y?a.y>r.y+.01&&a.y<r.bottom-.01&&Math.max(a.x,b.x)>r.x+.01&&Math.min(a.x,b.x)<r.right-.01:true));
-const attached=(edge:Pipe|Cable,end:'from'|'to')=>edge.kind!=='cable'||edge.unplugged!==end;
+const owner=(end:ConnectionEnd)=>isAttached(end)?end.device:'';
 const routeClear=(route:PhysicalRoute,boxes:readonly Box[],edge:Pipe|Cable)=>route.points.length>1&&route.points.slice(1).every((point,index)=>
-  !blocked(boxes,route.points[index]!,point,index===0&&attached(edge,'from')?edge.from.device:index===route.points.length-2&&attached(edge,'to')?edge.to.device:''));
-export function anchor(project:Project,end:Endpoint):Point {
+  !blocked(boxes,route.points[index]!,point,index===0?owner(edge.from):index===route.points.length-2?owner(edge.to):''));
+export function anchor(project:Project,end:ConnectionEnd):Point {
+  if(!isAttached(end))return {...end.position};
   const e=project.equipment.find(e=>e.id===end.device);const p=e&&(e.ports as Record<string,Endpoint>)[end.port];
   if(!e||!p)throw new Error(`Unknown port ${end.device}.${end.port}`);
   return {x:e.x+p.terminal.x,y:e.y+p.terminal.y,z:(e.z??0)+p.terminal.z};
 }
 /** The same world-space tip is used by routing, picking and source gestures. */
 export function connectionTip(project:Project,edge:Pipe|Cable,end:'from'|'to'):Point {
-  return edge.kind==='cable'&&edge.unplugged===end&&edge.looseEnd?{...edge.looseEnd}:anchor(project,edge[end]);
+  return anchor(project,edge[end]);
 }
 function terminalLead(project:Project,edge:Pipe|Cable,end:'from'|'to',boxes:readonly Box[]):Point {
   const pt=connectionTip(project,edge,end);
-  if(!attached(edge,end))return pt;
-  const ref=edge[end],r=boxes.find(b=>b.id===ref.device)!;
+  const ref=edge[end];if(!isAttached(ref))return pt;
+  const r=boxes.find(b=>b.id===ref.device)!;
   const side=project.equipment.find(e=>e.id===ref.device)!.ports[ref.port]!.terminal.side;
   return {...pt,x:side==='left'?r.x:side==='right'?r.right:pt.x,y:side==='up'?r.y:side==='down'?r.bottom:pt.y};
 }
@@ -68,7 +69,7 @@ function retraces(points:readonly Point[]):boolean {
 function retargetRoute(project:Project,edge:Pipe|Cable,old:PhysicalRoute,boxes:readonly Box[]):PhysicalRoute|undefined {
   const start=connectionTip(project,edge,'from'),end=connectionTip(project,edge,'to');
   const from=terminalLead(project,edge,'from',boxes),to=terminalLead(project,edge,'to',boxes);
-  if(blocked(boxes,start,from,attached(edge,'from')?edge.from.device:'')||blocked(boxes,to,end,attached(edge,'to')?edge.to.device:''))return;
+  if(blocked(boxes,start,from,owner(edge.from))||blocked(boxes,to,end,owner(edge.to)))return;
   const interior=old.points.slice(1,-1);
   // A straight two-point route has no corridor to retain.
   if(!interior.length)return;
@@ -99,7 +100,7 @@ function routeConnectionWithBoxes(project:Project,edge:Pipe|Cable,boxes:readonly
   const empty=(p:Point)=>!boxes.some(b=>p.x>b.x+.01&&p.x<b.right-.01&&p.y>b.y+.01&&p.y<b.bottom-.01);
   const result:PhysicalRoute={id:edge.id,kind:edge.kind,points:[],valid:true};
   const fail=(error:string):PhysicalRoute=>({...result,valid:false,error,points:[start,s,t,end]});
-  if(blocked(boxes,start,s,attached(edge,'from')?edge.from.device:'')||blocked(boxes,t,end,attached(edge,'to')?edge.to.device:''))return fail('Terminal stub intersects equipment');
+  if(blocked(boxes,start,s,owner(edge.from))||blocked(boxes,t,end,owner(edge.to)))return fail('Terminal stub intersects equipment');
   const via=[{...s,z:high},...(edge.via??[]).map(p=>({...p,z:high})),{...t,z:high}],points:Point[]=[start,s,{...s,z:high}];
   let budget=40000;
   for(let k=1;k<via.length;k++) {
@@ -124,7 +125,7 @@ function routeConnectionWithBoxes(project:Project,edge:Pipe|Cable,boxes:readonly
 export function routeConnection(project:Project,edge:Pipe|Cable):PhysicalRoute {
   const boxes=boxesFor(project,edge.kind==='pipe'?14:9);
   // Unrelated equipment must not change a clear path merely by adding grid lines.
-  const endpoints=boxes.filter(box=>attached(edge,'from')&&box.id===edge.from.device||attached(edge,'to')&&box.id===edge.to.device);
+  const endpoints=boxes.filter(box=>box.id===owner(edge.from)||box.id===owner(edge.to));
   const preferred=routeConnectionWithBoxes(project,edge,endpoints);
   return preferred.valid&&routeClear(preferred,boxes,edge)?preferred:routeConnectionWithBoxes(project,edge,boxes);
 }
@@ -135,11 +136,10 @@ export function routeConnections(project:Project,previous?:{project:Project;rout
   return connections(project).map(edge=>{
     const oldEdge=priorEdges.get(edge.id),oldRoute=priorRoutes.get(edge.id);
     if(!previous||!oldEdge||!oldRoute||!oldRoute.valid||edge.kind!==oldEdge.kind||
-      edge.from.device!==oldEdge.from.device||edge.from.port!==oldEdge.from.port||edge.to.device!==oldEdge.to.device||edge.to.port!==oldEdge.to.port||
-      (edge.kind==='cable'&&oldEdge.kind==='cable'&&edge.unplugged!==oldEdge.unplugged)||
+      JSON.stringify(edge.from)!==JSON.stringify(oldEdge.from)||JSON.stringify(edge.to)!==JSON.stringify(oldEdge.to)||
       JSON.stringify(edge.via??[])!==JSON.stringify(oldEdge.via??[]))return routeConnection(project,edge);
-    const oldFrom=previous.project.equipment.find(e=>e.id===edge.from.device),oldTo=previous.project.equipment.find(e=>e.id===edge.to.device);
-    const nextFrom=project.equipment.find(e=>e.id===edge.from.device),nextTo=project.equipment.find(e=>e.id===edge.to.device);
+    const oldFrom=previous.project.equipment.find(e=>e.id===owner(edge.from)),oldTo=previous.project.equipment.find(e=>e.id===owner(edge.to));
+    const nextFrom=project.equipment.find(e=>e.id===owner(edge.from)),nextTo=project.equipment.find(e=>e.id===owner(edge.to));
     if(!oldFrom||!oldTo||!nextFrom||!nextTo||oldFrom.kind!==nextFrom.kind||oldTo.kind!==nextTo.kind||
       JSON.stringify(oldFrom.ports)!==JSON.stringify(nextFrom.ports)||JSON.stringify(oldTo.ports)!==JSON.stringify(nextTo.ports))return routeConnection(project,edge);
     const points=oldRoute.points,start=connectionTip(project,edge,'from'),end=connectionTip(project,edge,'to');
@@ -152,8 +152,7 @@ export function routeConnections(project:Project,previous?:{project:Project;rout
 export const routePath=(route:PhysicalRoute)=>route.points.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ');
 export function related(project:Project,equipment:Equipment) {
   const edges=connections(project).filter(c=>
-    (c.from.device===equipment.id&&(c.kind==='pipe'||c.unplugged!=='from'))||
-    (c.to.device===equipment.id&&(c.kind==='pipe'||c.unplugged!=='to')));
+    owner(c.from)===equipment.id||owner(c.to)===equipment.id);
   const refs=new Set(Object.values(equipment).filter((v):v is {id:string;initial:number|boolean|string}=>!!v&&typeof v==='object'&&'id' in v&&'initial' in v).map(s=>s.id));
   for(const edge of edges){const signal=edge.kind==='pipe'?edge.flow:edge.signal;if(signal)refs.add(signal.id);}
   return {signals:Object.values(project.signals).filter(s=>refs.has(s.id)),connections:edges,alarms:project.alarms.filter(a=>refs.has(a.signal.id)),reports:(project.reports??[]).filter(r=>Object.values(r.columns).some(c=>refs.has(c.signal.id)))};

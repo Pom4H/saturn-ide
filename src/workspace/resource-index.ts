@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import type { Project } from '../core';
+import { isAttached, type Project } from '../core';
 const text = (label: Project['label'], locale: 'en' | 'ru') => typeof label === 'string' ? label : label[locale];
 import { resourceUri, type ProjectResource, type ResourceCatalog, type SourceLocation } from '../core/resources';
 import { deviceCalls } from './ast';
@@ -35,12 +35,12 @@ export function indexResources(workspace: { list(): string[]; read(path: string)
     const values: unknown[] = Object.values(equipment);
     const signals = new Set(values.filter((v): v is { id: string; initial: unknown } =>
       !!v && typeof v === 'object' && 'id' in v && 'initial' in v).map(s => s.id));
-    const connected = [...project.pipes, ...project.cables ?? []].filter(e => e.from.device === equipment.id || e.to.device === equipment.id);
+    const connected = [...project.pipes, ...project.cables ?? []].filter(e => [e.from, e.to].some(end => isAttached(end) && end.device === equipment.id));
     for (const edge of connected) { const signal = edge.kind === 'pipe' ? edge.flow : edge.signal; if (signal) signals.add(signal.id); }
     resources.push({ uri: deviceUri(equipment.id), kind: 'device', icon: equipment.icon,
       name: { en: text(equipment.label, 'en'), ru: text(equipment.label, 'ru') }, entityId: equipment.id, semanticId: deviceIdentity.get(equipment.id), source: sourceOf(equipment.id), parent: root,
       editors: ['diagram', 'source', 'signals'], related: [...new Set([
-        ...connected.flatMap(e => [e.from.device, e.to.device]).filter(id => id !== equipment.id).map(deviceUri),
+        ...connected.flatMap(e => [e.from, e.to].filter(isAttached).map(end => end.device)).filter(id => id !== equipment.id).map(deviceUri),
         ...(project.reports ?? []).filter(r => Object.values(r.columns).some(c => signals.has(c.signal.id))).map(r => uri('report', r.id)),
       ])] });
   }

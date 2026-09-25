@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { cableAppearance, interfaceProfile, text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
-import { routePath, type PhysicalRoute } from '../topology';
+import { endLabel, isConnected, cableAppearance, interfaceProfile, text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
+import { connectionTip, routePath, type PhysicalRoute } from '../topology';
 import { useSvgMotion } from './svg-motion';
 import { Symbol } from './symbols';
 export interface SceneProps {
-  project:Project;displayProject?:Project;routes:readonly PhysicalRoute[];snapshot:Snapshot;locale:Locale;selected:string;selectedIds?:readonly string[];interaction?:'select'|'edit';focus?:string;fit?:number;zoom?:{step:number;factor:number};ports?:boolean;
+  project:Project;displayProject?:Project;inactive?:readonly string[];routes:readonly PhysicalRoute[];snapshot:Snapshot;locale:Locale;selected:string;selectedIds?:readonly string[];interaction?:'select'|'edit';focus?:string;fit?:number;zoom?:{step:number;factor:number};ports?:boolean;
   select:(id:string,additive?:boolean)=>void;begin?:(id:string)=>boolean;move?:(id:string,x:number,y:number)=>void;end?:(cancel:boolean)=>void;
   cablePreview?:{id:string;end:'from'|'to';x:number;y:number;z:number}|null;
   beginCable?:(id:string,end:'from'|'to',x:number,y:number,z:number)=>boolean;moveCable?:(x:number,y:number,z:number)=>void;endCable?:(target?:{device:string;port:string},cancel?:boolean)=>void;
@@ -60,7 +60,7 @@ export function Scene(props:SceneProps){
   },[]);
   const start=(event:PointerEvent,e:Equipment)=>{event.stopPropagation();props.select(e.id,props.interaction==='select'&&(event.shiftKey||event.metaKey||event.ctrlKey));if(props.interaction!=='edit'||event.button!==0||!props.begin?.(e.id))return;const p=coordinate(event);drag.current={id:e.id,x:e.x,y:e.y,sx:p.x,sy:p.y,moved:false};svg.current!.setPointerCapture(event.pointerId);};
   const nearestPort=(x:number,y:number)=>{let chosen:{device:string;port:string}|undefined,distance=20;for(const equipment of props.project.equipment)for(const endpoint of Object.values(equipment.ports)){const dx=equipment.x+endpoint.terminal.x-x,dy=equipment.y+endpoint.terminal.y-y,d=Math.hypot(dx,dy);if(d<distance){distance=d;chosen={device:equipment.id,port:endpoint.port};}}return chosen;};
-  const startPlug=(event:PointerEvent,id:string,end:'from'|'to')=>{if(props.interaction!=='edit'||event.button!==0)return;event.stopPropagation();const p=coordinate(event),edge=props.project.cables?.find(item=>item.id===id),anchor=edge?.[end];if(!anchor)return;if(!props.beginCable?.(id,end,p.x,p.y,anchor.terminal.z))return;plug.current={id,end,x:p.x,y:p.y,moved:false};svg.current!.setPointerCapture(event.pointerId);};
+  const startPlug=(event:PointerEvent,id:string,end:'from'|'to')=>{props.select(id);if(props.interaction!=='edit'||event.button!==0)return;event.stopPropagation();const p=coordinate(event),edge=[...props.project.pipes,...props.project.cables??[]].find(item=>item.id===id),anchor=edge?.[end];if(!anchor)return;if(!props.beginCable?.(id,end,p.x,p.y,connectionTip(props.project,edge!,end).z))return;plug.current={id,end,x:p.x,y:p.y,moved:false};svg.current!.setPointerCapture(event.pointerId);};
   const finish=(cancel:boolean)=>{pan.current=null;if(drag.current){const d=drag.current;drag.current=null;props.end?.(cancel||!d.moved);}};
   return <svg ref={svg} className="scene" viewBox={box.join(' ')} aria-label={props.locale==='ru'?'Мнемосхема':'Process diagram'} tabIndex={0}
     onPointerDown={event=>{if(props.focus)return;pan.current={x:event.clientX,y:event.clientY,box};svg.current!.setPointerCapture(event.pointerId);}}
@@ -69,13 +69,13 @@ export function Scene(props:SceneProps){
     {!props.focus&&routes.map(route=>{
       const edge=[...props.project.pipes,...props.project.cables??[]].find(e=>e.id===route.id)!;
       const d=routePath(route),isPipe=route.kind==='pipe';
-      return <g key={route.id} data-pipe={isPipe?route.id:undefined} data-cable={!isPipe?route.id:undefined} data-route-valid={route.valid} className={route.valid?(isPipe?'pipe':'cable'):'invalid-route'}>
-        <title>{route.id}: {edge.from.device}.{edge.from.port} → {edge.to.device}.{edge.to.port}{edge.kind==='cable'?` · ${cableAppearance(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family).label}${edge.signal?.unit?` · ${edge.signal.unit}`:''}${edge.unplugged?' · disconnected':''}`:''}{route.error?` — ${route.error}`:''}</title>
-        <path d={d} fill="none" stroke={route.valid?(isPipe?'var(--pipe-rim)':cableAppearance(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family).color):'var(--bad)'} strokeWidth={isPipe?12:3} strokeLinejoin="round" strokeDasharray={!route.valid?'6 6':edge.kind==='cable'&&edge.unplugged?'8 5':undefined}/>
+      return <g key={route.id} data-pipe={isPipe?route.id:undefined} data-cable={!isPipe?route.id:undefined} data-route-valid={route.valid} data-inactive={props.inactive?.includes(route.id)||undefined} onClick={()=>props.select(route.id)} className={route.valid?(isPipe?'pipe':'cable'):'invalid-route'}>
+        <title>{route.id}: {endLabel(edge.from)} → {endLabel(edge.to)}{edge.kind==='cable'?` · ${cableAppearance(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family).label}${edge.signal?.unit?` · ${edge.signal.unit}`:''}${!isConnected(edge)?' · disconnected':''}`:''}{route.error?` — ${route.error}`:''}</title>
+        <path d={d} fill="none" stroke={route.valid?(isPipe?'var(--pipe-rim)':cableAppearance(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family).color):'var(--bad)'} strokeWidth={isPipe?12:3} strokeLinejoin="round" strokeDasharray={!route.valid?'6 6':!isConnected(edge)?'8 5':undefined}/>
         {isPipe&&route.valid&&<><path d={d} fill="none" stroke="var(--pipe-fill)" strokeWidth={8} strokeLinejoin="round"/><path className="flow" d={d} fill="none" stroke="var(--flow)" strokeWidth={3} strokeDasharray="8 15"/></>}
       </g>;
     })}
-    {base.map(e=>{const g=visual(e);return <g key={e.id} data-equipment={e.id} transform={`translate(${e.x} ${e.y})`} className={`equipment ${props.selectedIds?.includes(e.id)||!props.selectedIds&&props.selected===e.id?'selected':''}`} onPointerDown={event=>start(event,e)} role="button" tabIndex={0} aria-label={`${e.id} ${text(e.label,props.locale)}`} onKeyDown={event=>{if(event.key==='Enter')props.select(e.id,event.shiftKey);}}>
+    {base.map(e=>{const g=visual(e);return <g key={e.id} data-equipment={e.id} data-inactive={props.inactive?.includes(e.id)||undefined} transform={`translate(${e.x} ${e.y})`} className={`equipment ${props.selectedIds?.includes(e.id)||!props.selectedIds&&props.selected===e.id?'selected':''}`} onPointerDown={event=>start(event,e)} role="button" tabIndex={0} aria-label={`${e.id} ${text(e.label,props.locale)}`} onKeyDown={event=>{if(event.key==='Enter')props.select(e.id,event.shiftKey);}}>
       <rect className="selection" x={-12} y={-28} width={g.width+24} height={g.height+64} rx={4}/><text className="equipment-id" x={0} y={-13}>{e.id}</text>
       {e.capabilities.diagram?.svg?<g data-device-svg={e.kind} dangerouslySetInnerHTML={{__html:e.capabilities.diagram.svg}}/>:<Symbol equipment={e} snapshot={props.snapshot} locale={props.locale}/>} 
       {e.capabilities.scene3d?.kind==='control-panel'&&props.displays?.[e.capabilities.hmi?.target??'']&&<PanelDisplay2D project={props.displayProject??props.project} controller={(props.displayProject??props.project).equipment.find(item=>item.id===e.id)??e} snapshot={props.snapshot} factory={props.displays[e.capabilities.hmi!.target]!}/>}
@@ -90,7 +90,7 @@ export function Scene(props:SceneProps){
         </g>;
       })}
     </g>;})}
-    {!props.focus&&props.interaction==='edit'&&routes.filter(route=>route.kind==='cable').flatMap(route=>[0,1].map(index=>{const point=index===0?route.points[0]:route.points.at(-1);if(!point)return null;const end=index===0?'from':'to';return <g key={`${route.id}-${end}`} data-cable-plug={`${route.id}.${end}`} onPointerDown={event=>startPlug(event,route.id,end)} style={{cursor:'grab'}}><circle cx={point.x} cy={point.y} r={12} fill="transparent" stroke="transparent" strokeWidth={2}/><circle cx={point.x} cy={point.y} r={6} fill="#f7ca72" stroke="#344955" strokeWidth={2} pointerEvents="none"/></g>;}))}
+    {!props.focus&&props.interaction==='edit'&&routes.flatMap(route=>[0,1].map(index=>{const point=index===0?route.points[0]:route.points.at(-1);if(!point)return null;const end=index===0?'from':'to';return <g key={`${route.id}-${end}`} data-cable-plug={`${route.id}.${end}`} onPointerDown={event=>startPlug(event,route.id,end)} style={{cursor:'grab'}}><circle cx={point.x} cy={point.y} r={12} fill="transparent" stroke="transparent" strokeWidth={2}/><circle cx={point.x} cy={point.y} r={6} fill="#f7ca72" stroke="#344955" strokeWidth={2} pointerEvents="none"/></g>;}))}
     {props.cablePreview&&(()=>{const route=routes.find(item=>item.id===props.cablePreview!.id),fixed=props.cablePreview.end==='from'?route?.points.at(-1):route?.points[0];return fixed?<g pointerEvents="none" data-cable-preview={props.cablePreview.id}><path d={`M${fixed.x} ${fixed.y} L${props.cablePreview.x} ${props.cablePreview.y}`} stroke="#ec9d45" strokeWidth={4} strokeDasharray="9 5" fill="none"/><circle cx={props.cablePreview.x} cy={props.cablePreview.y} r={7} fill="#ec9d45"/></g>:null;})()}
     {!props.focus&&routes.some(r=>!r.valid)&&<text x={box[0]!+20} y={box[1]!+22} fill="var(--bad)" fontSize={12}>{props.locale==='ru'?'Есть непроходимые трассы':'Some routes are blocked'}</text>}
   </svg>;

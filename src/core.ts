@@ -184,11 +184,26 @@ export const valve=device({id:'valve',icon:'valve',ports:valvePorts,signals:{ope
 /** @ru Базовый ПЛК без привязки к конкретному toolchain.
  * @en Generic PLC without a device-specific toolchain. */
 export const plc=device({id:'plc',icon:'plc',ports:plcPorts,signals:{online:signal({initial:false})},capabilities:{diagram:{width:160,height:150}},knowledge:{summary:{ru:'Базовый ПЛК без привязки к конкретному toolchain.',en:'Generic PLC without a device-specific toolchain.'}}});
-interface Connection { id:string; from:Endpoint; to:Endpoint; via?:readonly {x:number;y:number}[] }
+/** An attached end refers to a real port. A free end owns a position and connector type, never a device. */
+export type AttachedEnd<M extends Medium=Medium,F extends string=string,R extends Role=Role> = Endpoint<M,F,R>;
+export interface FreeEnd<M extends Medium=Medium,F extends string=string,R extends Role=Role> {
+  readonly kind:'free'; readonly position:Point; readonly terminal:Terminal<M,F,R>;
+}
+export type ConnectionEnd<M extends Medium=Medium,F extends string=string,R extends Role=Role> = AttachedEnd<M,F,R> | FreeEnd<M,F,R>;
+export function isAttached<M extends Medium,F extends string,R extends Role>(end:ConnectionEnd<M,F,R>):end is AttachedEnd<M,F,R> { return !('kind' in end); }
+/** @ru Свободный конец трубы или кабеля. z=0 — пол. Не занимает порт и не образует связь с оборудованием.
+ * @en A loose pipe/cable end. z=0 is the floor. It occupies no port and creates no equipment dependency. */
+export function free<const M extends Medium,const F extends string,const R extends Role>(connector:ConnectionEnd<M,F,R>|Terminal<M,F,R>,position:Point):FreeEnd<M,F,R> {
+  if(![position.x,position.y,position.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000)||position.z<0)throw new Error('Invalid free end position');
+  return {kind:'free',terminal:'terminal' in connector?connector.terminal:connector,position:{...position}};
+}
+export const endLabel=(end:ConnectionEnd):string=>isAttached(end)?`${end.device}.${end.port}`:`free(${end.position.x}, ${end.position.y}, ${end.position.z})`;
+export interface Connection { id:string; from:ConnectionEnd; to:ConnectionEnd; via?:readonly {x:number;y:number}[] }
+export const isConnected=(edge:Connection):boolean=>isAttached(edge.from)&&isAttached(edge.to);
 export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number> }
-export interface Cable extends Connection { kind:'cable'; signal?:Signal; unplugged?:'from'|'to'; looseEnd?:Point }
-type FluidSource<F extends string=string> = Endpoint<'fluid',F,'source'>;
-type FluidSink<F extends string=string> = Endpoint<'fluid',F,'sink'>;
+export interface Cable extends Connection { kind:'cable'; signal?:Signal }
+type FluidSource<F extends string=string> = ConnectionEnd<'fluid',F,'source'>;
+type FluidSink<F extends string=string> = ConnectionEnd<'fluid',F,'sink'>;
 /** @ru Труба с жидкостью. Соединяет совместимые выход и вход; направление и среда проверяются типами и runtime.
  * @en Liquid pipe. Connect compatible outlet/inlet ports; direction and medium are checked statically and at runtime. */
 export function pipe<const F extends string>(id:string, options:{from:FluidSource<F>;to:FluidSink<NoInfer<F>>;flow:Signal<number>;via?:Connection['via']}):Pipe {
@@ -196,8 +211,14 @@ export function pipe<const F extends string>(id:string, options:{from:FluidSourc
 }
 /** @ru Кабель управления, питания или шины. Не труба и не зависимость вычисляемого сигнала.
  * @en Control, power or bus cable. Not a pipe and not a computed-signal dependency. */
-export function cable<const M extends Exclude<Medium,'fluid'>, const F extends string>(id:string, options:{from:Endpoint<M,F,'source'|'passive'>;to:Endpoint<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:Signal;via?:Connection['via'];unplugged?:'from'|'to';looseEnd?:Point}):Cable {
-  return {...options,id,kind:'cable'};
+export function cable<const M extends Exclude<Medium,'fluid'>, const F extends string>(id:string, options:{from:ConnectionEnd<M,F,'source'|'passive'>;to:ConnectionEnd<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:Signal;via?:Connection['via'];unplugged?:'from'|'to';looseEnd?:Point}):Cable {
+  // Input-only migration for authored v2 projects. The canonical model never retains split end state.
+  const {unplugged,looseEnd,...ends}=options;
+  if(unplugged!==undefined||looseEnd!==undefined){
+    if(!unplugged||!looseEnd)throw new Error('Both unplugged and looseEnd are required for legacy cable migration');
+    return {...ends,[unplugged]:free(ends[unplugged],looseEnd),id,kind:'cable'};
+  }
+  return {...ends,id,kind:'cable'};
 }
 export interface Alarm { id:string; label:Text; signal:Signal<number>; above:number; hysteresis?:number }
 /** @ru Пороговая тревога с гистерезисом и квитированием. @en High-limit alarm with hysteresis and acknowledgement. */
@@ -260,6 +281,13 @@ export function validateValue(signal:Signal,value:unknown):asserts value is Valu
   validateReading(signal,value);
   if(typeof value==='number')requireThat((signal.min===undefined||value>=signal.min)&&(signal.max===undefined||value<=signal.max),'SIGNAL_RANGE',`${signal.id} outside limits`,`${signal.id}: значение вне диапазона`);
 }
+/** Validate the same connector contract on equipment and on a free connection end. */
+function validateTerminal(t:Terminal,label:string):void {
+      requireThat(!!t&&[t.x,t.y,t.z].every(Number.isFinite)&&['fluid','control','power','bus'].includes(t.medium)&&typeof t.family==='string'&&t.family.length>0&&['source','sink','passive'].includes(t.role)&&['left','right','up','down'].includes(t.side)&&Number.isInteger(t.max)&&t.max>0&&t.max<=128&&(t.unit===undefined||typeof t.unit==='string'&&t.unit.length<=32)&&(t.valueType===undefined||['number','boolean','string'].includes(t.valueType)),'PORT_SHAPE',`Invalid port ${label}`,`Неверный порт ${label}`);
+      if(!t.interfaceId)return;
+      const profile=standardInterfaces[t.interfaceId];
+      requireThat(!!profile&&profile.medium===t.medium&&(profile.family==='*'||profile.family===t.family),'PORT_INTERFACE',`Invalid interface ${label}`,`Неверный интерфейс ${label}`);
+}
 export function validateProject(p:Project):void {
   requireThat(p && typeof p.id==='string' && p.signals && Array.isArray(p.equipment)&&Array.isArray(p.pipes)&&Array.isArray(p.alarms),'PROJECT_SHAPE','Invalid project export','Неверный экспорт проекта');
   requireThat(p.equipment.length<=128 && p.pipes.length+(p.cables?.length??0)<=512,'PROJECT_LIMIT','MVP routing limit: 128 devices, 512 connections','Лимит MVP: 128 устройств, 512 соединений');
@@ -276,11 +304,7 @@ export function validateProject(p:Project):void {
     requireThat(/^[-a-zA-Z0-9_.]+$/.test(e.kind),'EQUIPMENT_CLASS',`Invalid equipment class ${e.kind}`,`Неверный класс оборудования ${e.kind}`);
     requireThat(typeof e.icon==='string'&&e.icon.length>0,'EQUIPMENT_ICON','Invalid equipment icon','Неверная иконка оборудования');
     for(const port of Object.values(e.ports)){
-      const t=port.terminal;
-      requireThat(!!t&&[t.x,t.y,t.z].every(Number.isFinite)&&['fluid','control','power','bus'].includes(t.medium)&&typeof t.family==='string'&&t.family.length>0&&['source','sink','passive'].includes(t.role)&&['left','right','up','down'].includes(t.side)&&Number.isInteger(t.max)&&t.max>0&&t.max<=128&&(t.unit===undefined||typeof t.unit==='string'&&t.unit.length<=32)&&(t.valueType===undefined||['number','boolean','string'].includes(t.valueType)),'PORT_SHAPE',`Invalid port ${e.id}.${port.port}`,`Неверный порт ${e.id}.${port.port}`);
-      if(!t.interfaceId)continue;
-      const profile=standardInterfaces[t.interfaceId];
-      requireThat(!!profile&&profile.medium===t.medium&&(profile.family==='*'||profile.family===t.family),'PORT_INTERFACE',`Invalid interface ${e.id}.${port.port}`,`Неверный интерфейс ${e.id}.${port.port}`);
+      validateTerminal(port.terminal, `${e.id}.${port.port}`);
     }
     for(const value of Object.values(e))if(signalLike(value)&&'id' in value)ref(value as Signal);
     const diagram=e.capabilities.diagram;if(diagram)requireThat(Number.isFinite(diagram.width)&&diagram.width>0&&Number.isFinite(diagram.height)&&diagram.height>0,'EQUIPMENT_VIEW','Invalid equipment diagram bounds','Неверные размеры схемы оборудования');
@@ -293,14 +317,20 @@ export function validateProject(p:Project):void {
   }
   const degree=new Map<string,number>();
   for(const edge of [...p.pipes,...p.cables??[]]) {
-    const resolve=(end:Endpoint)=>{const d=devices.get(end.device);const t=d && (d.ports as Record<string,Endpoint>)[end.port];requireThat(t,'PORT_UNKNOWN',`Unknown port ${end.device}.${end.port}`,`Неизвестный порт ${end.device}.${end.port}`);return t.terminal;};
+    const resolve=(end:ConnectionEnd)=>{
+      if(!isAttached(end)){
+        requireThat(end.kind==='free'&&end.position&&[end.position.x,end.position.y,end.position.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000)&&end.position.z>=0&&end.terminal,'CONNECTION_FREE_END',`Invalid free end ${edge.id}`,`Неверный свободный конец ${edge.id}`);
+        validateTerminal(end.terminal, `${edge.id}.free`);
+        return end.terminal;
+      }
+      const d=devices.get(end.device);const t=d && (d.ports as Record<string,Endpoint>)[end.port];requireThat(t,'PORT_UNKNOWN',`Unknown port ${end.device}.${end.port}`,`Неизвестный порт ${end.device}.${end.port}`);return t.terminal;};
     const a=resolve(edge.from),b=resolve(edge.to);
-    if(edge.kind==='cable')requireThat(edge.unplugged===undefined&&edge.looseEnd===undefined||(edge.unplugged==='from'||edge.unplugged==='to')&&!!edge.looseEnd&&[edge.looseEnd.x,edge.looseEnd.y,edge.looseEnd.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000),'CABLE_LOOSE_END',`Invalid loose cable end ${edge.id}`,`Неверный свободный конец кабеля ${edge.id}`);
-    requireThat(edge.from.device!==edge.to.device,'CONNECTION_SELF','Cannot connect a device to itself','Нельзя соединять устройство само с собой');
+    requireThat(!('unplugged' in edge)&&!('looseEnd' in edge),'CONNECTION_LEGACY','Use free() connection ends; rebuild the legacy project','Используйте концы free(); пересоберите старый проект');
+    requireThat(!isAttached(edge.from)||!isAttached(edge.to)||edge.from.device!==edge.to.device,'CONNECTION_SELF','Cannot connect a device to itself','Нельзя соединять устройство само с собой');
     requireThat(a.medium===b.medium&&a.family===b.family&&(edge.kind==='pipe'?a.medium==='fluid':a.medium!=='fluid'),'PORT_MEDIUM',`Incompatible ports ${edge.id}`,`Несовместимые порты ${edge.id}`);
     requireThat((!a.valueType||!b.valueType||a.valueType===b.valueType)&&(!a.unit||!b.unit||a.unit===b.unit),'PORT_QUANTITY',`Incompatible quantities ${edge.id}`,`Несовместимые величины ${edge.id}`);
     requireThat(a.role!=='sink'&&b.role!=='source','PORT_DIRECTION',`Wrong direction ${edge.id}`,`Неверное направление ${edge.id}`);
-    for(const [which,end,t] of [['from',edge.from,a],['to',edge.to,b]] as const){if(edge.kind==='cable'&&edge.unplugged===which)continue;const key=`${end.device}.${end.port}`,n=(degree.get(key)??0)+1;degree.set(key,n);requireThat(n<=t.max,'PORT_OCCUPIED',`Port occupied ${key}`,`Порт занят ${key}`);}
+    for(const [which,end,t] of [['from',edge.from,a],['to',edge.to,b]] as const){if(!isAttached(end))continue;const key=`${end.device}.${end.port}`,n=(degree.get(key)??0)+1;degree.set(key,n);requireThat(n<=t.max,'PORT_OCCUPIED',`Port occupied ${key}`,`Порт занят ${key}`);}
     requireThat(!edge.via||edge.via.length<=16&&edge.via.every(v=>[v.x,v.y].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000)),'ROUTE_POINTS','Invalid routing points','Неверные точки трассы');
     if(edge.kind==='pipe')ref(edge.flow,'number');else if(edge.signal){
       ref(edge.signal);
@@ -376,7 +406,7 @@ export function autoHmi(controller:Equipment,options:{width?:number;height?:numb
 function resolveAutoHmi(definition:ProjectDefinition,intent:AutoHmi):Hmi {
   requireThat(definition.equipment.some(e=>e.id===intent.controller),'HMI_CONTROLLER',`Unknown HMI controller ${intent.controller}`,`Неизвестный HMI-контроллер ${intent.controller}`);
   const reached=new Set([intent.controller]),edges=[...definition.pipes,...definition.cables??[]];
-  let changed=true;while(changed){changed=false;for(const edge of edges){if(edge.kind==='cable'&&edge.unplugged)continue;if(reached.has(edge.from.device)&&!reached.has(edge.to.device)){reached.add(edge.to.device);changed=true;}if(reached.has(edge.to.device)&&!reached.has(edge.from.device)){reached.add(edge.from.device);changed=true;}}}
+  let changed=true;while(changed){changed=false;for(const edge of edges){if(!isAttached(edge.from)||!isAttached(edge.to))continue;if(reached.has(edge.from.device)&&!reached.has(edge.to.device)){reached.add(edge.to.device);changed=true;}if(reached.has(edge.to.device)&&!reached.has(edge.from.device)){reached.add(edge.from.device);changed=true;}}}
   return {width:intent.width,height:intent.height,controller:intent.controller,source:'topology',equipment:definition.equipment.filter(e=>e.id!==intent.controller&&reached.has(e.id))};
 }
 export interface FirmwareContext {outDir:string;run:(argv:string[])=>Promise<void>}

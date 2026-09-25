@@ -8,7 +8,6 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags, highlightCode } from '@lezer/highlight';
 import { linter } from '@codemirror/lint';
 import { indentWithTab, isolateHistory } from '@codemirror/commands';
-import { api } from './api';
 import type { Locale, Problem, Signal, Snapshot } from '../core';
 import { signalHealth } from '../core/operational';
 const syntaxColors=HighlightStyle.define([
@@ -46,8 +45,9 @@ const liveValues=StateField.define<DecorationSet>({
   },
   provide:field=>EditorView.decorations.from(field),
 });
-interface Props {path:string;source:string;locale:Locale;change:(source:string)=>void;save:()=>void;dragging:boolean;snapshot:Snapshot;signals:Record<string,Signal>;now:number}
-function decorateHints(hints: readonly SignalHint[], props: Props): LiveDecoration[] {
+export interface LanguageRequest { <T>(operation:string,path:string,source:string,position:number,locale:Locale):Promise<T> }
+export interface EditorProps {language?:LanguageRequest;readOnly?:boolean;path:string;source:string;locale:Locale;change:(source:string)=>void;save:()=>void;dragging:boolean;snapshot:Snapshot;signals:Record<string,Signal>;now:number}
+function decorateHints(hints: readonly SignalHint[], props: EditorProps): LiveDecoration[] {
   return hints.flatMap(hint => {
     const definition = props.signals[hint.signal]; if (!definition) return [];
     const sample = props.snapshot.samples[hint.signal], health = signalHealth(definition, sample, { now: props.now });
@@ -58,12 +58,12 @@ function decorateHints(hints: readonly SignalHint[], props: Props): LiveDecorati
     return [{ at: hint.at, text: `${formatted}${unit ? ` ${unit}` : ''} · ${health.quality.toUpperCase()} · ${ageText}`, quality: health.quality }];
   });
 }
-export function Editor(props:Props){
+export function Editor(props:EditorProps){
   const host=useRef<HTMLDivElement>(null),editor=useRef<EditorView|null>(null),current=useRef(props),dragSource=useRef<string|null>(null),hints=useRef<SignalHint[]>([]);current.current=props;
   useEffect(()=>{
-    const request=<T,>(operation:string,source:string,position=0)=>api<T>('language',{operation,path:current.current.path,source,position,locale:current.current.locale});
+    const request=<T,>(operation:string,source:string,position=0)=>current.current.language ? current.current.language<T>(operation,current.current.path,source,position,current.current.locale) : Promise.reject(new Error('Language service is not connected'));
     const view=new EditorView({parent:host.current!,state:EditorState.create({doc:props.source,extensions:[
-      basicSetup,javascript({typescript:true,jsx:props.path.endsWith('tsx')}),syntaxHighlighting(syntaxColors),liveValues,
+      basicSetup,EditorState.readOnly.of(!!props.readOnly),EditorView.editable.of(!props.readOnly),EditorView.contentAttributes.of({"aria-label":"Исходный код"}),javascript({typescript:true,jsx:props.path.endsWith('tsx')}),syntaxHighlighting(syntaxColors),liveValues,
       keymap.of([indentWithTab,{key:'Mod-s',run:()=>{current.current.save();return true;}}]),
       EditorView.updateListener.of(update=>{if(update.docChanged&&!update.transactions.some(t=>t.annotation(Transaction.userEvent)==='external'))current.current.change(update.state.doc.toString());}),
       autocompletion({override:[async context=>{
@@ -79,7 +79,7 @@ export function Editor(props:Props){
       EditorView.theme({'&':{height:'100%',fontSize:'13px',backgroundColor:'var(--editor)',color:'var(--text)'},'.cm-scroller':{fontFamily:'var(--mono)'},'.cm-gutters':{backgroundColor:'var(--editor)',color:'var(--muted)',borderRight:'0'},'.cm-activeLine, .cm-activeLineGutter':{backgroundColor:'var(--hover)'},'.cm-tooltip':{backgroundColor:'var(--raised)',borderColor:'var(--border)',color:'var(--text)'},'.cm-content':{caretColor:'var(--text)'},'&.cm-focused .cm-cursor':{borderLeftColor:'var(--text)'},'.cm-live-value':{marginLeft:'1.5ch',fontStyle:'italic',color:'var(--muted)',opacity:'.82',pointerEvents:'none'},'.cm-live-value.good':{color:'var(--good)'},'.cm-live-value.stale':{color:'var(--warn)'},'.cm-live-value.bad':{color:'var(--bad)'}}),
     ]})});editor.current=view;dragSource.current=null;hints.current=[];
     return()=>{view.destroy();editor.current=null;};
-  },[props.path]);
+  },[props.path,props.readOnly]);
   useEffect(()=>{
     const view=editor.current;if(!view)return;
     const previous=view.state.doc.toString();
@@ -97,7 +97,8 @@ export function Editor(props:Props){
   },[props.source,props.dragging]);
   useEffect(()=>{
     const view=editor.current;if(!view)return;const source=props.source;let cancelled=false;
-    void api<SignalHint[]>('language',{operation:'signal-hints',path:props.path,source,position:0,locale:props.locale}).then(next=>{
+    if(!props.language)return;
+    void props.language<SignalHint[]>('signal-hints',props.path,source,0,props.locale).then(next=>{
       if(cancelled||editor.current?.state.doc.toString()!==source)return;
       hints.current=next;view.dispatch({effects:setLiveDecorations.of(decorateHints(next,current.current))});
     }).catch(()=>{});
