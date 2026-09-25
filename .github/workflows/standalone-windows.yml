@@ -37,12 +37,29 @@ jobs:
           path: saturn-examples
           ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-plugins
+          ref: d0716d560030de29eb59fce6ede2dea01db51e8b
+          path: saturn-plugins
+          ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+          persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
       - name: Install IDE toolchain
         working-directory: saturn-ide
         run: bun install --frozen-lockfile
+      - name: Share the locked toolchain with external source kits
+        working-directory: saturn-ide
+        run: |
+          $modules=(Resolve-Path 'node_modules').Path
+          New-Item -ItemType Directory -Force -Path 'node_modules\@saturn' | Out-Null
+          if(-not (Test-Path 'node_modules\@saturn\core')){New-Item -ItemType Junction -Path 'node_modules\@saturn\core' -Target (Resolve-Path '.').Path | Out-Null}
+          if(Test-Path '..\saturn-examples\node_modules'){Remove-Item '..\saturn-examples\node_modules' -Force -Recurse}
+          if(Test-Path '..\saturn-plugins\node_modules'){Remove-Item '..\saturn-plugins\node_modules' -Force -Recurse}
+          New-Item -ItemType Junction -Path '..\saturn-examples\node_modules' -Target $modules | Out-Null
+          New-Item -ItemType Junction -Path '..\saturn-plugins\node_modules' -Target $modules | Out-Null
       - name: Check source before packaging
         working-directory: saturn-ide
         run: bun run check
