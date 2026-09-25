@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Pom4H/saturn-plugins
-          ref: 83666967aab8a692ee215c09d54a92197b035d66
+          ref: d0716d560030de29eb59fce6ede2dea01db51e8b
           path: saturn-plugins
           ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
       - name: Snapshot exact source fixtures for manual reproduction
