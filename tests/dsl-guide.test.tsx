@@ -50,10 +50,10 @@ test('the first Markdown example executes as one model with shared signal refere
     expect(Object.keys(model.signals)).toHaveLength(5);
     expect(model.signals['P-01.run']?.initial).toBe(false);
     expect(model.signals['P-01.rpm']?.owner?.id).toBe('P-01');
-    expect(model.alarms[0]?.signal).toBe(model.signals['P-01.rpm']);
-    expect(model.reports?.[0]?.columns.speed?.signal).toBe(model.signals['P-01.rpm']);
-    expect(model.pipes[0]?.flow).toBe(model.signals['feed.flow']);
-    expect(model.cables?.[0]?.signal).toBe(model.signals['P-01.run']);
+    expect(model.signals['P-01.rpm']).toBe(model.alarms[0]?.signal);
+    expect(model.signals['P-01.rpm']).toBe(model.reports?.[0]?.columns.speed?.signal);
+    expect(model.signals['feed.flow']).toBe(model.pipes[0]?.flow);
+    expect(model.signals['P-01.run']).toBe(model.cables?.[0]?.signal);
     expect(model.hmi?.equipment.map(item => item.id)).toEqual(['T-01', 'P-01']);
   } finally { f.clean(); }
 });
