@@ -466,3 +466,25 @@ public export map. `bun run check` passed (83 modules); `bun test tests/protocol
 passed 1 test / 6 assertions: the current public acquisition import is bundled and the
 retained driver performs actual Modbus TCP reads/writes into Runtime/SQLite from an
 external workspace. Native protocol SDK imports remain external.
+
+## 2026-09-25 — importer CI and shell workspace identity
+
+Reproduced the importer browser timeout: migration changes the authored project ID
+inside the same workspace, but the shell rejected the refreshed resource catalog.
+The host now supplies a stable workspace identity; the shell accepts authored ID
+changes within that workspace, remaps tabs and preserves document drafts. Switching
+physical workspaces still requires a new session.
+
+Executed on macOS arm64 / Bun 1.4.2, with external examples at `9a5be46` and
+plugins at the CI-pinned `8366696`:
+- `bun run check`: both TypeScript compilers and the 88-module architecture check passed.
+- `bun test tests`: 152 passed, 3 skipped, 0 failed; 463 assertions. PostgreSQL
+  storage/report tests and the Modbus RTU PTY test were skipped on this local run.
+- `bun scripts/importer-browser-test.ts`: passed in real headless Chromium after
+  integrating the concurrent importer-state polling change. Verified the checked
+  imported project, migration confirmation, absence of shell errors and generated HMI.
+  Inspected `artifacts/importer-applied.png`; recording is in `artifacts/importer-video/`.
+- Added a browser/terminal shell regression for preserving drafts and remapping tabs
+  after an authored ID change, while rejecting a different workspace.
+
+CI now retains the importer failure screenshot and browser recording when a run fails.
