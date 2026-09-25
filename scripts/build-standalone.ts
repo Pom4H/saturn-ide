@@ -21,6 +21,7 @@ const result=await Bun.build({entrypoints:[join(root,'src/host/standalone.ts')],
 if(!result.success)throw new Error(result.logs.map(log=>log.message).join('\n'));
 
 cpSync(join(root,'src'),join(output,'src'),{recursive:true});
+cpSync(join(root,'docs'),join(output,'docs'),{recursive:true});
 const modules=join(root,'node_modules'),normalizedModules=modules.replaceAll('\\','/');
 cpSync(modules,join(output,'node_modules'),{recursive:true,filter:path=>{
   const normalized=path.replaceAll('\\','/');
