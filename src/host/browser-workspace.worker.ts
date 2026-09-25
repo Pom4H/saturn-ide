@@ -7,6 +7,8 @@ import { MemoryLanguage, resolveSource, type SourceLibrary } from '../workspace/
 import { authoringChanges } from '../workspace/authoring-operations';
 import { authoringFrame, authoredModules, sourcePlan, type EvaluatedEntry } from '../workspace/source-model';
 
+// Keep the reply capability private; guest code cannot forge a compiler result.
+const reply = self.postMessage.bind(self);
 restrictAuthoringIO();
 interface Request { files: AuthoredFile[]; library: SourceLibrary; operation: 'check' | 'plan' | 'language'; edit?: AuthoringOperation; query?: { operation: string; path: string; position: number; locale: core.Locale } }
 /** Executes only in the disposable opaque-origin worker, never in the application or server. */
@@ -49,10 +51,10 @@ self.onmessage = (event: MessageEvent<Request>) => {
     if (!Array.isArray(request.files) || request.files.length > 64 || request.files.some(file => !/^(?:[\w-]+\/)*[\w.-]+\.tsx?$/.test(file.path) || file.source.length > 256000) || request.files.reduce((sum, file) => sum + file.source.length, 0) > 1000000 || new Set(request.files.map(file => file.path)).size !== request.files.length) throw new Error('Invalid or excessive browser workspace source');
     language = new MemoryLanguage(request.library); language.set(request.files);
     if (request.operation === 'language' && request.query) {
-      const query = request.query; self.postMessage({ value: language.query(query.operation, query.path, query.position, query.locale) }); return;
+      const query = request.query; reply({ value: language.query(query.operation, query.path, query.position, query.locale) }); return;
     }
     const problems = language.diagnostics();
-    if (problems.length) { if(request.operation==='plan')throw new Error(problems.map(problem=>problem.message.ru).join('\n')); self.postMessage({ value: { problems } }); return; }
+    if (problems.length) { if(request.operation==='plan')throw new Error(problems.map(problem=>problem.message.ru).join('\n')); reply({ value: { problems } }); return; }
     const current = frame(request.files);
     if (request.operation === 'plan') {
       if (!request.edit) throw new Error('Missing source operation');
@@ -61,9 +63,9 @@ self.onmessage = (event: MessageEvent<Request>) => {
       language.set(candidate); const problems = language.diagnostics();
       if (problems.length) throw new Error(problems.map(problem => problem.message.ru).join('\n'));
       frame(candidate);
-      self.postMessage({ value: changes }); return;
+      reply({ value: changes }); return;
     }
-    self.postMessage({ value: { frame: current, problems: [] } });
-  } catch (reason) { self.postMessage({ error: reason instanceof Error ? reason.message : String(reason) }); }
+    reply({ value: { frame: current, problems: [] } });
+  } catch (reason) { reply({ error: reason instanceof Error ? reason.message : String(reason) }); }
   finally { language?.dispose(); }
 };
