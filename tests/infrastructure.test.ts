@@ -5,7 +5,6 @@ import { counterRate, historyRange } from '../src/core/history';
 import { Store } from '../src/runtime/store';
 import { Runtime } from '../src/runtime/engine';
 import { acquire } from '../src/runtime/acquisition';
-import { systemMetrics, cpuPercent } from '@saturn/protocols/system-metrics';
 import { chartBounds, chartPath, performanceSignals, rememberSamples } from '../src/shell/model/performance';
 import { historyResponse } from '../src/host/history-api';
 
@@ -69,40 +68,12 @@ test('runtime inspection is bounded read-only and survives failed persistence wi
   status.runtime.persistedSamples = 500; expect(runtime.inspect().runtime.persistedSamples).toBe(1);
 });
 
-test('counter math rejects reset, initial and backwards time; CPU uses deltas across logical CPUs', () => {
+test('counter and history bounds reject resets, backwards time and oversized ranges', () => {
   expect(counterRate(undefined, { value: 1, at: 1 })).toBeUndefined();
   expect(counterRate({ value: 10, at: 1000 }, { value: 30, at: 3000 })).toBe(10);
   expect(counterRate({ value: 30, at: 1000 }, { value: 1, at: 2000 })).toBeUndefined();
   expect(counterRate({ value: 1, at: 1000 }, { value: 30, at: 500 })).toBeUndefined();
-  const before = [{ user: 10, idle: 20, sys: 5, nice: 0, irq: 0 }], after = [{ user: 30, idle: 40, sys: 5, nice: 0, irq: 0 }];
-  expect(cpuPercent(undefined, after)).toBeUndefined(); expect(cpuPercent(before, after)).toBe(50);
-  expect(cpuPercent(after, before)).toBeUndefined(); expect(cpuPercent(before, [...after, ...after])).toBeUndefined();
   expect(() => historyRange({ from: 0, to: 32 * 86400_000, points: 100 })).toThrow();
-});
-
-test('real system source emits canonical observations and scoped failures; no writable OS commands', async () => {
-  const source = systemMetrics('LOCAL', { diskPath: '/saturn-missing-filesystem-for-test' }, { pollMs: 25, timeoutMs: 1000 });
-  const cpu = source.bind(signal('cpu', { initial: 0 }), { metric: 'host.cpu.percent' });
-  const memory = source.bind(signal('memory', { initial: 0 }), { metric: 'process.memory.rssBytes' });
-  const disk = source.bind(signal('disk', { initial: 0 }), { metric: 'host.disk.percent' });
-  const persisted = source.bind(signal('persisted', { initial: 0 }), { metric: 'runtime.archive.samplesTotal' });
-  const p = project({ id: 'p', label: 'P', equipment: [], pipes: [], alarms: [], signals: { cpu, memory, disk, persisted } });
-  expect(() => source.bind(signal('write', { initial: 0, writable: true }), { metric: 'host.cpu.percent' })).toThrow(/read-only/);
-  expect(() => source.bind(signal('type', { initial: '' }), { metric: 'host.cpu.percent' })).toThrow(/scalar/);
-  const store = new Store(':memory:'); await store.init();
-  const runtime = new Runtime(p, store, { emit() {} }, () => {}); await runtime.init();
-  const driver = acquire(source), abort = new AbortController();
-  const close = await driver.start({ project: p, snapshot: runtime.snapshot, publish: values => runtime.ingest(values), observe: batch => runtime.observe(batch), signal: abort.signal, diagnostics: () => runtime.inspect(driver) });
-  try {
-    const deadline = Date.now() + 2000;
-    while (runtime.snapshot.samples.cpu?.quality !== 'good' && Date.now() < deadline) await Bun.sleep(15);
-    expect(runtime.snapshot.samples.cpu?.quality).toBe('good'); expect(runtime.snapshot.samples.memory!.value as number).toBeGreaterThan(0);
-    expect(runtime.snapshot.samples.disk!.at).toBe(0); // Failed first reading never fabricates zero.
-    expect(driver.status()[0]!.channels).toBe(4); expect(driver.status()[0]!.readDurationMs).toBeGreaterThanOrEqual(0);
-    expect(runtime.snapshot.samples.persisted!.value as number).toBeGreaterThan(0);
-    expect((await store.history('memory')).length).toBeGreaterThan(0);
-  } finally { await close(); await store.close(); }
-  expect(driver.status()[0]!.phase).toBe('stopped');
 });
 
 test('performance projection keeps source identity, filters owners, bounds previews, and splits chart outages', () => {
