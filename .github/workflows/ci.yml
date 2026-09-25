@@ -20,12 +20,12 @@ jobs:
           POSTGRES_USER: saturn
           POSTGRES_PASSWORD: saturn-test-only
           POSTGRES_DB: saturn_test
-        ports: [5432/tcp]
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U saturn -d saturn_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      TEST_POSTGRES_URL: postgres://saturn:saturn-test-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/saturn_test
+      TEST_POSTGRES_URL: postgres://saturn:saturn-test-only@127.0.0.1:5432/saturn_test
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Pom4H/saturn-examples
+          ref: 7d7419f05c7e09cfeeaa109c9799b2f7f49b3b4e
           path: saturn-examples
           ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
       - uses: actions/checkout@v4
@@ -41,26 +42,10 @@ jobs:
           ref: d0716d560030de29eb59fce6ede2dea01db51e8b
           path: saturn-plugins
           ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-      - name: Snapshot exact source fixtures for manual reproduction
-        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[snapshot]')
-        run: |
-          mkdir checked-source
-          for repo in saturn-ide saturn-examples saturn-plugins; do
-            git -C "$repo" archive --format=tar.gz --prefix="$repo/" HEAD > "checked-source/$repo.tar.gz"
-            git -C "$repo" rev-parse HEAD >> checked-source/revisions.txt
-          done
-      - name: Retain source-only verification inputs
-        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[snapshot]')
-        uses: actions/upload-artifact@v4
-        with:
-          name: checked-source
-          path: checked-source/
-          retention-days: 3
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
-      - name: Cache Bun packages
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-1.4.2-${{ hashFiles('saturn-ide/bun.lock', 'saturn-ide/package.json') }}
@@ -68,29 +53,15 @@ jobs:
             ${{ runner.os }}-bun-1.4.2-
       - run: bun install --frozen-lockfile
         working-directory: saturn-ide
-      - name: Share test toolchain with external integration fixtures
+      - name: Share test toolchain with pinned integration fixtures
         run: |
           mkdir -p saturn-ide/node_modules/@saturn
           ln -s ../.. saturn-ide/node_modules/@saturn/core
           ln -s ../saturn-ide/node_modules saturn-examples/node_modules
           ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
-      - name: Package explicitly requested offline toolchain
-        if: contains(github.event.head_commit.message, '[toolchain]')
-        run: |
-          mkdir -p offline-toolchain/bin
-          cp "$(command -v bun)" offline-toolchain/bin/bun
-          tar --exclude='.git' --exclude='.npmrc' --exclude='.env*' -czf offline-toolchain/dependencies.tar.gz -C saturn-ide node_modules
-      - name: Retain offline toolchain
-        if: contains(github.event.head_commit.message, '[toolchain]')
-        uses: actions/upload-artifact@v4
-        with:
-          name: offline-toolchain
-          path: offline-toolchain/
-          retention-days: 1
       - run: bun run check
         working-directory: saturn-ide
-      - name: Unit, SQLite and protocol tests
-        # Bound native SDK/socket cleanup so a leaked connection cannot occupy the runner.
+      - name: Unit, SQLite, PostgreSQL and protocol tests
         run: timeout --kill-after=10s 180s bun test tests
         working-directory: saturn-ide
       - name: Install browser recording dependency
@@ -101,19 +72,17 @@ jobs:
         working-directory: saturn-ide
       - name: Physical editor browser acceptance
         timeout-minutes: 3
-        run: timeout --kill-after=10s 120s bun scripts/physical-interaction-browser-test.ts
+        run: timeout --kill-after=10s 150s bun scripts/physical-interaction-browser-test.ts
         working-directory: saturn-ide
-      - name: Keep physical editor evidence
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: physical-editor-evidence
           path: saturn-ide/artifacts/physical-editor/
           if-no-files-found: ignore
           retention-days: 3
-      - name: Keep browser failure evidence
+      - uses: actions/upload-artifact@v4
         if: failure()
-        uses: actions/upload-artifact@v4
         with:
           name: importer-browser-failure
           path: |

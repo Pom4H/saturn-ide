@@ -27,8 +27,10 @@ export class SourceEditing {
     try {
       const files = this.files(expected);
       const changes = await this.plan(files, expected, operation);
+      await Promise.all(changes.map(change => this.documents.open(change.path)));
+      // Opening another file can yield to keystrokes. Re-read all buffers synchronously afterwards.
       for (const change of changes) {
-        const buffer = await this.documents.open(change.path);
+        const buffer = this.documents.getSnapshot().get(change.path)!;
         if (buffer.draft !== change.before || buffer.version !== change.version || buffer.saving) throw new Error('Document changed while planning the gesture. No edit was applied.');
       }
       // All buffers are checked before any is changed; keystrokes during async planning survive.
