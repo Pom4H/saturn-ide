@@ -36,10 +36,10 @@ try {
   await tab('P-01.device.ts').click();await tabs.getByRole('button',{name:'Закрыть P-01.device.ts',exact:true}).click();await page.locator('.shell-alert').waitFor();assert.equal(await tab('P-01.device.ts').count(),1);assert.ok((await editor.innerText()).includes('retained explorer draft'));
   await page.getByRole('button',{name:'Закрыть сообщение',exact:true}).click();
   await shot('source-light');await page.emulateMedia({colorScheme:'dark'});await shot('source-dark');
-  // Tree keyboard navigation and filtered ancestors expose nested vendor files.
-  await file('plugins').focus();await page.keyboard.press('ArrowRight');await file('saturn-plc500').waitFor();
-  await page.getByRole('textbox',{name:'Фильтр файлов и устройств'}).fill('hmi/frame.ts');await file('frame.ts').click();await sourceIs('plugins/saturn-plc500/hmi/frame.ts');
-  await page.getByRole('textbox',{name:'Фильтр файлов и устройств'}).fill('');await file('hmi').waitFor();assert.equal(await file('saturn-plc500').getAttribute('aria-expanded'),'true');await shot('nested-source');
+  // Tree keyboard navigation and filtered ancestors expose nested extension files.
+  await file('plugins').focus();await page.keyboard.press('ArrowRight');await file('example-extension').waitFor();
+  await page.getByRole('textbox',{name:'Фильтр файлов и устройств'}).fill('views/panel.ts');await file('panel.ts').click();await sourceIs('plugins/example-extension/views/panel.ts');
+  await page.getByRole('textbox',{name:'Фильтр файлов и устройств'}).fill('');await file('views').waitFor();assert.equal(await file('example-extension').getAttribute('aria-expanded'),'true');await shot('nested-source');
   await tab('P-01.device.ts').click();await sourceIs('equipment/P-01.device.ts');
   await editor.click();await page.keyboard.press(process.platform==='darwin'?'Meta+a':'Control+a');assert.ok((await page.evaluate(()=>getSelection()?.toString()))?.includes('retained explorer draft'));await page.keyboard.press('ArrowRight');
   await page.evaluate(()=>getSelection()?.removeAllRanges());const box=(await tree.boundingBox())!;await page.mouse.move(box.x+10,box.y+10);await page.mouse.down();await page.mouse.move(box.x+100,box.y+150,{steps:10});await page.mouse.up();assert.equal(await page.evaluate(()=>getSelection()?.toString()),'');

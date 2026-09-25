@@ -18,7 +18,7 @@ try {
   await file('P-01.device.ts').click({button:'right'});await menu.waitFor();assert.equal(await menu.count(),1);assert.equal(await page.locator('.code-pane').count(),0);await shot('file-light');
   await menu.getByRole('menuitem',{name:'Копировать путь',exact:true}).click();assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),'equipment/P-01.device.ts');
   await file('P-01.device.ts').focus();await page.keyboard.press('Shift+F10');await menu.waitFor();await page.keyboard.press('End');assert.equal(await page.evaluate(()=>document.activeElement?.textContent),'Развернуть');await page.keyboard.press('Home');await page.keyboard.press('Enter');await page.locator('.cm-content').waitFor();
-  await file('plugins').click({button:'right'});await menu.getByRole('menuitem',{name:'Развернуть',exact:true}).click();await file('saturn-plc500').waitFor();
+  await file('plugins').click({button:'right'});await menu.getByRole('menuitem',{name:'Развернуть',exact:true}).click();await file('example-extension').waitFor();
   // One menu at a time, dismiss outside, restore keyboard focus to trigger.
   await page.getByRole('button',{name:'Меню проекта',exact:true}).click();await menu.waitFor();await shot('project-light');await page.keyboard.press('Escape');assert.equal(await page.getByRole('button',{name:'Меню проекта',exact:true}).evaluate(node=>node===document.activeElement),true);
   await page.getByRole('button',{name:'Действия',exact:true}).click();await menu.getByRole('menuitemcheckbox',{name:'Тёмная тема',exact:true}).click();await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');

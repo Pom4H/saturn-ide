@@ -128,7 +128,7 @@ export async function createApp(options: { assistant?:AssistantService; projectD
         if (request.method === 'GET') {
           if(path==='/' || path==='/hmi') return new Response(browser.html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
           const asset=browser.assets.get(path); if(asset)return new Response(asset,{headers:{'Cache-Control':'no-cache'}});
-          if(path==='/api/assistant')return json(options.assistant?await options.assistant.status():{available:false,notes:false,recipients:[],detail:'Подключите сервер ассистента в настройках host. Разбор файлов Lanmon доступен локально.'});
+          if(path==='/api/assistant')return json(options.assistant?await options.assistant.status():{available:false,notes:false,recipients:[],detail:'Подключите сервер ассистента в настройках host. Импорт внешних проектов доступен через project-owned importer extensions.'});
           if (path === '/api/state') return json(state());
           if (path === '/api/events') return events.response(request, state());
           if (path === '/api/resources') return json({...indexResources(workspace, authoringProject(), draft?.artifact.hash ?? manager.applied ?? ''),workspace:hash(workspace.root)});
