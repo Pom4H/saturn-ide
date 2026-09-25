@@ -61,6 +61,19 @@ jobs:
           ln -s ../.. saturn-ide/node_modules/@saturn/core
           ln -s ../saturn-ide/node_modules saturn-examples/node_modules
           ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
+      - name: Package explicitly requested offline toolchain
+        if: contains(github.event.head_commit.message, '[toolchain]')
+        run: |
+          mkdir -p offline-toolchain/bin
+          cp "$(command -v bun)" offline-toolchain/bin/bun
+          tar -czf offline-toolchain/dependencies.tar.gz -C saturn-ide node_modules
+      - name: Retain offline toolchain
+        if: contains(github.event.head_commit.message, '[toolchain]')
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-toolchain
+          path: offline-toolchain/
+          retention-days: 1
       - run: bun run check
         working-directory: saturn-ide
       - name: Unit, SQLite and protocol tests
