@@ -20,7 +20,7 @@ test('browser and terminal execute the same resource/source commands', async () 
     assert.equal(session.getSnapshot().selected, 'P-01');
     session.documents.edit(resource.source!.path, 'new draft');
     await session.execute({ type: 'open', uri: resource.uri, editor: 'source' });
-    assert.equal(session.getSnapshot().tabs.length, 1);
+    assert.equal(session.getSnapshot().tabs.length, 2);
     assert.equal(session.documents.getSnapshot().get(resource.source!.path)?.draft, 'new draft');
     await session.execute({ type: 'save' }); assert.equal(io.saves, 1); assert.equal(session.documents.dirty, false);
   }
@@ -32,6 +32,41 @@ test('multiple resources backed by one file share one buffer', async () => {
   await session.execute({ type: 'open', uri: resource.uri }); session.documents.edit(resource.source!.path, 'draft');
   await session.execute({ type: 'open', uri: other.uri, editor: 'source' });
   assert.equal(session.documents.getSnapshot().size, 1); assert.equal(session.documents.getSnapshot().get(resource.source!.path)?.draft, 'draft');
+});
+test('diagram and real source files have independent stable tabs and one shared buffer per path', async () => {
+  const root:ProjectResource={...resource,uri:catalog.project,kind:'project',entityId:undefined,source:{path:'project.ts'},editors:['diagram','source','signals','docs']};
+  const other={...resource,uri:resourceUri('station','device','P-02'),entityId:'P-02',source:{path:'equipment/P-02.device.ts'}};
+  const session=new ShellSession('browser',{read:async path=>({path,source:`// ${path}`,version:'1'}),save:async file=>file});
+  session.replaceCatalog({...catalog,resources:[root,resource,other]});
+  await session.execute({type:'open',uri:resource.uri,editor:'diagram'});
+  await session.execute({type:'open',uri:resource.uri,editor:'source'});
+  session.documents.edit(resource.source!.path,'retained draft');
+  await session.execute({type:'open',uri:other.uri,editor:'diagram'});
+  assert.equal(session.getSnapshot().tabs.filter(tab=>tab.editor==='diagram').length,1);
+  assert.equal(session.getSnapshot().active?.uri,root.uri);
+  assert.equal(session.getSnapshot().selected,'P-02');
+  await session.execute({type:'open',uri:other.uri,editor:'source'});
+  const ids=session.getSnapshot().tabs.map(tab=>tab.id);
+  await session.execute({type:'open',uri:resource.uri,editor:'source'});
+  assert.deepEqual(session.getSnapshot().tabs.map(tab=>tab.id),ids);
+  assert.equal(session.getSnapshot().source,resource.source!.path);
+  assert.equal(session.documents.getSnapshot().get(resource.source!.path)?.draft,'retained draft');
+  assert.equal(session.getSnapshot().tabs.length,3);
+});
+test('closing a view preserves a dirty source; source close is guarded; final close leaves no active tab', async () => {
+  const session=new ShellSession('browser',port());session.replaceCatalog(catalog);
+  await session.execute({type:'open',uri:resource.uri,editor:'diagram'});
+  await session.execute({type:'open',uri:resource.uri,editor:'source'});
+  session.documents.edit(resource.source!.path,'draft');
+  await session.execute({type:'close',uri:resource.uri,editor:'diagram'});
+  assert.equal(session.getSnapshot().surface,'source');
+  await assert.rejects(session.execute({type:'close',uri:resource.uri,editor:'source'}),/Save or discard/);
+  await session.execute({type:'save'});
+  await session.execute({type:'open',uri:resource.uri,editor:'diagram'});
+  await session.execute({type:'close',uri:resource.uri,editor:'diagram'});
+  assert.equal(session.getSnapshot().active?.editor,'source');
+  await session.execute({type:'close',uri:resource.uri,editor:'source'});
+  assert.equal(session.getSnapshot().active,null);assert.deepEqual(session.getSnapshot().tabs,[]);
 });
 test('rename display labels and source paths do not create another entity identity', () => {
   const session = new ShellSession('browser', port()); session.replaceCatalog(catalog);
@@ -50,7 +85,7 @@ test('capabilities reject graphical HMI in terminal and source without backing',
 });
 test('opening is read-only and closing dirty tabs cannot discard a draft', async () => {
   const io = port(), session = new ShellSession('browser', io); session.replaceCatalog(catalog);
-  await session.execute({ type: 'open', uri: resource.uri }); assert.equal(io.saves, 0);
+  await session.execute({ type: 'open', uri: resource.uri, editor:'source' }); assert.equal(io.saves, 0);
   session.documents.edit(resource.source!.path, 'draft');
   await assert.rejects(session.execute({ type: 'close', uri: resource.uri }), /Save or discard/);
   assert.equal(session.getSnapshot().tabs.length, 1);
@@ -90,4 +125,21 @@ test('SSE survives byte/chunk boundaries, unicode, CRLF, comments and multiline 
   const bytes = new TextEncoder().encode(': keepalive\r\nevent: project\r\ndata: {"name":"Насос 🪐",\r\ndata: "n":1}\r\n\r\nevent: telemetry\ndata: {}\n\n');
   for (const byte of bytes) parser.feed(Uint8Array.of(byte));
   assert.equal(events.length, 2); assert.equal(JSON.parse(events[0]!.text).name, 'Насос 🪐'); assert.equal(events[1]?.type, 'telemetry');
+});
+
+test('same-workspace authored identity changes remap tabs and preserve drafts in both hosts',async()=>{
+  for(const host of ['browser','terminal'] as const){
+    const session=new ShellSession(host,port()),root:ProjectResource={uri:catalog.project,kind:'project',name,icon:'project',source:{path:'project.ts'},editors:['diagram','source'],related:[]};
+    session.replaceCatalog({...catalog,workspace:'workspace-a',resources:[root,resource]});
+    await session.execute({type:'open',uri:resource.uri,editor:'diagram'});await session.execute({type:'open',uri:resource.uri,editor:'source'});
+    session.documents.edit(resource.source!.path,'unsaved engineering change');
+    const nextRoot={...root,uri:resourceUri('imported','project','imported')},nextDevice={...resource,uri:resourceUri('imported','device','P-01')};
+    const next={...catalog,workspace:'workspace-a',project:nextRoot.uri,resources:[nextRoot,nextDevice]};session.replaceCatalog(next);
+    assert.equal(session.getSnapshot().tabs[0]?.uri,nextRoot.uri);assert.equal(session.getSnapshot().active?.uri,nextDevice.uri);
+    assert.equal(session.documents.getSnapshot().get(resource.source!.path)?.draft,'unsaved engineering change');
+    await assert.rejects(()=>session.execute({type:'close',uri:nextDevice.uri,editor:'source'}),/Save or discard/);
+    assert.throws(()=>session.replaceCatalog({...next,workspace:'workspace-b'}),/new session/);
+    assert.throws(()=>session.replaceCatalog({...next,project:'other',workspace:undefined}),/new session/);
+    assert.equal(session.getCatalog().workspace,'workspace-a');
+  }
 });

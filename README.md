@@ -1,10 +1,12 @@
 # Saturn IDE
 
-Инженерная IDE вокруг одного TypeScript-проекта физического объекта. Без лендинга.
+Инженерная IDE вокруг одного TypeScript-проекта физического объекта. Облачная инфраструктура находится в отдельном приватном репозитории `Pom4H/saturn-saas`.
 
 ```sh
+gh repo clone Pom4H/saturn-examples ../saturn-examples
+gh repo clone Pom4H/saturn-plugins ../saturn-plugins
 bun install
-bun dev
+SATURN_PROJECT=../saturn-examples/pumping-station bun dev
 ```
 
 Браузер: `http://localhost:3000`. SQLite создаётся автоматически; PostgreSQL выбирается через
@@ -122,3 +124,7 @@ OpenTUI testRender проверяет реальный renderer с тестов�
 `device()` is the only equipment-class constructor. Built-in `pump/tank/valve/plc` and copied vendor definitions use the same typed path; there is no built-in/vendor registry split. The reference `project/plugins/saturn-plc500` kit carries the Saturn PLC SVG, Firmverse WASM compiler/runtime and 320×240 React HMI projection. `autoHmi(controller)` derives the HMI equipment set from project topology. Firmware language is a target/toolchain concern, not a TypeScript restriction.
 
 AST tooling identifies an equipment instance structurally as `factory("ID", { x, y, ... })`. The factory identifier is deliberately irrelevant, so custom/vendor names do not become a hidden registry. Resource indexing, drag coordinates and semantic rename share the same parser.
+
+## Репозитории
+
+IDE не зависит от SaaS или конкретного PLC-плагина. Примеры находятся в `saturn-examples`, исходники расширений — в `saturn-plugins`. Для полной интеграционной проверки установите зависимости в обоих соседних checkout (`bun install`), затем выполните `bun run check` и `bun test tests` здесь. Конкретный проект подключает свой WASM-дисплей явным экспортом из `browser.ts`.

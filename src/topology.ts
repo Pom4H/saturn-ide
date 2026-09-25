@@ -15,6 +15,7 @@ export function anchor(project:Project,end:Endpoint):Point {
 // Port-aligned, bounded A* visibility-grid router. Adapted from Saturn plant/routing.ts.
 // A crossing is not a connection. Shared logical nodes are declared equipment/ports only.
 function routeConnectionWithBoxes(project:Project,edge:Pipe|Cable,boxes:readonly Box[]):PhysicalRoute {
+  if(edge.kind==='cable'&&edge.unplugged&&edge.looseEnd){const connected=anchor(project,edge.unplugged==='from'?edge.to:edge.from),free=edge.looseEnd;return {id:edge.id,kind:'cable',points:edge.unplugged==='from'?[free,connected]:[connected,free],valid:true};}
   const start=anchor(project,edge.from),end=anchor(project,edge.to);
   const lead=(pt:Point,ref:Endpoint)=>{const r=boxes.find(b=>b.id===ref.device)!;const device=project.equipment.find(e=>e.id===ref.device)!;const side=(device.ports as Record<string,Endpoint>)[ref.port]!.terminal.side;return {...pt,x:side==='left'?r.x:side==='right'?r.right:pt.x,y:side==='up'?r.y:side==='down'?r.bottom:pt.y};};
   const s=lead(start,edge.from),t=lead(end,edge.to),high=Math.max(start.z,end.z);
@@ -60,6 +61,7 @@ export function routeConnections(project:Project,previous?:{project:Project;rout
     const oldEdge=priorEdges.get(edge.id),oldRoute=priorRoutes.get(edge.id);
     if(!previous||!oldEdge||!oldRoute||!oldRoute.valid||edge.kind!==oldEdge.kind||
       edge.from.device!==oldEdge.from.device||edge.from.port!==oldEdge.from.port||edge.to.device!==oldEdge.to.device||edge.to.port!==oldEdge.to.port||
+      (edge.kind==='cable'&&oldEdge.kind==='cable'&&(edge.unplugged!==oldEdge.unplugged||JSON.stringify(edge.looseEnd)!==JSON.stringify(oldEdge.looseEnd)))||
       JSON.stringify(edge.via??[])!==JSON.stringify(oldEdge.via??[]))return routeConnection(project,edge);
     const oldFrom=previous.project.equipment.find(e=>e.id===edge.from.device),oldTo=previous.project.equipment.find(e=>e.id===edge.to.device);
     const nextFrom=project.equipment.find(e=>e.id===edge.from.device),nextTo=project.equipment.find(e=>e.id===edge.to.device);
@@ -74,7 +76,9 @@ export function routeConnections(project:Project,previous?:{project:Project;rout
 }
 export const routePath=(route:PhysicalRoute)=>route.points.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ');
 export function related(project:Project,equipment:Equipment) {
-  const edges=connections(project).filter(c=>c.from.device===equipment.id||c.to.device===equipment.id);
+  const edges=connections(project).filter(c=>
+    (c.from.device===equipment.id&&(c.kind==='pipe'||c.unplugged!=='from'))||
+    (c.to.device===equipment.id&&(c.kind==='pipe'||c.unplugged!=='to')));
   const refs=new Set(Object.values(equipment).filter((v):v is {id:string;initial:number|boolean|string}=>!!v&&typeof v==='object'&&'id' in v&&'initial' in v).map(s=>s.id));
   for(const edge of edges){const signal=edge.kind==='pipe'?edge.flow:edge.signal;if(signal)refs.add(signal.id);}
   return {signals:Object.values(project.signals).filter(s=>refs.has(s.id)),connections:edges,alarms:project.alarms.filter(a=>refs.has(a.signal.id)),reports:(project.reports??[]).filter(r=>Object.values(r.columns).some(c=>refs.has(c.signal.id)))};

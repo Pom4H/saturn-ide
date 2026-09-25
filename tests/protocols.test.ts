@@ -1,6 +1,7 @@
 import { test, expect } from 'bun:test';
 import { createServer, type Socket } from 'node:net';
 import { spawn } from 'node:child_process';
+import { getDefaultResultOrder, setDefaultResultOrder } from 'node:dns';
 import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,9 +9,9 @@ import { join } from 'node:path';
 import type { DataValue } from 'node-opcua';
 import { project, signal, type Observation, type ProtocolSource, type Signal } from '../src/core';
 import { acquire } from '../src/runtime/acquisition';
-import { modbusTcp, modbusRtu, modbusAddress, decodeRegisters, encodeRegisters, planModbus } from '../project/plugins/protocols/modbus';
-import { mqtt, mqttObservation } from '../project/plugins/protocols/mqtt';
-import { opcua } from '../project/plugins/protocols/opcua';
+import { modbusTcp, modbusRtu, modbusAddress, decodeRegisters, encodeRegisters, planModbus } from '@saturn/protocols/modbus';
+import { mqtt, mqttObservation } from '@saturn/protocols/mqtt';
+import { opcua } from '@saturn/protocols/opcua';
 
 const options = { mode: 'simulation' as const, pollMs: 20, timeoutMs: 10000, reconnectMs: 20, maxReconnectMs: 100 };
 async function until(predicate: () => boolean, ms = 8000) {
@@ -162,6 +163,10 @@ test('real MQTT broker: retained state, subscriptions, commands, malformed paylo
 }, 20000);
 
 test('real OPC UA server: batched values, source timestamps, unknown nodes, typed write and secure channel', async () => {
+  // Keep the local wire fixture on IPv4. Bun 1.4.2 rejects scoped link-local
+  // IPv6 addresses in the SDK's reverse hostname lookup on macOS.
+  const dnsOrder = getDefaultResultOrder(); setDefaultResultOrder('ipv4first');
+  try {
   const sdk = await import('node-opcua'), root = mkdtempSync(join(tmpdir(), 'saturn-opcua-'));
   // The disposable test server accepts the generated test client. The actual client pins its server explicitly.
   const server = new sdk.OPCUAServer({ port: 0, resourcePath: '/saturn', nodeset_filename: sdk.nodesets.standard,
@@ -185,4 +190,5 @@ test('real OPC UA server: batched values, source timestamps, unknown nodes, type
     await r.driver.write!('temperature', 42); await until(() => r.received.some(s => s.value === 42));
   } catch (error) { console.error('OPC UA status', running?.driver.status()); throw error; }
   finally { try { await running?.stop(); } finally { await server.shutdown(0); rmSync(root, { recursive: true, force: true }); } }
+  } finally { setDefaultResultOrder(dnsOrder); }
 }, 45000);

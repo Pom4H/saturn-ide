@@ -38,7 +38,7 @@ try{
   await capture('Сигналы','signals.png');
   await capture('Отчёты','reports.png');
   await capture('HMI','hmi.png',async()=>{await page.locator('.hmi-surface iframe').waitFor();});
-  await capture('Среда','environment.png');
+  await capture('Развёртывание','environment.png');
   await capture('Git','git.png');
 
   await nav.getByRole('button',{name:'Схема',exact:true}).click();

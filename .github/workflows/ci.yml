@@ -1,43 +1,69 @@
-name: MVP checks
+name: IDE architecture and integration checks
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/screenshots/**'
+  pull_request:
   workflow_dispatch:
-
+permissions:
+  contents: read
 concurrency:
   group: saturn-ide-${{ github.ref }}
   cancel-in-progress: true
-
-permissions:
-  contents: read
-
 jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7.0.1
-
+      - uses: actions/checkout@v4
+        with:
+          path: saturn-ide
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-examples
+          path: saturn-examples
+          ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-plugins
+          ref: 83666967aab8a692ee215c09d54a92197b035d66
+          path: saturn-plugins
+          ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
-
       - name: Cache Bun packages
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-1.4.2-${{ hashFiles('bun.lock', 'package.json') }}
+          key: ${{ runner.os }}-bun-1.4.2-${{ hashFiles('saturn-ide/bun.lock', 'saturn-ide/package.json') }}
           restore-keys: |
             ${{ runner.os }}-bun-1.4.2-
-
-      - name: Install
-        run: bun install --frozen-lockfile
-
-      - name: Typecheck
-        run: bun run check
-
-      - name: Unit and SQLite tests
-        # Network/native SDK cleanup must finish; an orphan socket must not occupy a runner for 20 minutes.
+      - run: bun install --frozen-lockfile
+        working-directory: saturn-ide
+      - name: Share test toolchain with external integration fixtures
+        run: |
+          mkdir -p saturn-ide/node_modules/@saturn
+          ln -s ../.. saturn-ide/node_modules/@saturn/core
+          ln -s ../saturn-ide/node_modules saturn-examples/node_modules
+          ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
+      - run: bun run check
+        working-directory: saturn-ide
+      - name: Unit, SQLite and protocol tests
+        # Bound native SDK/socket cleanup so a leaked connection cannot occupy the runner.
         run: timeout --kill-after=10s 180s bun test tests
+        working-directory: saturn-ide
+      - name: Install browser recording dependency
+        run: bunx playwright install ffmpeg
+        working-directory: saturn-ide
+      - name: Vendor importer browser acceptance
+        run: bun scripts/importer-browser-test.ts
+        working-directory: saturn-ide
+      - name: Keep browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: importer-browser-failure
+          path: |
+            saturn-ide/artifacts/importer-failure.png
+            saturn-ide/artifacts/importer-video/
+          if-no-files-found: ignore

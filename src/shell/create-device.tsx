@@ -1,0 +1,14 @@
+import { useEffect, useState } from 'react';
+import type { Locale } from '../core';
+import { api } from './api';
+interface Preview {path:string;source:string;projectSource:string;projectVersion:string}
+export function CreateDevice({locale,close,created}:{locale:Locale;close:()=>void;created:(path:string)=>Promise<void>}) {
+  const ru=locale==='ru',[templates,setTemplates]=useState<{id:string;label:Record<Locale,string>}[]>([]),[template,setTemplate]=useState('pump'),[id,setId]=useState('P-02'),[label,setLabel]=useState(ru?'Новый насос':'New pump'),[preview,setPreview]=useState<Preview|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  useEffect(()=>{void api<typeof templates>('templates').then(setTemplates).catch(e=>setError(String(e)));},[]);
+  const submit=async()=>{setBusy(true);setError('');try{if(!preview)setPreview(await api<Preview>('devices/create',{template,id,label}));else{await api('devices/create',{template,id,label,projectVersion:preview.projectVersion,apply:true});await created(preview.path);close();}}catch(e){setError(String(e));setPreview(null);}finally{setBusy(false);}};
+  return <div className="creation-backdrop" onKeyDown={event=>{if(event.key==='Escape'&&!busy)close();}}><section role="dialog" aria-modal="true" aria-label={ru?'Новое устройство':'New device'} className="creation-dialog"><header><h2>{ru?'Новое устройство':'New device'}</h2><button disabled={busy} aria-label={ru?'Закрыть создание':'Close creation'} onClick={close}>×</button></header><form onSubmit={event=>{event.preventDefault();void submit();}}>
+    <div className="creation-fields"><label>{ru?'Шаблон':'Template'}<select autoFocus value={template} onChange={event=>{setTemplate(event.target.value);setPreview(null);}}>{templates.map(t=><option key={t.id} value={t.id}>{t.label[locale]}</option>)}</select></label><label>ID<input required pattern="[A-Za-z][A-Za-z0-9_-]{0,63}" value={id} onChange={event=>{setId(event.target.value);setPreview(null);}}/></label><label>{ru?'Название':'Name'}<input required value={label} onChange={event=>{setLabel(event.target.value);setPreview(null);}}/></label></div>
+    <p>{ru?'Создаст файл equipment/'+id+'.device.ts и явный импорт в project.ts. Новое устройство появится на схеме.':`Creates equipment/${id}.device.ts with an explicit import in project.ts and adds it to the diagram.`}</p>
+    {preview&&<div className="creation-preview"><strong>{preview.path}</strong><pre>{preview.source}</pre><details><summary>project.ts</summary><pre>{preview.projectSource}</pre></details></div>}{error&&<p role="alert" className="error-text">{error}</p>}<footer><button type="button" disabled={busy} onClick={close}>{ru?'Отмена':'Cancel'}</button><button className="primary" disabled={busy||!templates.length}>{busy?'…':preview?(ru?'Создать устройство':'Create device'):(ru?'Предпросмотр':'Preview')}</button></footer>
+  </form></section></div>;
+}

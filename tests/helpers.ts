@@ -5,7 +5,7 @@ export const appRoot = resolve(import.meta.dir, "..");
 export function fixture() {
   mkdirSync(join(appRoot, ".saturn"), { recursive: true });
   const dir = mkdtempSync(join(appRoot, ".saturn", "test-")), root = join(dir, "project");
-  cpSync(join(appRoot, "project"), root, { recursive: true });
+  cpSync(resolve(Bun.env.SATURN_EXAMPLE ?? join(appRoot, "../saturn-examples/pumping-station")), root, { recursive: true, filter: path => !path.split(/[\\/]/).some(part => part === "node_modules" || part === ".saturn") });
   return { dir, root, clean: () => rmSync(dir, { recursive: true, force: true }) };
 }
 export function model() {

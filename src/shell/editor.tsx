@@ -3,11 +3,26 @@ import { basicSetup } from 'codemirror';
 import { Decoration, EditorView, WidgetType, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
 import { EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { autocompletion } from '@codemirror/autocomplete';
-import { javascript } from '@codemirror/lang-javascript';
+import { javascript, typescriptLanguage } from '@codemirror/lang-javascript';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags, highlightCode } from '@lezer/highlight';
 import { linter } from '@codemirror/lint';
 import { indentWithTab, isolateHistory } from '@codemirror/commands';
 import { api } from './api';
 import type { Locale, Problem, Signal, Snapshot } from '../core';
+const syntaxColors=HighlightStyle.define([
+  {tag:tags.keyword,color:'var(--syntax-keyword)'},
+  {tag:[tags.string,tags.regexp],color:'var(--syntax-string)'},
+  {tag:[tags.number,tags.bool,tags.null],color:'var(--syntax-number)'},
+  {tag:tags.propertyName,color:'var(--syntax-property)'},
+  {tag:[tags.typeName,tags.className],color:'var(--syntax-type)'},
+  {tag:tags.function(tags.variableName),color:'var(--syntax-function)'},
+  {tag:tags.variableName,color:'var(--text)'},
+  {tag:tags.comment,color:'var(--syntax-comment)',fontStyle:'italic'},
+  {tag:tags.operator,color:'var(--syntax-operator)'},
+  {tag:tags.punctuation,color:'var(--syntax-punctuation)'},
+  {tag:tags.invalid,color:'var(--bad)',textDecoration:'underline'},
+]);
 interface SignalHint {signal:string;semantic?:string;unit?:string;at:number}
 interface LiveDecoration {at:number;text:string;quality:string}
 const setLiveDecorations=StateEffect.define<readonly LiveDecoration[]>();
@@ -36,7 +51,7 @@ export function Editor(props:Props){
   useEffect(()=>{
     const request=<T,>(operation:string,source:string,position=0)=>api<T>('language',{operation,path:current.current.path,source,position,locale:current.current.locale});
     const view=new EditorView({parent:host.current!,state:EditorState.create({doc:props.source,extensions:[
-      basicSetup,javascript({typescript:true,jsx:props.path.endsWith('tsx')}),liveValues,
+      basicSetup,javascript({typescript:true,jsx:props.path.endsWith('tsx')}),syntaxHighlighting(syntaxColors),liveValues,
       keymap.of([indentWithTab,{key:'Mod-s',run:()=>{current.current.save();return true;}}]),
       EditorView.updateListener.of(update=>{if(update.docChanged&&!update.transactions.some(t=>t.annotation(Transaction.userEvent)==='external'))current.current.change(update.state.doc.toString());}),
       autocompletion({override:[async context=>{
@@ -46,7 +61,7 @@ export function Editor(props:Props){
       }]}),
       hoverTooltip(async(view,position)=>{try{
         const doc=view.state.doc,info=await request<{from:number;to:number;signature:string;documentation:string}|null>('hover',doc.toString(),position);if(!info||doc!==view.state.doc)return null;
-        return {pos:info.from,end:info.to,above:true,create:()=>{const dom=document.createElement('div'),signature=document.createElement('pre'),documentation=document.createElement('p');dom.className='jsdoc';signature.textContent=info.signature;documentation.textContent=info.documentation;dom.append(signature,documentation);return {dom};}};
+        return {pos:info.from,end:info.to,above:true,create:()=>{const dom=document.createElement('div'),signature=document.createElement('pre'),documentation=document.createElement('p');dom.className='jsdoc';highlightCode(info.signature,typescriptLanguage.parser.parse(info.signature),syntaxColors,(text,classes)=>{const span=document.createElement('span');span.textContent=text;if(classes)span.className=classes;signature.append(span);},()=>signature.append(document.createTextNode('\n')));documentation.textContent=info.documentation;dom.append(signature,documentation);return {dom};}};
       }catch{return null;}},{hoverTime:300}),
       linter(async view=>{try{const doc=view.state.doc,problems=await request<Problem[]>('diagnostics',doc.toString());if(doc!==view.state.doc)return [];return problems.map(p=>({from:Math.min(p.from??0,doc.length),to:Math.min(p.to??0,doc.length),severity:'error' as const,message:`${p.code}: ${p.message[current.current.locale]}`}));}catch{return [];}},{delay:650}),
       EditorView.theme({'&':{height:'100%',fontSize:'13px',backgroundColor:'var(--editor)',color:'var(--text)'},'.cm-scroller':{fontFamily:'var(--mono)'},'.cm-gutters':{backgroundColor:'var(--editor)',color:'var(--muted)',borderRight:'0'},'.cm-activeLine, .cm-activeLineGutter':{backgroundColor:'var(--hover)'},'.cm-tooltip':{backgroundColor:'var(--raised)',borderColor:'var(--border)',color:'var(--text)'},'.cm-content':{caretColor:'var(--text)'},'&.cm-focused .cm-cursor':{borderLeftColor:'var(--text)'},'.cm-live-value':{marginLeft:'1.5ch',fontStyle:'italic',color:'var(--muted)',opacity:'.82',pointerEvents:'none'},'.cm-live-value.good':{color:'var(--good)'},'.cm-live-value.stale':{color:'var(--warn)'},'.cm-live-value.bad':{color:'var(--bad)'}}),

@@ -1,0 +1,41 @@
+import * as T from 'three';
+import type { Side } from '../core';
+
+/** Round the corners of an authored route without moving its terminal endpoints. */
+export function roundedRoute(points: readonly T.Vector3[], bend = 12): { path: T.CurvePath<T.Vector3>; bends: number } {
+  const path = new T.CurvePath<T.Vector3>();
+  if (points.length < 2) return { path, bends: 0 };
+  let cursor = points[0]!.clone(), bends = 0;
+  const line = (end: T.Vector3) => {
+    if (cursor.distanceToSquared(end) > 1e-6) path.add(new T.LineCurve3(cursor.clone(), end.clone()));
+    cursor = end.clone();
+  };
+  for (let i = 1; i < points.length - 1; i++) {
+    const before = points[i - 1]!, corner = points[i]!, after = points[i + 1]!;
+    const incoming = corner.clone().sub(before), outgoing = after.clone().sub(corner);
+    const left = incoming.length(), right = outgoing.length();
+    if (left < 1e-3 || right < 1e-3) continue;
+    incoming.divideScalar(left); outgoing.divideScalar(right);
+    if (incoming.dot(outgoing) > .999 || incoming.dot(outgoing) < -.999) continue;
+    const inset = Math.min(bend, left * .35, right * .35);
+    const enter = corner.clone().addScaledVector(incoming, -inset);
+    const leave = corner.clone().addScaledVector(outgoing, inset);
+    line(enter);
+    path.add(new T.QuadraticBezierCurve3(enter, corner.clone(), leave));
+    cursor = leave;
+    bends++;
+  }
+  line(points.at(-1)!);
+  return { path, bends };
+}
+
+/** Leave an end-face socket along its normal before joining the authored route. */
+export function projectPanelCable(points: readonly T.Vector3[], fromSide: Side | null, toSide: Side | null): T.Vector3[] {
+  if (points.length < 2 || (!fromSide && !toSide)) return points.map(point => point.clone());
+  const high = Math.max(...points.map(point => point.y));
+  const first = points[0]!, last = points.at(-1)!;
+  const exit = (point: T.Vector3, side: Side) => point.clone().add(new T.Vector3(side==='left'?-12:side==='right'?12:0,0,side==='up'?-12:side==='down'?12:0));
+  return [first.clone(), ...(fromSide ? [exit(first,fromSide)] : []),
+    ...points.slice(1, -1).map(point => point.clone().setY(high)),
+    ...(toSide ? [exit(last,toSide)] : []), last.clone()];
+}

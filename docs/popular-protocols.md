@@ -1,6 +1,6 @@
 # Modbus, MQTT и OPC UA
 
-Плагины находятся в `project/plugins/protocols`. Копируйте нужный модуль вместе с
+Плагины находятся в `saturn-plugins/protocols`. Копируйте нужный модуль вместе с
 `shared.ts` в свой проект; для Modbus нужен также `modbus-transport.ts`.
 Подключение — обычный import. Нет регистрации плагинов или отдельного списка
 тегов: используется `Signal.binding` и `acquire()`.

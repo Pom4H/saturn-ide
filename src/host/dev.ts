@@ -1,7 +1,7 @@
 import { mkdirSync, watch } from 'node:fs';
 import { join, resolve } from 'node:path';
-import html from '../shell/index.html';
-import { text, type Driver, type Problem, type Project } from '../core';
+import { browserAssets } from './browser-build';
+import { text, validateProject, type Driver, type Endpoint, type Problem, type Project } from '../core';
 import type { IDEState } from '../protocol';
 import { Workspace, HttpError, hash } from '../workspace/files';
 import { Builder, BuildError, type DraftBuild } from '../workspace/build';
@@ -20,20 +20,31 @@ import { reportResponse } from './report-api';
 import { projectDocumentation } from '../documentation';
 import { impact, semanticDiff, semanticGraph } from '../semantic';
 import { previewEquipmentRename } from '../workspace/refactor';
+import { createDeployment, deploymentWorkflow, initialDeployment } from '../workspace/deployment';
+import type { DeploymentPlan } from '../core/deployment';
+import { ProjectPlugins } from '../workspace/plugins';
+import { applyImportPlan } from '../workspace/importers';
+import type { ScadaImportPlan } from '../core/importer';
+import { deviceTemplates, previewDevice, previewHmi } from '../workspace/scaffold';
+import { previewCableDisconnect, previewCableEndpoint } from '../workspace/cable-edit';
 
+import type { AssistantInput, AssistantReply, AssistantStatus } from '../core/assistant';
+export interface AssistantService { status:()=>Promise<AssistantStatus>; send:(input:AssistantInput,context:{project:Project;snapshot:Runtime['snapshot'];applied:string|null})=>Promise<AssistantReply> }
 const appRoot = resolve(import.meta.dir, '../..');
 const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 'Проект не загружен' }, signals: {}, equipment: [], pipes: [], alarms: [] };
 /** Composition root for local development; runtime modules themselves know no workspace. */
-export async function createApp(options: { projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation' } = {}) {
-  const workspace = new Workspace(options.projectDir ?? resolve(Bun.env.SATURN_PROJECT ?? 'project'));
+export async function createApp(options: { assistant?:AssistantService; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation' } = {}) {
+  const workspace = new Workspace(options.projectDir ?? resolve(Bun.env.SATURN_PROJECT ?? '../saturn-examples/pumping-station'));
   const dataDir = options.dataDir ?? join(appRoot, '.saturn', hash(workspace.root).slice(0, 12));
   mkdirSync(dataDir, { recursive: true });
   const store = new Store(options.databaseUrl ?? Bun.env.DATABASE_URL ?? `sqlite://${join(dataDir, 'history.sqlite')}`);
   await store.init();
   const revisions = new RevisionStore(store.sql); await revisions.init();
   const events = new Events(), builder = new Builder(workspace, appRoot, dataDir), git = new Git(workspace), push = new Push(store, dataDir);
+  const plugins=new ProjectPlugins(workspace);
   const key = crypto.randomUUID();
   let draft: DraftBuild | undefined, problems: Problem[] = [];
+  let restoreProblem: Problem | undefined;
   const autoPreview = (options.preview ?? Bun.env.SATURN_PREVIEW ?? 'simulation') === 'simulation';
   const runtime = new Runtime(empty, store, events, id => {
     const rule = runtime.project.alarms.find(a => a.id === id);
@@ -47,7 +58,7 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
   const active = () => manager.installation instanceof ProjectInstallation ? manager.installation : undefined;
   const mode = (): Driver['mode'] | 'offline' => manager.phase === 'running' ? active()?.driver?.mode ?? 'offline' : 'offline';
   const authoringProject = () => draft?.project ?? runtime.project;
-  const state = (): IDEState => ({ project: runtime.project, snapshot: runtime.snapshot, revision: manager.applied?.slice(7) ?? '',
+  const state = (): IDEState => ({ project: runtime.project, snapshot: runtime.snapshot, revision: (manager.applied ?? releaseState.applied)?.slice(7) ?? '',
     positions: draft?.artifact.hash === manager.applied ? draft.positions : {}, problems, mode: mode(), adapter: store.adapter, key, pushPublicKey: push.publicKey });
   function reportError(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -60,17 +71,23 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
   };
   // Restore runtime before reading the working tree. A broken draft cannot replace its applied build.
   if (releaseState.applied) {
-    const build = await revisions.get(releaseState.applied);
-    runtime.project = decodeProject(build.model); await runtime.init();
-    try { await manager.restore(build); } catch (error) { reportError(error); }
+    try {
+      const build = await revisions.get(releaseState.applied);
+      runtime.project = decodeProject(build.model); await runtime.init();
+      await manager.restore(build);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      restoreProblem = { code: 'APPLIED_RESTORE', message: { en: `Applied build could not be restored: ${message}`, ru: `Не удалось восстановить применённую сборку: ${message}` } };
+      problems = [restoreProblem]; console.error(restoreProblem.message.en);
+    }
   }
   const reloadNow = async () => {
     try {
-      const next = await builder.build(); draft = next; problems = [];
+      const next = await builder.build(); draft = next; problems = restoreProblem ? [restoreProblem] : [];
       await revisions.put(next.artifact);
-      if (!manager.applied) { runtime.project = next.project; await runtime.init(); }
+      if (!releaseState.applied) { runtime.project = next.project; await runtime.init(); }
       // Automatic preview is simulator-only. Listing/opening resource files never activates code.
-      if (autoPreview && (mode() === 'simulation' || manager.phase === 'empty')) {
+      if (autoPreview && !restoreProblem && (mode() === 'simulation' || manager.phase === 'empty')) {
         const candidate = await ProjectInstallation.prepare(next.artifact, runtime, dataDir);
         if (candidate.driver?.mode === 'simulation') {
           if (releaseState.published !== next.artifact.hash) await revisions.publish(next.artifact.hash, releaseState.published);
@@ -78,13 +95,14 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
         }
       }
     } catch (error) {
-      problems = error instanceof BuildError ? error.problems : [{ code: 'PROJECT', message: { en: String(error), ru: String(error) } }];
+      problems = [...(restoreProblem ? [restoreProblem] : []), ...(error instanceof BuildError ? error.problems : [{ code: 'PROJECT', message: { en: String(error), ru: String(error) } }])];
     }
     events.emit('project', state());
   };
   let reloadQueue: Promise<void> = Promise.resolve();
   const reload = () => { const next = reloadQueue.then(reloadNow); reloadQueue = next.catch(reportError); return next; };
   await reload();
+  let browser = await browserAssets(appRoot, workspace.root, dataDir);
   const staleTimer = setInterval(() => { if (manager.phase === 'running') void runtime.stale().catch(reportError); }, 1000);
   const retention = setInterval(() => void store.prune().catch(reportError), 3600_000); await store.prune();
   let debounce: ReturnType<typeof setTimeout>;
@@ -94,28 +112,35 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
     const relativePath = path.replaceAll('\\', '/');
     try { if (savedVersions.get(relativePath) === workspace.read(relativePath).version) return; }
     catch { /* A removed or inaccessible file still needs a rebuild. */ }
-    clearTimeout(debounce); debounce = setTimeout(() => void reload().catch(reportError), 200);
+    clearTimeout(debounce); debounce = setTimeout(() => { void reload().catch(reportError); if (relativePath === 'browser.ts' || relativePath.startsWith('plugins/')) void browserAssets(appRoot,workspace.root,dataDir).then(next=>{browser=next;}).catch(reportError); }, 200);
   });
   const json = (value: unknown, status = 200) => Response.json(value, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
   const field = (b: Record<string, unknown>, name: string) => { const v = b[name]; if (typeof v !== 'string') throw new HttpError(400, `Expected string: ${name}`); return v; };
   const expected = (b: Record<string, unknown>, name: string) => { const v = b[name]; if (v !== null && (typeof v !== 'string' || !HASH.test(v))) throw new HttpError(400, `Expected hash or null: ${name}`); return v; };
   let gitBusy = false;
   const server = Bun.serve({ hostname: '127.0.0.1', port: options.port ?? Number(Bun.env.PORT ?? 3000), idleTimeout: 0,
-    development: { hmr: true, console: true }, maxRequestBodySize: 300_000, routes: { '/': html, '/hmi': html },
+    development: false, maxRequestBodySize: 2_500_000,
     async fetch(request) {
       try {
         const url = new URL(request.url), path = url.pathname;
         if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new HttpError(403, 'Untrusted host');
         const origin = request.headers.get('origin'); if (origin && origin !== url.origin) throw new HttpError(403, 'Cross-origin request refused');
         if (request.method === 'GET') {
+          if(path==='/' || path==='/hmi') return new Response(browser.html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
+          const asset=browser.assets.get(path); if(asset)return new Response(asset,{headers:{'Cache-Control':'no-cache'}});
+          if(path==='/api/assistant')return json(options.assistant?await options.assistant.status():{available:false,notes:false,recipients:[],detail:'Подключите сервер ассистента в настройках host. Разбор файлов Lanmon доступен локально.'});
           if (path === '/api/state') return json(state());
           if (path === '/api/events') return events.response(request, state());
-          if (path === '/api/resources') return json(indexResources(workspace, authoringProject(), draft?.artifact.hash ?? manager.applied ?? ''));
+          if (path === '/api/resources') return json({...indexResources(workspace, authoringProject(), draft?.artifact.hash ?? manager.applied ?? ''),workspace:hash(workspace.root)});
           if (path === '/api/documentation') { const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ru'; return new Response(projectDocumentation(authoringProject(),{locale}), { headers:{'Content-Type':'text/markdown; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'} }); }
           if (path === '/api/semantic') return json(semanticGraph(authoringProject()).nodes);
           if (path === '/api/semantic/diff') return json(draft ? semanticDiff(runtime.project,draft.project) : []);
           if (path === '/api/impact') { const id=url.searchParams.get('id')??''; const result=impact(authoringProject(),id); if(!result) throw new HttpError(404,'Unknown semantic entity'); return json(result); }
           if (path === '/api/releases') return json({ key, source: draft?.artifact.provenance ?? null, checked: draft?.artifact.hash ?? null, ...await revisions.state(), phase: manager.phase, error: manager.error });
+          if(path==='/api/deployment/template')return json({plan:initialDeployment,exists:workspace.list().includes('targets/deployment.ts')});
+          if(path==='/api/plugins')return json(plugins.list());
+          if(path==='/api/import/context')return json({projectVersion:workspace.read('project.ts').version});
+          if(path==='/api/templates')return json(deviceTemplates.map(({signals,...item})=>item));
           if (path === '/api/files') return json(workspace.list());
           if (path === '/api/file') return json(workspace.read(url.searchParams.get('path') ?? 'project.ts'));
           if (path === '/api/git') return json(await git.status());
@@ -132,6 +157,41 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
         if (request.method !== 'POST') throw new HttpError(405, 'Method not allowed');
         if (request.headers.get('X-Saturn-Key') !== key || !request.headers.get('content-type')?.includes('application/json')) throw new HttpError(403, 'Missing session key or JSON content type');
         const body: unknown = await request.json(); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected an object'); const b = body as Record<string, unknown>;
+        if(path==='/api/assistant/send'){if(!options.assistant)throw new HttpError(503,'Сервер ассистента не подключён');return json(await options.assistant.send(b as unknown as AssistantInput,{project:runtime.project,snapshot:runtime.snapshot,applied:manager.applied}));}
+        if(path==='/api/deployment/preview'||path==='/api/deployment/create'){
+          if(!b.plan||typeof b.plan!=='object')throw new HttpError(400,'Expected deployment plan');
+          const plan=b.plan as DeploymentPlan;let workflow:string;try{workflow=deploymentWorkflow(plan);}catch(error){throw new HttpError(400,String(error));}
+          if(path.endsWith('/preview'))return json({workflow});
+          const file=createDeployment(workspace,plan);return json({file,workflow});
+        }
+        if(path==='/api/import/apply'){
+          if(!b.plan||typeof b.plan!=='object'||Array.isArray(b.plan))throw new HttpError(400,'Expected import plan');
+          const applied=applyImportPlan(workspace,b.plan as ScadaImportPlan,field(b,'projectVersion'));
+          for(const file of [...applied.files,applied.project])savedVersions.set(file.path,file.version);
+          await reload();
+          return json({files:applied.files,project:applied.project,problems,state:state()});
+        }
+        if(path==='/api/plugins/check')return json(await plugins.check());
+        if(path==='/api/plugins/install'||path==='/api/plugins/update'){
+          const result=await plugins.install(field(b,'name'),field(b,'repository'),field(b,'ref'),path.endsWith('/update')?field(b,'expected'):undefined,typeof b.directory==='string'?b.directory:'');await reload();return json(result);
+        }
+        if(path==='/api/hmi/create'){
+          if(!Array.isArray(b.devices)||!b.devices.every(id=>typeof id==='string'))throw new HttpError(400,'Expected device IDs');
+          const catalog=indexResources(workspace,authoringProject(),'');
+          const devices=(b.devices as string[]).map(id=>{const resource=catalog.resources.find(r=>r.kind==='device'&&r.entityId===id);if(!resource?.source)throw new HttpError(400,'Equipment must have an explicit source');return {id,path:resource.source.path};});
+          const preview=previewHmi(workspace,field(b,'id'),field(b,'label'),Number(b.width),Number(b.height),devices);
+          if(b.apply!==true)return json(preview);
+          if(field(b,'projectVersion')!==preview.projectVersion)throw new HttpError(409,'Project changed; preview again');
+          const file=workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);savedVersions.set(file.path,file.version);savedVersions.set('project.ts',workspace.read('project.ts').version);await reload();return json({file});
+        }
+        if(path==='/api/devices/create'){
+          const id=field(b,'id');if(authoringProject().equipment.some(e=>e.id===id))throw new HttpError(409,'Device ID already exists');
+          const preview=previewDevice(workspace,field(b,'template'),id,field(b,'label'));
+          if(b.apply!==true)return json(preview);
+          if(field(b,'projectVersion')!==preview.projectVersion)throw new HttpError(409,'Project changed; preview again');
+          const file=workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);
+          savedVersions.set(file.path,file.version);savedVersions.set('project.ts',workspace.read('project.ts').version);await reload();return json({file,state:state()});
+        }
         if (path === '/api/file') { const file = workspace.save(field(b, 'path'), field(b, 'source'), field(b, 'version')); savedVersions.set(file.path, file.version); await reload(); return json({ file, state: state() }); }
         if (path === '/api/refactor/rename') {
           const uri=field(b,'uri'),nextId=field(b,'nextId'),catalog=indexResources(workspace,authoringProject(),draft?.artifact.hash??manager.applied??'');
@@ -141,6 +201,25 @@ export async function createApp(options: { projectDir?: string; dataDir?: string
           if(typeof b.version!=='string'||b.version!==file.version) throw new HttpError(409,'Source changed after rename preview');
           const saved=workspace.save(file.path,preview.source,file.version); savedVersions.set(saved.path,saved.version); await reload();
           return json({preview,file:saved,state:state()});
+        }
+        if (path === '/api/cable/endpoint') {
+          const id=field(b,'id'),end=field(b,'end');if(end!=='from'&&end!=='to')throw new HttpError(400,'Invalid cable end');
+          if(draft?.artifact.hash!==manager.applied)throw new HttpError(409,'Cable editing requires the checked source to match the applied preview');
+          const project=authoringProject(),cable=project.cables?.find(item=>item.id===id);if(!cable)throw new HttpError(404,'Unknown cable');
+          let preview;
+          if(b.disconnect===true){if(![b.x,b.y,b.z].every(value=>typeof value==='number'&&Number.isFinite(value)))throw new HttpError(400,'Invalid loose end');const point={x:b.x as number,y:b.y as number,z:b.z as number};
+            validateProject({...project,cables:project.cables!.map(item=>item.id===id?{...item,unplugged:end,looseEnd:point}:item)});
+            preview=previewCableDisconnect(workspace,project,id,end,point);
+          }else{const device=field(b,'device'),port=field(b,'port'),equipment=project.equipment.find(item=>item.id===device),target=equipment?.ports[port] as Endpoint|undefined;
+            if(!target)throw new HttpError(404,'Unknown port');
+            validateProject({...project,cables:project.cables!.map(item=>item.id===id?{...item,[end]:target,unplugged:undefined,looseEnd:undefined}:item)});
+            preview=previewCableEndpoint(workspace,project,id,end,target);
+          }
+          if(b.apply!==true)return json(preview);
+          if(b.version!==preview.version)throw new HttpError(409,'Source changed after cable preview');
+          const saved=workspace.save(preview.path,preview.source,preview.version);savedVersions.set(saved.path,saved.version);await reload();
+          if(problems.length)throw new HttpError(409,`Cable change did not build: ${problems.map(p=>p.message.en).join('; ')}`);
+          return json({file:saved,state:state()});
         }
         if (path === '/api/publish') {
           const hash = field(b, 'hash'); if (hash !== draft?.artifact.hash || problems.length) throw new HttpError(409, 'Only the current checked draft can be published');

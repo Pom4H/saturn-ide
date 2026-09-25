@@ -1,3 +1,4 @@
+import { projectImports } from './imports';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -31,12 +32,13 @@ export class Builder {
     const outdir = join(this.dataDir, 'compiler', inputKey.slice(7));
     const entrypoints = [this.workspace.file('project.ts')];
     if (sourceFiles.some(f => f.path === 'server.ts')) entrypoints.push(this.workspace.file('server.ts'));
+    const imports=projectImports(this.appRoot);
     const result = await Bun.build({ entrypoints, outdir, naming: '[name].mjs', target: 'bun', plugins: [{ name: 'project-imports', setup: build => {
       // Bundle project code and Saturn contracts; preserve installed SDK packages/native assets.
       // No protocol-specific package names or plugin registry in the compiler.
       build.onResolve({ filter: /^[^./]/ }, args => {
-        if (args.path === '@saturn/core' || args.path === '@saturn/scada/acquisition')
-          return { path: join(this.appRoot, args.path === '@saturn/core' ? 'src/core.ts' : 'src/runtime/acquisition.ts') };
+        const entry=imports[args.path]?.[0];
+        if(entry)return {path:entry};
         return { path: args.path, external: true };
       });
     } }] });

@@ -11,7 +11,7 @@ export function useShell(client: ShellClient, host: ShellHost, authoring = true)
   const documents = useSyncExternalStore(session.documents.subscribe, session.documents.getSnapshot, session.documents.getSnapshot);
   const [state, setState] = useState<IDEState | null>(null), [connected, setConnected] = useState(false), [error, setError] = useState('');
   const [alarmVersion, setAlarmVersion] = useState(0);
-  const generation = useRef(0);
+  const generation = useRef(0), initiallyOpened = useRef(false);
   const refresh = async () => {
     const expected = ++generation.current;
     const catalog = await client.catalog();
@@ -32,10 +32,10 @@ export function useShell(client: ShellClient, host: ShellHost, authoring = true)
           return;
         }
         void refresh().then(async () => {
-          if (abort.signal.aborted || session.getSnapshot().active) return;
+          if (abort.signal.aborted || initiallyOpened.current || session.getSnapshot().active) return;
           const catalog = session.getCatalog();
           const resource = catalog.resources.find(r => r.icon === 'pump') ?? catalog.resources[0];
-          if (resource) await session.execute({ type: 'open', uri: resource.uri });
+          if (resource) { initiallyOpened.current=true; await session.execute({ type: 'open', uri: resource.uri }); }
         }).catch(e => { if (!abort.signal.aborted) setError(String(e)); });
       } else if (event === 'telemetry') setState(s => s ? { ...s, snapshot: value as Snapshot } : s);
       else if (event === 'alarm') setAlarmVersion(v => v + 1);

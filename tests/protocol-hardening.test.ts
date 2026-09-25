@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
 import { signal } from '../src/core';
-import { modbusTcp, modbusRtu, modbusAddress, encodeRegisters } from '../project/plugins/protocols/modbus';
-import { mqtt } from '../project/plugins/protocols/mqtt';
-import { opcua } from '../project/plugins/protocols/opcua';
+import { modbusTcp, modbusRtu, modbusAddress, encodeRegisters } from '@saturn/protocols/modbus';
+import { mqtt } from '@saturn/protocols/mqtt';
+import { opcua } from '@saturn/protocols/opcua';
 
 test('inverse Modbus scaling absorbs roundoff but rejects real quantization and overflow', () => {
   const address = modbusAddress({ unit: 1, area: 'holding', offset: 0, format: 'uint16', scale: .01 });

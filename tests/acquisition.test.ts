@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { command, project, pump, signal, type Project, type Signal, type Value } from '../src/core';
 import { defineProtocol, prepareAcquisition, type AcquisitionContext, type Observation, type Observe, type ProtocolSession } from '../src/core/acquisition';
 import { acquire } from '../src/runtime/acquisition';
-import { jsonHttp } from '../project/plugins/json-http';
+import { jsonHttp } from '@saturn/protocols/json-http';
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 async function eventually(check: () => boolean) {

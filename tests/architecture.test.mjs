@@ -10,6 +10,8 @@ test('workspace and Shell do not own runtime; host composes them', () => {
   assert.equal(violations({'src/shell/bad.ts':"import { Runtime } from '../runtime/engine'"}).length,1);
   assert.equal(violations({'src/workspace/bad.ts':"import '../runtime/engine'"}).length,1);
   assert.deepEqual(violations({'src/host/dev.ts':"import '../workspace/build'; import '../runtime/engine'; import '../shell/index.html'"}),[]);
+  assert.equal(violations({'src/host/browser.tsx':"import '../../project/plugins/saturn-plc500/hmi/wasm-display'"}).length,1);
+  assert.equal(violations({'src/shell/bad.ts':"import '../../project/plugins/saturn-plc500/hmi/wasm-display'"}).length,1);
 });
 test('pure model must stay browser/runtime independent and explicitly typed', () => {
   assert.equal(violations({'src/core.ts':"import React from 'react'"}).length,1);
