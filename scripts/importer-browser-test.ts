@@ -28,9 +28,15 @@ try{
   const apply=page.getByRole('button',{name:'Применить миграцию',exact:true});
   assert(await apply.isEnabled(),'migration preview is unexpectedly blocked');
   await apply.click();
-  await page.getByText(/Миграция применена к исходникам проекта/).waitFor({timeout:15000});
-  const state=await (await fetch(new URL('/api/state',app.server.url))).json() as IDEState;
+  const deadline=Date.now()+15000;let state:IDEState|undefined;
+  while(Date.now()<deadline){
+    state=await (await fetch(new URL('/api/state',app.server.url))).json() as IDEState;
+    if(state.problems.length||state.project.id!=='scada-import')break;
+    await Bun.sleep(50);
+  }
+  assert(state,'state unavailable after import');
   assert.equal(state.problems.length,0,JSON.stringify(state.problems));
+  assert.notEqual(state.project.id,'scada-import','imported project never became the checked project');
   assert.equal(state.project.hmis?.length,1);
   const signal=Object.values(state.project.signals).find(item=>item.binding?.protocol==='lanmon4');
   assert.equal(signal?.binding?.address,'Boiler.Temp');
