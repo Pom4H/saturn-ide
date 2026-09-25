@@ -79,6 +79,9 @@ jobs:
             $ready=$false
             for($i=0;$i -lt 120;$i++){try{$r=Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:4017/api/state' -TimeoutSec 2;if($r.StatusCode -eq 200){$ready=$true;break}}catch{};Start-Sleep -Milliseconds 250}
             if(-not $ready){Get-Content $stdout -ErrorAction SilentlyContinue;Get-Content $stderr -ErrorAction SilentlyContinue;throw 'Compiled Saturn did not start'}
+            New-Item -ItemType Directory -Force standalone-video | Out-Null
+            (Invoke-RestMethod 'http://127.0.0.1:4017/api/state') | ConvertTo-Json -Depth 20 | Set-Content standalone-video\state.json
+            (Invoke-RestMethod 'http://127.0.0.1:4017/api/releases') | ConvertTo-Json -Depth 20 | Set-Content standalone-video\releases.json
             bun scripts/standalone-video.ts
             if($LASTEXITCODE -ne 0){throw 'UX recording failed'}
           } finally {

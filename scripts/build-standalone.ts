@@ -20,14 +20,13 @@ const executable=join(output,target.startsWith('windows')?'saturn.exe':'saturn')
 const result=await Bun.build({entrypoints:[join(root,'src/host/standalone.ts')],target:'bun',minify:true,compile:{target:targets[target],outfile:executable}});
 if(!result.success)throw new Error(result.logs.map(log=>log.message).join('\n'));
 
-const app=join(output,'app');mkdirSync(app,{recursive:true});
-cpSync(join(root,'src'),join(app,'src'),{recursive:true});
+cpSync(join(root,'src'),join(output,'src'),{recursive:true});
 const modules=join(root,'node_modules'),normalizedModules=modules.replaceAll('\\','/');
-cpSync(modules,join(app,'node_modules'),{recursive:true,filter:path=>{
+cpSync(modules,join(output,'node_modules'),{recursive:true,filter:path=>{
   const normalized=path.replaceAll('\\','/');
   return normalized!==normalizedModules+'/@saturn/core'&&!normalized.startsWith(normalizedModules+'/@saturn/core/');
 }});
-for(const name of ['package.json','bun.lock'])cpSync(join(root,name),join(app,name));
+for(const name of ['package.json','bun.lock'])cpSync(join(root,name),join(output,name));
 const projects=join(output,'projects');mkdirSync(projects,{recursive:true});
 const projectOut=join(projects,basename(project));cpSync(project,projectOut,{recursive:true,filter:path=>!path.split(/[\\/]/).some(part=>part==='.git'||part==='node_modules'||part==='.saturn')});
 writeFileSync(join(output,'README.txt'),[

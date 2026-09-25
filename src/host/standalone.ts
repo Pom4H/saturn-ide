@@ -8,6 +8,7 @@ function valueAfter(name:string,args:string[]){
   return index>=0?args[index+1]:undefined;
 }
 function packagedRoot(exeDir:string){
+  if(existsSync(join(exeDir,'package.json'))&&existsSync(join(exeDir,'src')))return exeDir;
   const app=join(exeDir,'app');
   return existsSync(join(app,'package.json'))?app:resolve(import.meta.dir,'../..');
 }
