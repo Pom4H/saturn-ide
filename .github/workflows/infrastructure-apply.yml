@@ -1,0 +1,110 @@
+name: Apply and verify infrastructure change
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/infrastructure-patch/**'
+      - '.github/workflows/infrastructure-apply.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: saturn-infrastructure-apply
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: saturn-ide
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-examples
+          ref: d2c965393176d8b620ef33f6d81b1b03a6a2ce80
+          path: saturn-examples
+          ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-plugins
+          ref: 109b23a2991d6a2e628e3fb92c5532fbd8e5a1d5
+          path: saturn-plugins
+          ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+      - name: Verify exact patch and preimages before applying
+        working-directory: saturn-ide
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync, writeFileSync, existsSync} from 'node:fs';
+          import {brotliDecompressSync} from 'node:zlib';
+          import {createHash} from 'node:crypto';
+          import {execFileSync} from 'node:child_process';
+          const encoded = [0,1,2,3].map(i => readFileSync(`.github/infrastructure-patch/${i}.b64`, 'utf8').trim()).join('');
+          const patch = brotliDecompressSync(Buffer.from(encoded, 'base64'));
+          const hash = createHash('sha256').update(patch).digest('hex');
+          if (hash !== 'e21b11f5f23d6dd57ef762d05d4313471a0de6b020c1b1f1be9a36fba859a221') throw Error('Patch integrity mismatch');
+          const text = patch.toString('utf8');
+          for (const block of text.split('diff --git ').slice(1)) {
+            const match = /^a\/(\S+) b\/(\S+)\n(?:new file mode \d+\n)?index ([a-f0-9]{40})\.\./.exec(block);
+            if (!match || match[1] !== match[2] || match[1].includes('..')) throw Error('Unexpected patch path');
+            const [,path,,old] = match;
+            if (/^0+$/.test(old)) { if (existsSync(path)) throw Error(`New path already exists: ${path}`); }
+            else if (execFileSync('git', ['hash-object', path], {encoding:'utf8'}).trim() !== old) throw Error(`Changed preimage: ${path}`);
+          }
+          writeFileSync('/tmp/infrastructure.patch', patch);
+          execFileSync('git', ['apply', '--unidiff-zero', '--check', '/tmp/infrastructure.patch'], {stdio:'inherit'});
+          execFileSync('git', ['apply', '--unidiff-zero', '/tmp/infrastructure.patch'], {stdio:'inherit'});
+          console.log('Applied verified patch', hash);
+          NODE
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-1.4.2-${{ hashFiles('saturn-ide/bun.lock', 'saturn-ide/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-1.4.2-
+      - run: bun install --frozen-lockfile
+        working-directory: saturn-ide
+      - name: Share the locked toolchain with external fixtures
+        run: |
+          mkdir -p saturn-ide/node_modules/@saturn
+          ln -s ../.. saturn-ide/node_modules/@saturn/core
+          ln -s ../saturn-ide/node_modules saturn-examples/node_modules
+          ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
+      - run: bun run check
+        working-directory: saturn-ide
+      - name: Unit, SQLite and protocol acceptance
+        working-directory: saturn-ide
+        run: timeout --kill-after=10s 180s bun test tests
+      - name: Real infrastructure browser acceptance
+        working-directory: saturn-ide
+        env:
+          CAPTURE_MS: '20000'
+        run: bun scripts/infrastructure-browser-test.ts
+      - name: Retain actual browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: infrastructure-browser
+          path: saturn-ide/artifacts/infrastructure/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Commit verified source and remove temporary transport
+        working-directory: saturn-ide
+        run: |
+          mkdir -p docs/screenshots
+          cp artifacts/infrastructure/performance-dark.png docs/screenshots/infrastructure-dark.png
+          cp artifacts/infrastructure/runtime-sources.png docs/screenshots/infrastructure-sources.png
+          cp artifacts/infrastructure/performance-mobile.png docs/screenshots/infrastructure-mobile.png
+          cp artifacts/infrastructure/verification.json docs/infrastructure-verification.json
+          git rm -r .github/infrastructure-patch .github/workflows/infrastructure-apply.yml
+          git add .github/workflows/ci.yml docs package.json src scripts/infrastructure-browser-test.ts tests
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: signal-native infrastructure monitoring and Task Manager-style performance UI'
+          git push origin HEAD:main
