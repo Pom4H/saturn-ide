@@ -1,0 +1,51 @@
+name: Authoring offline reproduction
+on:
+  push:
+    branches: [fix/foundation-shared-authoring]
+    paths: [.github/workflows/authoring-repro.yml]
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: saturn-ide
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-examples
+          ref: 7d7419f05c7e09cfeeaa109c9799b2f7f49b3b4e
+          path: saturn-examples
+          persist-credentials: false
+          ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-plugins
+          ref: d0716d560030de29eb59fce6ede2dea01db51e8b
+          path: saturn-plugins
+          persist-credentials: false
+          ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - run: bun install --frozen-lockfile
+        working-directory: saturn-ide
+      - name: Package tracked sources and installed tools, never credentials or Git configuration
+        run: |
+          mkdir -p repro/bin
+          for repo in saturn-ide saturn-examples saturn-plugins; do
+            mkdir -p "repro/$repo"
+            git -C "$repo" archive HEAD | tar -x -C "repro/$repo"
+          done
+          cp "$(command -v bun)" repro/bin/bun
+          tar --exclude='.git' --exclude='.npmrc' --exclude='.env*' -cf - -C saturn-ide node_modules | tar -xf - -C repro/saturn-ide
+          tar -czf authoring-repro.tar.gz -C repro .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: authoring-offline-repro
+          path: authoring-repro.tar.gz
+          retention-days: 1
+          compression-level: 0
