@@ -28,9 +28,24 @@ export class ShellSession {
   private update(next: Navigation) { this.navigation = next; for (const listener of this.listeners) listener(); }
   replaceCatalog(catalog: ResourceCatalog) {
     if (new Set(catalog.resources.map(r => r.uri)).size !== catalog.resources.length) throw new Error('Duplicate resource URI');
-    // A session never silently carries unsaved buffers into a different physical project.
-    if (this.catalog.project && this.catalog.project !== catalog.project) throw new Error('Create a new session to switch projects');
-    this.catalog = catalog; this.update({ ...this.navigation });
+    const previous=this.catalog,renamed=!!previous.project&&previous.project!==catalog.project;
+    const sameWorkspace=!!previous.workspace&&previous.workspace===catalog.workspace;
+    // Authored IDs can change during migration; physical workspace switches still require a new session.
+    if(previous.workspace&&catalog.workspace&&previous.workspace!==catalog.workspace||renamed&&!sameWorkspace)throw new Error('Create a new session to switch projects');
+    if(renamed){
+      const remap=(tab:ResourceTab):ResourceTab=>{
+        const old=previous.resources.find(r=>r.uri===tab.uri);
+        const next=tab.editor==='source'?catalog.resources.find(r=>r.source?.path===old?.source?.path&&availableEditors(r,this.host).includes('source'))
+          :old?.kind==='project'?catalog.resources.find(r=>r.uri===catalog.project)
+          :catalog.resources.find(r=>r.kind===old?.kind&&(old?.semanticId?r.semanticId===old.semanticId:r.entityId===old?.entityId));
+        // Missing resources remain explicit tabs; document buffers are never discarded here.
+        return next?{...tab,uri:next.uri,id:tab.editor==='source'?tab.id:`${tab.editor}:${next.uri}`}:tab;
+      };
+      const tabs=this.navigation.tabs.map(remap),activeIndex=this.navigation.tabs.findIndex(tab=>tab.id===this.navigation.active?.id);
+      this.catalog=catalog;this.update({...this.navigation,tabs,active:tabs[activeIndex]??null,
+        selected:catalog.resources.some(r=>r.kind==='device'&&r.entityId===this.navigation.selected)?this.navigation.selected:'',signal:'',
+        report:catalog.resources.some(r=>r.kind==='report'&&r.entityId===this.navigation.report)?this.navigation.report:''});
+    }else{this.catalog=catalog;this.update({...this.navigation});}
   }
   resource(uri: string): ProjectResource {
     const resource = this.catalog.resources.find(r => r.uri === uri);

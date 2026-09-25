@@ -12,7 +12,7 @@ const dir=mkdtempSync(join(appRoot,'.saturn','import-browser-')),projectDir=join
 cpSync(source,projectDir,{recursive:true});
 const app=await createApp({projectDir,dataDir:join(dir,'data'),databaseUrl:':memory:',port:0});
 const browser=await chromium.launch({headless:true,channel:process.env.CI?'chrome':undefined,args:['--no-sandbox','--enable-unsafe-swiftshader']});
-const page=await browser.newPage({viewport:{width:1280,height:900}}),errors:string[]=[];
+const page=await browser.newPage({viewport:{width:1280,height:900},recordVideo:{dir:'artifacts/importer-video'}}),errors:string[]=[];
 page.on('pageerror',error=>errors.push(error.message));
 try{
   await page.goto(app.server.url.toString());
@@ -35,6 +35,9 @@ try{
     await Bun.sleep(50);
   }
   assert(state,'state unavailable after import');
+  await page.getByText(/Миграция применена к исходникам проекта/).waitFor({timeout:15000});
+  assert.equal(await page.locator('.shell-alert').count(),0,'Catalog refresh must accept an authored ID change in the same workspace');
+  await page.screenshot({path:'artifacts/importer-applied.png'});
   assert.equal(state.problems.length,0,JSON.stringify(state.problems));
   assert.notEqual(state.project.id,'scada-import','imported project never became the checked project');
   assert.equal(state.project.hmis?.length,1);
@@ -45,6 +48,11 @@ try{
   assert.match(await page.locator('[data-presentation="obj1"]').textContent()??'',/T=—/);
   assert.deepEqual(errors,[]);
   console.log('PASS: external project-owned LanMon importer previews, applies authored Saturn source, validates and renders the generated HMI.');
+}catch(error){
+  await page.screenshot({path:'artifacts/importer-failure.png'}).catch(()=>{});
+  console.error('Importer UI:',await page.locator('.scada-import').innerText().catch(()=>'(unmounted)'));
+  console.error('Shell errors:',await page.locator('.shell-alert').allTextContents());
+  throw error;
 }finally{
   await browser.close();
   await app.close();

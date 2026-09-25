@@ -55,3 +55,12 @@ jobs:
       - name: Vendor importer browser acceptance
         run: bun scripts/importer-browser-test.ts
         working-directory: saturn-ide
+      - name: Keep browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: importer-browser-failure
+          path: |
+            saturn-ide/artifacts/importer-failure.png
+            saturn-ide/artifacts/importer-video/
+          if-no-files-found: ignore

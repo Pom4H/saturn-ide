@@ -131,7 +131,7 @@ export async function createApp(options: { assistant?:AssistantService; projectD
           if(path==='/api/assistant')return json(options.assistant?await options.assistant.status():{available:false,notes:false,recipients:[],detail:'Подключите сервер ассистента в настройках host. Разбор файлов Lanmon доступен локально.'});
           if (path === '/api/state') return json(state());
           if (path === '/api/events') return events.response(request, state());
-          if (path === '/api/resources') return json(indexResources(workspace, authoringProject(), draft?.artifact.hash ?? manager.applied ?? ''));
+          if (path === '/api/resources') return json({...indexResources(workspace, authoringProject(), draft?.artifact.hash ?? manager.applied ?? ''),workspace:hash(workspace.root)});
           if (path === '/api/documentation') { const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ru'; return new Response(projectDocumentation(authoringProject(),{locale}), { headers:{'Content-Type':'text/markdown; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'} }); }
           if (path === '/api/semantic') return json(semanticGraph(authoringProject()).nodes);
           if (path === '/api/semantic/diff') return json(draft ? semanticDiff(runtime.project,draft.project) : []);

@@ -18,6 +18,8 @@ export interface ProjectResource {
   related: readonly string[];
 }
 export interface ResourceCatalog {
+  /** Host identity of the physical workspace; independent of the authored project ID. */
+  workspace?: string;
   project: string;
   /** Identity of the model indexed, not the revision of its working source files. */
   revision: string;

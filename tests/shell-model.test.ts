@@ -126,3 +126,20 @@ test('SSE survives byte/chunk boundaries, unicode, CRLF, comments and multiline 
   for (const byte of bytes) parser.feed(Uint8Array.of(byte));
   assert.equal(events.length, 2); assert.equal(JSON.parse(events[0]!.text).name, 'Насос 🪐'); assert.equal(events[1]?.type, 'telemetry');
 });
+
+test('same-workspace authored identity changes remap tabs and preserve drafts in both hosts',async()=>{
+  for(const host of ['browser','terminal'] as const){
+    const session=new ShellSession(host,port()),root:ProjectResource={uri:catalog.project,kind:'project',name,icon:'project',source:{path:'project.ts'},editors:['diagram','source'],related:[]};
+    session.replaceCatalog({...catalog,workspace:'workspace-a',resources:[root,resource]});
+    await session.execute({type:'open',uri:resource.uri,editor:'diagram'});await session.execute({type:'open',uri:resource.uri,editor:'source'});
+    session.documents.edit(resource.source!.path,'unsaved engineering change');
+    const nextRoot={...root,uri:resourceUri('imported','project','imported')},nextDevice={...resource,uri:resourceUri('imported','device','P-01')};
+    const next={...catalog,workspace:'workspace-a',project:nextRoot.uri,resources:[nextRoot,nextDevice]};session.replaceCatalog(next);
+    assert.equal(session.getSnapshot().tabs[0]?.uri,nextRoot.uri);assert.equal(session.getSnapshot().active?.uri,nextDevice.uri);
+    assert.equal(session.documents.getSnapshot().get(resource.source!.path)?.draft,'unsaved engineering change');
+    await assert.rejects(()=>session.execute({type:'close',uri:nextDevice.uri,editor:'source'}),/Save or discard/);
+    assert.throws(()=>session.replaceCatalog({...next,workspace:'workspace-b'}),/new session/);
+    assert.throws(()=>session.replaceCatalog({...next,project:'other',workspace:undefined}),/new session/);
+    assert.equal(session.getCatalog().workspace,'workspace-a');
+  }
+});
