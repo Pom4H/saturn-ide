@@ -25,20 +25,11 @@
       "@saturn/example": [
         "../saturn-examples/pumping-station/project.ts"
       ],
-      "@saturn/plc500": [
-        "../saturn-plugins/saturn-plc500/index.ts"
-      ],
-      "@saturn/plc500/*": [
-        "../saturn-plugins/saturn-plc500/*"
-      ],
       "@saturn/scada/acquisition": [
         "./src/runtime/acquisition.ts"
       ],
       "@saturn/protocols/*": [
         "../saturn-plugins/protocols/*"
-      ],
-      "@saturn/importers/*": [
-        "../saturn-plugins/importers/*"
       ]
     }
   },

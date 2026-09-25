@@ -1,62 +1,33 @@
-# Refactor verification — 2026-09-24
+# Refactor verification
 
-Basis: PR #2 at `8102363f082523724f0d739c16b04ee0ae41f45d`.
-The CLI could not resolve github.com in the execution environment. Source was read
-through the authorized GitHub API; copied originals were verified against Git blob
-SHA values. This was not a successful CLI git pull.
+This note covers the architecture cleanup that separated editing state, project source-kit
+replacement and format-specific importers from universal core.
 
-## Ownership and preserved contracts
+## Layout editing
 
-`LayoutEditing` owns the active gesture, derived numeric ranges, previews and the
-per-file drain of completed gestures. `Documents` remains the only editable source
-buffer and owns versioned writes. `useLayoutEditing` binds the operation to React;
-Workbench keeps composition/navigation, not a second drag state machine.
-No new Project/Signal/Topology model, dependency, package or plugin lifecycle was added.
-The existing Scene/SVG/3D/CSS implementations and Workbench JSX were not changed.
+Diagram gestures are coordinated by a headless `LayoutEditing` operation. Documents remain the
+single editable source buffer. Regression tests cover consecutive gestures, delayed saves,
+cancellation, stale telemetry, independent files and preservation of unrelated manual edits.
 
-A completed drag cannot auto-save later manual keystrokes. Active gestures are not
-drained halfway through. Each file owns its own remapped ranges, and a stale runtime
-snapshot cannot retire a newer preview. Cancellation restores the preceding draft.
+## Source-kit replacement
 
-ProjectPlugins keeps temporary acquisition within its lock cleanup scope. Partial
-stage copies are cleaned up, stage replacement failure restores the old directory,
-and local modifications are checked again immediately before replacement. Git remains
-the default command runner; the optional existing-runner-shaped argument permits
-network-independent tests with actual local Git. Source hash metadata remains compatible.
+`ProjectPlugins` performs staged replacement with provenance, source hashing and compare-and-swap
+checks. Temporary-directory and checkout failures release the operation lock; staged files are
+removed; a previous installed copy is restored if replacement fails. Local edits prevent update.
 
-Lanmon recognition belongs to `shell/importers/lanmon.ts`, not universal core.
-The generic inventory contracts stay in core and the public `saturn-ide/lanmon`
-export is retained. Supported extensions, warnings, extraction bounds and exclusion
-of credentials/script bodies are preserved. Classification is a data table.
+No extension is activated by listing or installing its source.
 
-## Executed locally
+## Importer boundary
 
-Linux x64, Node 22.16.0, TypeScript 5.8.3:
-- 20 regression tests passed: 11 gesture/document cases, 6 plugin cases using actual
-  local Git repositories, 3 Lanmon inventory cases.
-- These exact new test bodies were transpiled to CommonJS; only `bun:test` test
-  registration was replaced with `node:test`. Assertions and production code were
-  unchanged. This is not a native Bun test run.
-- Two additional Node fault-injection checks passed: partial cpSync failure and
-  stage renameSync failure. Both preserved the old source, removed staging leftovers
-  and allowed the next installation. Fault injection used the transpiled modules.
-- Strict TypeScript + noUncheckedIndexedAccess passed for the headless gesture model,
-  its actual Documents/source-edit dependencies and the Lanmon adapter/contracts.
-- TS/TSX syntax transpilation passed for the locally retrieved/modified modules.
-- Workbench JSX is byte-identical to the base. This is a source comparison, not a
-  new visual/browser acceptance result.
+Format recognition and parsing do not belong to core. Core exposes only generic import source,
+diagnostic and `ScadaImporter` contracts. Format-specific parsers, compatibility rules and
+acceptance evidence live in source kits outside this repository.
 
-The full repository's dual TypeScript/Bun/protocol/browser suite was not run locally:
-Bun, the external fixture checkouts and the complete dependency installation were not
-available. A green local subset is not evidence of full integration or visual parity.
+Generic tests cover bounded archive reading, traversal rejection, stable logical fingerprints,
+namespace-confined generated files and project-version fencing.
 
-## Measured scope
+## Complexity
 
-Workbench: 341 → 298 physical lines. This does not claim the whole system got smaller.
-Using the same local per-function AST proxy as the preceding audit (not SonarQube):
-- ProjectPlugins maximum function: 17 → 13; total: 44 → 46 with added safety checks.
-- Lanmon maximum function: 18 → 2; total: 20 → 3.
-- New headless LayoutEditing maximum function: 8; total: 28.
-
-Physical LOC intentionally increases in the formatted plugin module and regression
-tests. A lower line count is not used as a substitute for simpler ownership or behavior.
+The refactor intentionally favors explicit ownership and failure behavior over minimizing physical
+line count. Complexity measurements are useful only as local signals; correctness is established by
+typed boundaries and regression tests.

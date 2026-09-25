@@ -55,7 +55,7 @@ jobs:
       - name: Install browser recording dependency
         run: bunx playwright install ffmpeg
         working-directory: saturn-ide
-      - name: Vendor importer browser acceptance
+      - name: Importer browser acceptance
         run: bun scripts/importer-browser-test.ts
         working-directory: saturn-ide
       - name: Keep browser failure evidence

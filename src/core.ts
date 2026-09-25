@@ -112,8 +112,8 @@ export function terminal<const M extends Medium,const F extends string,const R e
 ):Terminal<M,F,R> { return {...point,max:point.max??1}; }
 
 export interface VisualAnchor {readonly x:number;readonly y:number;readonly side:'top'|'bottom'|'left'|'right'}
-/** @ru Преобразует координату из vendor SVG в канонический Terminal, сохраняя literal-типы среды/семейства/роли.
- * @en Maps a vendor SVG anchor to a canonical Terminal while preserving literal medium/family/role types. */
+/** @ru Преобразует координату из SVG оборудования в канонический Terminal, сохраняя literal-типы среды/семейства/роли.
+ * @en Maps an equipment SVG anchor to a canonical Terminal while preserving literal medium/family/role types. */
 export function terminalFromAnchor<const M extends Medium,const F extends string,const R extends Role>(
   anchor:VisualAnchor|undefined,
   spec:{z:number;medium:M;family:F;role:R;max?:number;interfaceId?:CompatibleInterfaceId<NoInfer<M>,NoInfer<F>>;unit?:string;valueType?:'number'|'boolean'|'string'},
@@ -147,8 +147,8 @@ type Merge<A,B> = Omit<A,keyof B>&B;
 type DeviceSignalOptions<S extends Readonly<Record<string,SignalSpec>>> = { readonly [K in keyof S]?: S[K] extends SignalSpec<infer T> ? Signal<T,string,boolean>|SignalSpec<T,boolean> : never };
 export type Equipment<K extends string=string,I extends string=string,O extends Position=Position,P extends Readonly<Record<string,Terminal>>=Readonly<Record<string,Terminal>>> = Materialized<O,I>&Position&{readonly id:I;readonly kind:K;readonly icon:string;readonly ports:DevicePorts<P,I>;readonly capabilities:DeviceCapabilities;readonly knowledge:DeviceKnowledge;readonly alarms:readonly Alarm[]};
 export interface DeviceDefinition<K extends string,P extends Readonly<Record<string,Terminal>>,S extends Readonly<Record<string,SignalSpec>>=Record<never,never>> {readonly id:K;readonly icon:string;readonly ports:P;readonly signals?:S;readonly capabilities?:DeviceCapabilities;readonly knowledge?:DeviceKnowledge;readonly alarms?:DeviceAlarmTemplates<S>}
-/** @ru Единственный конструктор класса оборудования. Наше и vendor-оборудование используют один путь.
- * @en The only equipment-class constructor. Built-in and vendor equipment use the same path. */
+/** @ru Единственный конструктор класса оборудования. Встроенные и проектные определения используют один путь.
+ * @en The only equipment-class constructor. Built-in and project-owned equipment use the same path. */
 export function device<const K extends string,const P extends Readonly<Record<string,Terminal>>,const S extends Readonly<Record<string,SignalSpec>>=Record<never,never>>(definition:DeviceDefinition<K,P,S>) {
   return function<const I extends string,const O extends Position&DeviceSignalOptions<S>>(id:I,options:O):Equipment<K,I,Merge<S,O>,P> {
     const ports=Object.fromEntries(Object.entries(definition.ports).map(([port,terminal])=>[port,{device:id,port,terminal}])) as DevicePorts<P,I>;
@@ -181,9 +181,9 @@ export const pump=device({id:'pump',icon:'pump',ports:pumpPorts,signals:{rpm:sig
 /** @ru Клапан с измеряемым/управляемым положением открытия.
  * @en Valve with measured/commanded opening. */
 export const valve=device({id:'valve',icon:'valve',ports:valvePorts,signals:{opening:signal({initial:0,writable:true})},capabilities:{diagram:{width:160,height:164}},knowledge:{summary:{ru:'Клапан с управляемым положением открытия.',en:'Valve with commanded opening position.'}}});
-/** @ru Базовый ПЛК без vendor-specific toolchain.
- * @en Generic PLC without a vendor-specific toolchain. */
-export const plc=device({id:'plc',icon:'plc',ports:plcPorts,signals:{online:signal({initial:false})},capabilities:{diagram:{width:160,height:150}},knowledge:{summary:{ru:'Базовый ПЛК без vendor-specific toolchain.',en:'Generic PLC without a vendor-specific toolchain.'}}});
+/** @ru Базовый ПЛК без привязки к конкретному toolchain.
+ * @en Generic PLC without a device-specific toolchain. */
+export const plc=device({id:'plc',icon:'plc',ports:plcPorts,signals:{online:signal({initial:false})},capabilities:{diagram:{width:160,height:150}},knowledge:{summary:{ru:'Базовый ПЛК без привязки к конкретному toolchain.',en:'Generic PLC without a device-specific toolchain.'}}});
 interface Connection { id:string; from:Endpoint; to:Endpoint; via?:readonly {x:number;y:number}[] }
 export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number> }
 export interface Cable extends Connection { kind:'cable'; signal?:Signal; unplugged?:'from'|'to'; looseEnd?:Point }

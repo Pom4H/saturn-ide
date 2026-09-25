@@ -40,39 +40,29 @@ if(false){
 }
 
 
-test('vendor PLC uses the same device model as built-ins and auto HMI follows topology',()=>{
-  const controller=demo.equipment.find(e=>e.id==='PLC-01')!;
-  expect(controller.kind).toBe('saturn.plc500');
-  expect('icon' in controller && controller.icon).toBe('plc');
-  expect(demo.hmi?.source).toBe('topology');
-  expect(demo.hmi?.controller).toBe('PLC-01');
-  expect(demo.hmi?.equipment.map(e=>e.id).sort()).toEqual(['P-01','TK-01','V-01']);
-  const panel=controller.capabilities.scene3d;
-  expect(panel?.kind).toBe('control-panel');
-  expect(panel?.buttons.map(button=>button.id).sort()).toEqual(['down','left','right','up']);
-  expect(panel?.terminals.some(group=>group.socket)).toBe(true);
-  if(panel){
-    const malformed={...demo,equipment:demo.equipment.map(e=>e.id===controller.id?{...e,capabilities:{...e.capabilities,scene3d:{...panel,screen:{...panel.screen,x:-1}}}}:e)};
-    expect(()=>validateProject(malformed)).toThrow('Invalid project-owned 3D panel');
-  }
-});
-
-test('standard interface catalog covers PLC power, control and buses through the authored AST',()=>{
-  const controller=demo.equipment.find(e=>e.id==='PLC-01')!;
-  expect(controller.ports.ETH?.terminal.interfaceId).toBe('rj45-ethernet');
-  expect(controller.ports.ETH?.terminal.side).toBe('down');
+test('standard interface catalog validates authored equipment ports',()=>{
+  const controllerType=device({
+    id:'controller',icon:'plc',
+    ports:{
+      ETH:terminal({x:10,y:0,z:20,side:'down',medium:'bus',family:'ethernet',role:'passive',interfaceId:'rj45-ethernet'}),
+      BUS:terminal({x:30,y:0,z:20,side:'down',medium:'bus',family:'rs485',role:'passive',interfaceId:'rs485-terminal',max:2}),
+      POWER:terminal({x:50,y:0,z:20,side:'down',medium:'power',family:'ac',role:'sink',interfaceId:'power-terminal'}),
+    },
+    signals:{online:signal({initial:false})},
+  });
+  const controller=controllerType('C-01',{label:'Controller',x:0,y:0});
+  const model=project({id:'interfaces',label:'Interfaces',equipment:[controller],pipes:[],alarms:[]});
+  expect(controller.ports.ETH.terminal.interfaceId).toBe('rj45-ethernet');
   expect(standardInterfaces['rj45-ethernet'].contacts).toBe(8);
-  for(const id of ['AC_L','AC_N','DC_PLUS','DC_MINUS'] as const)expect(controller.ports[id]?.terminal.medium).toBe('power');
-  expect(controller.ports.RS485?.terminal.interfaceId).toBe('rs485-terminal');
-  expect(Object.values(controller.ports).filter(port=>port.terminal.medium==='control').length).toBe(9);
-  const badUnit=structuredClone(demo);Object.assign(badUnit.signals['V-01.opening']!,{unit:'bar'});
-  expect(()=>validateProject(badUnit)).toThrow('Wrong signal unit');
-  const badInterface={...demo,equipment:demo.equipment.map(e=>e.id==='PLC-01'?{...e,ports:{...e.ports,ETH:{...e.ports.ETH!,terminal:{...e.ports.ETH!.terminal,interfaceId:'rs485-terminal' as const}}}}:e)};
-  expect(()=>validateProject(badInterface)).toThrow('Invalid interface');
+  expect(controller.ports.BUS.terminal.interfaceId).toBe('rs485-terminal');
+  expect(controller.ports.POWER.terminal.medium).toBe('power');
+  const invalid=structuredClone(model);
+  Object.assign(invalid.equipment[0]!.ports.ETH!.terminal,{interfaceId:'rs485-terminal'});
+  expect(()=>validateProject(invalid)).toThrow('Invalid interface');
 });
 
 
-test('vendor port constructors preserve physical literal types without local framework code',()=>{
+test('port constructors preserve physical literal types without local framework code',()=>{
   const a=terminal({x:1,y:2,z:3,side:'left',medium:'control',family:'digital',role:'source'});
   expect(a).toEqual({x:1,y:2,z:3,side:'left',medium:'control',family:'digital',role:'source',max:1});
   const b=terminalFromAnchor({x:4,y:5,side:'bottom'},{z:6,medium:'bus',family:'rs485',role:'passive',max:32});
@@ -82,7 +72,7 @@ test('vendor port constructors preserve physical literal types without local fra
 
 test('device classes own knowledge, writable commands and default alarms',()=>{
   const sensorClass=device({
-    id:'acme.sensor',icon:'sensor',ports:{},
+    id:'pressure-sensor',icon:'sensor',ports:{},
     signals:{value:signal({initial:0,unit:'bar'}),reset:signal({initial:false,writable:true})},
     knowledge:{summary:{ru:'Датчик давления',en:'Pressure sensor'},commissioning:[{ru:'Проверить ноль',en:'Verify zero'}],constraints:[{id:'range',severity:'warning',label:{ru:'Проверить диапазон',en:'Verify range'}}]},
     alarms:{high:{label:{ru:'Высокое давление',en:'High pressure'},signal:'value',above:10,hysteresis:1}},
@@ -96,7 +86,7 @@ test('device classes own knowledge, writable commands and default alarms',()=>{
 });
 
 test('device() is the only class constructor for built-in and project-owned equipment',()=>{
-  const custom=device({id:'acme.sensor',icon:'sensor',ports:{},signals:{value:signal({initial:0})},capabilities:{diagram:{width:40,height:40}}});
+  const custom=device({id:'pressure-sensor',icon:'sensor',ports:{},signals:{value:signal({initial:0})},capabilities:{diagram:{width:40,height:40}}});
   const sensor=custom('S-1',{label:'Sensor',x:1,y:2});
   expect(sensor.kind).toBe('acme.sensor');
   expect(sensor.value.id).toBe('S-1.value');

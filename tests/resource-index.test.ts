@@ -58,6 +58,6 @@ test('human tag rename keeps the same semantic resource URI', () => {
 
 
 test('device source discovery is structural and independent of factory name',()=>{
-  const catalog=indexResources(workspace({'equipment/custom.ts':'vendorMotor("P-01",{label:"M",x:1,y:2});'}),project,'r');
+  const catalog=indexResources(workspace({'equipment/custom.ts':'customMotor("P-01",{label:"M",x:1,y:2});'}),project,'r');
   assert.equal(catalog.resources.find(r=>r.entityId==='P-01')?.source?.path,'equipment/custom.ts');
 });

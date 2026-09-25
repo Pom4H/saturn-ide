@@ -36,7 +36,7 @@ export function violations(sources) {
       ts.forEachChild(node, visit);
     };
     visit(tree);
-    for(const forbidden of ['deviceClass','BuiltinEquipment','VendorEquipment','isVendorEquipment','classId']) if(source.includes(forbidden)) errors.push(`${file}: obsolete equipment split token ${forbidden}`);
+    for(const forbidden of ['deviceClass','BuiltinEquipment','SpecializedEquipment','isSpecializedEquipment','classId']) if(source.includes(forbidden)) errors.push(`${file}: obsolete equipment split token ${forbidden}`);
   }
   return errors;
 }

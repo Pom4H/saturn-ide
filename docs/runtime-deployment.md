@@ -76,8 +76,6 @@ multiple independent runtime data directories or operate two live owners.
 A normal restart restores the applied artifact without reading authored source.
 Physical side effects cannot be reversed by restoring a configuration.
 
-Vercel owns the SaaS UI, GitHub integration and durable release orchestration.
+Cloud/integration infrastructure owns remote UI, repository integration and durable release orchestration.
 Continuous Modbus/MQTT/OPC UA acquisition needs this persistent runtime with
-network access to the object. A CI result and SCADA release are not a PLC500
-firmware image. Physical flashing still requires the vendor compiler, a verified
-memory/register map, transport and hardware acceptance.
+network access to the object. A CI result and runtime release are not a controller firmware image. Physical flashing still requires the target toolchain, a verified memory/register map, transport and hardware acceptance.

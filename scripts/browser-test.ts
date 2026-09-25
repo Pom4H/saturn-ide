@@ -27,16 +27,6 @@ try{
   const activityNav=page.getByRole('tree',{name:'Структура проекта'});
   const captureSurface=async(name:string,file:string,ready?:()=>Promise<void>)=>{await activityNav.getByRole('treeitem',{name:name==='Исходник'?'P-01.device.ts':name,exact:true}).click();if(ready)await ready();await screenshot(page,`artifacts/${file}`);};
   await screenshot(page,'artifacts/menu-diagram.png');
-  const plcHmi=page.locator('[data-hmi-equipment="PLC-01"]');
-  await until(async()=>await plcHmi.getAttribute('data-screen-source')==='firmverse-wasm-rgb565','2D PLC screen did not receive Firmverse pixels');
-  assert(await plcHmi.locator('canvas').evaluate(canvas=>{
-    if(!(canvas instanceof HTMLCanvasElement))return false;
-    const context=canvas.getContext('2d');if(!context)return false;
-    const pixels=context.getImageData(0,0,canvas.width,canvas.height).data;
-    return new Set(Array.from({length:pixels.length/4},(_,i)=>`${pixels[i*4]},${pixels[i*4+1]},${pixels[i*4+2]}`)).size>4;
-  }),'2D PLC screen is blank');
-  for(const [key,expected] of [['right','1'],['down','2'],['left','1'],['up','0']] as const){await plcHmi.locator(`[data-hmi-button="${key}"]`).click();assert(await plcHmi.getAttribute('data-screen-page')===expected,`2D PLC ${key} button did not change the HMI page`);}
-  await screenshot(page,'artifacts/ide-2d-wasm.png');checks.push('2D PLC screen uses Firmverse RGB565 pixels and all four navigation keys');
   await captureSurface('Исходник','menu-source.png',async()=>{await page.locator('.cm-content').waitFor();await page.locator('.cm-live-value').filter({hasText:/1[ ,\u00a0\u202f]?450 rpm/}).first().waitFor({timeout:15000});});checks.push('source editor renders live runtime values as virtual comments');
   await captureSurface('Сигналы','menu-signals.png');
   await captureSurface('Отчёты','menu-reports.png');
@@ -76,7 +66,7 @@ try{
   await nav.getByRole('treeitem',{name:'Сигналы',exact:true}).click();await page.getByRole('button',{name:'P-01.pressure',exact:true}).click();await page.locator('.trend [data-series]').waitFor();
   await nav.getByRole('treeitem',{name:'Git',exact:true}).click();await page.getByRole('textbox',{name:'Описание коммита'}).fill('Move pump in Shell');await page.getByRole('button',{name:'Коммит',exact:true}).click();await until(async()=>!(await execute(['git','status','--porcelain'],fixtureProject.root)).trim(),'Git commit failed');checks.push('shared Shell navigation, archive chart and real Git commit');
   await page.keyboard.press('Control+k');await page.getByRole('textbox',{name:'Поиск',exact:true}).fill('P-01');await page.keyboard.press('Enter');await page.locator('[data-equipment="P-01"]').waitFor();checks.push('command palette finds equipment and opens its surface');
-  await page.getByRole('button',{name:'3D',exact:true}).click();await until(async()=>Number(await page.locator('.scene3d').getAttribute('data-frames'))>3,'3D renderer did not produce frames');assert(await page.locator('.scene3d').getAttribute('data-invalid-routes')==='0','3D graph differs from 2D');assert(Number(await page.locator('.scene3d').getAttribute('data-pipe-bends'))>0,'3D pipe elbows are missing');await until(async()=>Number(await page.locator('.scene3d').getAttribute('data-screen-updates'))>0,'3D controller display did not update');await screenshot(page,'artifacts/ide-3d.png');checks.push('real WebGL 3D shares routes, rounds pipe bends and updates the controller display');
+  await page.getByRole('button',{name:'3D',exact:true}).click();await until(async()=>Number(await page.locator('.scene3d').getAttribute('data-frames'))>3,'3D renderer did not produce frames');assert(await page.locator('.scene3d').getAttribute('data-invalid-routes')==='0','3D graph differs from 2D');assert(Number(await page.locator('.scene3d').getAttribute('data-pipe-bends'))>0,'3D pipe elbows are missing');await screenshot(page,'artifacts/ide-3d.png');checks.push('real WebGL 3D shares routes and rounds pipe bends');
   await page.getByRole('button',{name:'2D',exact:true}).click();await page.emulateMedia({colorScheme:'light',reducedMotion:'reduce'});await screenshot(page,'artifacts/ide-light.png');await page.emulateMedia({colorScheme:'dark'});await screenshot(page,'artifacts/ide-dark.png');
   await page.setViewportSize({width:1024,height:768});await screenshot(page,'artifacts/ide-ipad.png');
   await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'mobile horizontal overflow');await screenshot(page,'artifacts/ide-mobile.png');

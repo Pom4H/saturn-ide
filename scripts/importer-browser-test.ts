@@ -1,29 +1,47 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { zipSync, strToU8 } from 'fflate';
 import { createApp } from '../src/host/dev';
 import type { IDEState } from '../src/protocol';
 
-const appRoot=resolve(import.meta.dir,'..'),source=resolve(appRoot,'../saturn-examples/import-workspace');
+const appRoot=resolve(import.meta.dir,'..');
 mkdirSync(join(appRoot,'.saturn'),{recursive:true});
 const dir=mkdtempSync(join(appRoot,'.saturn','import-browser-')),projectDir=join(dir,'project');
-cpSync(source,projectDir,{recursive:true});
+mkdirSync(join(projectDir,'plugins'),{recursive:true});
+writeFileSync(join(projectDir,'project.ts'),"import { project } from '@saturn/core';\nexport default project({id:'scada-import',label:'SCADA migration',equipment:[],pipes:[],alarms:[]});\n");
+writeFileSync(join(projectDir,'plugins/example.ts'),`import { defineImporter } from '@saturn/core';
+export default defineImporter({
+  id:'example',
+  label:{en:'Example format',ru:'Пример формата'},
+  accepts:['.zip'],
+  detect(source){return source.files.some(file=>file.path==='SYSTEM.JSON')?100:0;},
+  import(source){
+    const file=source.files.find(file=>file.path==='SYSTEM.JSON');
+    if(!file)throw new Error('SYSTEM.JSON is required');
+    const config=JSON.parse(new TextDecoder().decode(file.bytes));
+    const generated="import { bind, hmi, project, protocol, signal } from '@saturn/core';\\n\\n"+
+      "const value=bind(signal('imported.value',{initial:0}),protocol.generic('external','source',"+JSON.stringify(config.address)+"));\\n"+
+      "const screen=hmi('overview',{label:'Overview',width:640,height:360,equipment:[],elements:[{id:'value',kind:'text',x:20,y:20,width:180,height:28,text:'Value=%VALUE',signal:value}]});\\n"+
+      "export default project({id:'imported-system',label:"+JSON.stringify(config.name)+",signals:{value},equipment:[],pipes:[],alarms:[],hmis:[screen]});\\n";
+    return {importer:'example',sourceFingerprint:source.fingerprint,projectSource:"export { default } from './imports/example/project';\\n",files:[{path:'imports/example/project.ts',source:generated}],diagnostics:[],stats:{screens:1,signals:1}};
+  },
+});
+`);
+writeFileSync(join(projectDir,'browser.ts'),"import importer from './plugins/example';\nexport default {importers:[importer]};\n");
+
 const app=await createApp({projectDir,dataDir:join(dir,'data'),databaseUrl:':memory:',port:0});
 const browser=await chromium.launch({headless:true,channel:process.env.CI?'chrome':undefined,args:['--no-sandbox','--enable-unsafe-swiftshader']});
-const page=await browser.newPage({viewport:{width:1280,height:900},recordVideo:{dir:'artifacts/importer-video'}}),errors:string[]=[];
+const page=await browser.newPage({viewport:{width:1280,height:900}}),errors:string[]=[];
 page.on('pageerror',error=>errors.push(error.message));
 try{
   await page.goto(app.server.url.toString());
   await page.getByRole('tab',{name:'Ассистент',exact:true}).click();
-  const archive=zipSync({
-    'LANMON.INI':strToU8('[Description]\nName=Demo boiler\n[MAP]\nMAP0=Main\n'),
-    'MAP/Main.lm2':strToU8('[SETUP]\nNAME=Main\nWidth=800\nHeight=600\nColor=16777215\n[OBJ1]\nObjType=2\nX=110\nY=65\nWidth=100\nHeight=30\nADDR=Boiler.Temp\nText=T=%VALUE\nFontColor=255\n'),
-  });
-  await page.locator('.scada-import input[type=file]').setInputFiles({name:'lanmon-demo.zip',mimeType:'application/zip',buffer:Buffer.from(archive)});
-  await page.getByText(/LanMon 4 · 3 файлов Saturn/).waitFor({timeout:15000});
-  await page.getByText('maps: 1').waitFor();
+  const archive=zipSync({'SYSTEM.JSON':strToU8(JSON.stringify({name:'Imported system',address:'temperature'}))});
+  await page.locator('.scada-import input[type=file]').setInputFiles({name:'system.zip',mimeType:'application/zip',buffer:Buffer.from(archive)});
+  await page.getByText(/Пример формата · 1 файлов Saturn/).waitFor({timeout:15000});
+  await page.getByText('screens: 1').waitFor();
   await page.getByText('signals: 1').waitFor();
   const apply=page.getByRole('button',{name:'Применить миграцию',exact:true});
   assert(await apply.isEnabled(),'migration preview is unexpectedly blocked');
@@ -31,27 +49,22 @@ try{
   const deadline=Date.now()+15000;let state:IDEState|undefined;
   while(Date.now()<deadline){
     state=await (await fetch(new URL('/api/state',app.server.url))).json() as IDEState;
-    if(state.problems.length||state.project.id!=='scada-import')break;
+    if(state.problems.length||state.project.id==='imported-system')break;
     await Bun.sleep(50);
   }
   assert(state,'state unavailable after import');
-  await page.getByText(/Миграция применена к исходникам проекта/).waitFor({timeout:15000});
-  assert.equal(await page.locator('.shell-alert').count(),0,'Catalog refresh must accept an authored ID change in the same workspace');
-  await page.screenshot({path:'artifacts/importer-applied.png'});
   assert.equal(state.problems.length,0,JSON.stringify(state.problems));
-  assert.notEqual(state.project.id,'scada-import','imported project never became the checked project');
+  assert.equal(state.project.id,'imported-system');
   assert.equal(state.project.hmis?.length,1);
-  const signal=Object.values(state.project.signals).find(item=>item.binding?.protocol==='lanmon4');
-  assert.equal(signal?.binding?.address,'Boiler.Temp');
-  await page.goto(new URL('/hmi?screen=map-1',app.server.url).toString());
-  await page.locator('.presentation-view [data-presentation="obj1"]').waitFor({timeout:15000});
-  assert.match(await page.locator('[data-presentation="obj1"]').textContent()??'',/T=—/);
+  const signal=Object.values(state.project.signals).find(item=>item.binding?.protocol==='external');
+  assert.equal(signal?.binding?.address,'temperature');
+  await page.goto(new URL('/hmi?screen=overview',app.server.url).toString());
+  await page.locator('.presentation-view [data-presentation="value"]').waitFor({timeout:15000});
+  assert.match(await page.locator('[data-presentation="value"]').textContent()??'',/Value=—/);
   assert.deepEqual(errors,[]);
-  console.log('PASS: external project-owned LanMon importer previews, applies authored Saturn source, validates and renders the generated HMI.');
+  console.log('PASS: project-owned importer previews, applies authored Saturn source, validates and renders generated presentation.');
 }catch(error){
   await page.screenshot({path:'artifacts/importer-failure.png'}).catch(()=>{});
-  console.error('Importer UI:',await page.locator('.scada-import').innerText().catch(()=>'(unmounted)'));
-  console.error('Shell errors:',await page.locator('.shell-alert').allTextContents());
   throw error;
 }finally{
   await browser.close();

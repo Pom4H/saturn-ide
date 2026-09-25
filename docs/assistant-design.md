@@ -1,74 +1,37 @@
-# Ассистент инженера и оператора
+# Assistant design
 
-## Место в shell
+The Assistant is a Shell surface over the same project context as the rest of Saturn. It is not a
+second project model and it does not receive runtime command authority.
 
-Одна вкладка «Ассистент» в общей изменяемой по размеру нижней панели, рядом с
-графиками, терминалом и уведомлениями. Выбранные устройства явно видны в контексте.
-Переход к исходнику/схеме и режиму оператора не сбрасывает диалог. Скрытие панели
-не отменяет работу. «Остановить ожидание» прекращает HTTP ожидание и предупреждает,
-что серверное действие могло завершиться. Новый диалог очищает историю только явно.
+## Context
 
-В облаке используется тот же компонент с адаптером API и текущей GitHub identity.
-Политика проекта отдельно разрешает assistant.use / assistant.note. Source, CI и
-runtime.command не выдаются ассистенту. Локальный host доверен локальному владельцу;
-переключатель инженер/оператор не заменяет авторизацию.
+The client may send a bounded conversation, selected resource identities and explicitly attached
+metadata. Secrets, runtime credentials and arbitrary workspace contents are not implicit context.
 
-## Три разных результата
+Answers are advisory. Source changes go through typed proposals or normal editor/importer flows,
+then through the same check, Git, publish and apply lifecycle as human-authored changes.
 
-1. **Объяснение**: ответ по серверному снимку с единицами, качеством, временем и
-   applied. Отсутствующая среда явно передаётся как недоступная. Никаких команд.
-2. **Заметка**: пользователь пишет итоговый текст, выбирает команду/получателя,
-   нажимает «Опубликовать заметку». Создаётся GitHub Issue от его identity с контекстом.
-   Это общий журнал репозитория, не личное сообщение. Ссылка подтверждает публикацию;
-   уведомление/прочтение адресатом не гарантируются приложением. @mention только для
-   выбранного участника политики. Отдельной собственной почты/мессенджера сейчас нет.
-3. **Изменение DSL**: следующий этап. Модель предлагает типизированные операции;
-   workspace строит AST-патч на неизменяемом base SHA, показывает diff и нарушения.
-   Инженер создаёт draft PR. CI проверяет типы/DSL, размерности/порты, сценарии,
-   визуальное соответствие HMI. Merge/publish/apply — отдельные действия с полномочиями.
+## Operator and engineer modes
 
-## Граница PR
+Operator mode focuses on explanation, alarms, observations and handoff notes. Engineer mode may
+discuss source and migration diagnostics. Neither mode turns a chat response into a checked build.
 
-Чат не принимает произвольные патчи, пути или tools от модели. Подготовленный
-workspace/dsl-proposal умеет менять только существующие литералы equipment.label,
-signal.initial, alarm.above. Этот небольшой набор **не является мигратором Lanmon**.
-При расширении операций каждый тип должен ссылаться на существующий DSL factory,
-иметь схему входа, ограничения/инварианты и детерминированный AST printer.
-Неподдержанный сценарий превращается в явно отмеченную инженерную задачу.
+Publishing a note to an external collaboration system is a separate explicit action owned by the
+integration layer.
 
-В PR запрещены скрытые правки package/lock, CI, access policy, secrets, произвольные
-драйверы и обход существующих абстракций через raw JS. Нужный новый тип прибора/
-протокол оформляется отдельным инженерным изменением API, затем используется в
-проекте обычным импортом. У оператора запрос на изменение не равен source.write.
-Создание draft PR из UI пока не подключено.
+## Migration
 
-## Lanmon 4
+The Assistant does not implement external SCADA formats. Project-owned `ScadaImporter`
+extensions parse their own formats locally and return generated Saturn source plus diagnostics.
+The Assistant may explain that result, but core and AI code do not contain format-specific parsers,
+file signatures, compatibility tables or product URLs.
 
-Первый этап уже работает: локальная инвентаризация ZIP или отдельного файла.
-Текст INI декодируется UTF-8/Windows-1251; наружу выходят только состав, секции и
-ссылки на карты. Отчёт включает неподдержанные файлы, а не теряет их молча.
-Файлы внутри ZIP не записываются на диск и не исполняются.
+## AI integration boundary
 
-Следующие этапы требуют настоящих парсеров исходных форматов и проверки инженером:
-- параметры → существующие signal, owner, единицы, quality, provenance;
-- устройства/каналы → device/terminal и проектные протокольные bindings;
-- карты → HMI тех же сущностей, с проверкой исходного/нового изображения;
-- тревоги → alarm с проверенными порогами и квитированием;
-- скрипты/автопилоты → сценарии/вычисления, с фиксацией неподдержанного поведения;
-- отчёты → typed reports со схемой и semantics отсутствующих данных.
+Remote model access, authentication, billing, model selection and collaboration delivery belong to
+an integration layer outside Saturn IDE. The IDE exposes a narrow Assistant service contract and
+continues to work when no AI service is configured.
 
-Пример получен из официального дистрибутива:
-https://www.mnppsaturn.ru/?good_id=214&topic_id=3
-https://www.mnppsaturn.ru/ftp/public/soft/lanmon4/last_stable/lanmon4.zip
-Установщик от 2026-09-08 извлечён innoextract без запуска.
-Публичный отдельный test.zip тоже доступен, но датирован 2007–2008 и не считается
-доказательством формата текущей версии. Исходные файлы производителя не коммитятся.
-
-## Текущее ограничение AI
-
-SaaS использует серверный Vercel AI Gateway Chat Completions с API key/OIDC,
-модель задаётся SATURN_ASSISTANT_MODEL. На 2026-09-24 реальный запрос авторизован,
-но вернул 402 insufficient_funds (нужен положительный баланс команды).
-Успешный ответ AI пока не подтверждён. Не подменяем его шаблонным ответом.
-История — sessionStorage на проект/identity; длительное серверное хранение диалогов,
-голос, разбор бинарных карт, исполнение миграции и создание PR остаются открытыми.
+The model never receives shell/runtime tools merely because the Assistant panel is open. Any future
+write-capable workflow must remain explicit, reviewable and constrained by the normal project
+lifecycle.

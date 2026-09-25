@@ -4,7 +4,6 @@
 
 ```sh
 gh repo clone Pom4H/saturn-examples ../saturn-examples
-gh repo clone Pom4H/saturn-plugins ../saturn-plugins
 bun install
 SATURN_PROJECT=../saturn-examples/pumping-station bun dev
 ```
@@ -119,12 +118,19 @@ OpenTUI testRender проверяет реальный renderer с тестов�
 [docs/mvp-before-foundation.md](docs/mvp-before-foundation.md); его заявления не относятся к этому проходу.
 
 
-## Vendor equipment
+## Расширения оборудования
 
-`device()` is the only equipment-class constructor. Built-in `pump/tank/valve/plc` and copied vendor definitions use the same typed path; there is no built-in/vendor registry split. The reference `project/plugins/saturn-plc500` kit carries the Saturn PLC SVG, Firmverse WASM compiler/runtime and 320×240 React HMI projection. `autoHmi(controller)` derives the HMI equipment set from project topology. Firmware language is a target/toolchain concern, not a TypeScript restriction.
+`device()` — единственный конструктор класса оборудования. Встроенные и скопированные
+project-owned definitions проходят один и тот же типизированный путь; отдельного registry
+для специальных классов нет. `autoHmi(controller)` выводит состав HMI из топологии проекта.
+Compiler, emulator, SVG/3D и другие возможности принадлежат исходникам расширения и подключаются
+явными import.
 
-AST tooling identifies an equipment instance structurally as `factory("ID", { x, y, ... })`. The factory identifier is deliberately irrelevant, so custom/vendor names do not become a hidden registry. Resource indexing, drag coordinates and semantic rename share the same parser.
+AST tooling распознаёт экземпляр оборудования структурно как
+`factory("ID", { x, y, ... })`. Имя factory не является частью скрытого registry.
+Resource indexing, drag coordinates и semantic rename используют один parser.
+
 
 ## Репозитории
 
-IDE не зависит от SaaS или конкретного PLC-плагина. Примеры находятся в `saturn-examples`, исходники расширений — в `saturn-plugins`. Для полной интеграционной проверки установите зависимости в обоих соседних checkout (`bun install`), затем выполните `bun run check` и `bun test tests` здесь. Конкретный проект подключает свой WASM-дисплей явным экспортом из `browser.ts`.
+IDE не зависит от SaaS или конкретного оборудования/формата. Примеры находятся в `saturn-examples`, reusable source kits могут жить отдельно от IDE. Конкретный проект подключает нужные display factories, protocol adapters и importers явными экспортами/imports; core не содержит каталог конкретных реализаций.

@@ -54,7 +54,7 @@ export interface ScadaImporter {
   import(source: ScadaImportSource): ScadaImportPlan | Promise<ScadaImportPlan>;
 }
 
-/** Vendor importers are ordinary project-owned source. This validates metadata only; no global registry is created. */
+/** Importers are ordinary project-owned source. This validates metadata only; no global registry is created. */
 export function defineImporter<const I extends ScadaImporter>(importer: I): I {
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(importer.id)) throw new Error('Invalid importer id');
   if (!importer.label.en.trim() || !importer.label.ru.trim()) throw new Error('Importer label is required');

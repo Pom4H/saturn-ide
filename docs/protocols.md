@@ -7,7 +7,7 @@
 ## Использование
 
 Скопировать `saturn-plugins/protocols/json-http.ts` в свой проект. Это небольшой работающий пример
-**прикладного JSON/HTTP протокола**, не реализация штатного API Saturn PLC-500, Modbus или OPC UA.
+**прикладного JSON/HTTP протокола**, не реализация API конкретного контроллера, Modbus или OPC UA.
 
 ```ts
 // connections.ts

@@ -114,7 +114,7 @@ project/
 Импорты явные: директория не сканируется для скрытой активации плагинов. Секреты поступают
 из окружения runtime, не попадают в Git или артефакт.
 
-Тип оборудования определяется через один `device()` contract. `pump/tank/valve/plc` — обычные definitions, созданные тем же `device()`, что и vendor equipment; отдельного built-in registry нет. Порты, signal schema и diagram bounds принадлежат declaration и не дублируются в `geometry.ts`. Глобальный plugin manager для этого запрещён.
+Тип оборудования определяется через один `device()` contract. `pump/tank/valve/plc` и project-owned definitions создаются тем же `device()`; отдельного registry для специальных классов нет. Порты, signal schema и diagram bounds принадлежат declaration и не дублируются в `geometry.ts`. Глобальный plugin manager для этого запрещён.
 
 ## Source, checked, published, applied
 
@@ -231,32 +231,28 @@ CodeMirror использует семантические CSS-токены об
 
 ## Equipment definitions
 
-Project-owned equipment extends the model through `device()`. Every definition owns typed ports, signal defaults and declarative Diagram/HMI/Firmware/Emulator capabilities; instances remain ordinary Project equipment. Built-in and vendor definitions are indistinguishable to the core. There is no global plugin registry or activation lifecycle and the IDE must not branch on vendor IDs.
+Project-owned equipment extends the model through `device()`. Every definition owns typed ports, signal defaults and declarative Diagram/HMI/Firmware/Emulator capabilities; instances remain ordinary Project equipment. All equipment definitions are indistinguishable to the core. There is no global plugin registry or activation lifecycle and the IDE must not branch on extension-specific IDs.
 
 `autoHmi(controller)` stores intent only. `project()` derives the HMI equipment set from physical
 topology, so connectivity is not authored twice. Firmware remains source-owned and target-defined:
 C23, C/C++, Rust, Zig or another language are valid when the target supplies the corresponding toolchain.
 
-The first reference kit is `saturn-plugins/saturn-plc500`: the real Saturn PLC SVG, pinned
-Firmverse compiler/runtime WASM and the 320×240 React HMI projection are carried with provenance
-and licenses from the previous Saturn implementation.
-
 
 ### AST as one source projection
 
-Source tooling does not identify equipment by helper names such as `pump()` or `saturnPlc500()`. The shared parser recognizes the structural authored form `factory("ID", { x, y, ... })`. Resource indexing, two-way drag ranges and rename consume that same AST projection. It is derived from source and is never persisted as a second model.
+Source tooling does not identify equipment by helper names such as `pump()` or a project-defined factory. The shared parser recognizes the structural authored form `factory("ID", { x, y, ... })`. Resource indexing, two-way drag ranges and rename consume that same AST projection. It is derived from source and is never persisted as a second model.
 
 ## Repository ownership, 2026-09-24
 
 - `saturn-ide`: reusable DSL, workspace, runtime, shell and local host. Its package
-  exports core contracts, artifact, shell and host. No production import points
-  at an example, vendor kit, Vercel or SaaS.
-- `saturn-saas` (private): depends on a pinned IDE revision. Owns GitHub OAuth,
-  encrypted browser sessions, GitHub transport, Vercel deployment and cloud UI.
-- `saturn-examples`: authored object projects. `pumping-station` replaces the old
-  embedded `project/`. It contains explicit imports and copied vendor source.
-- `saturn-plugins`: canonical reusable source kits, including `saturn-plc500` and
-  its unchanged Firmverse binaries and license/provenance files.
+  exports core contracts, artifact, shell and host. Production code does not import
+  examples, source-kit catalogs or cloud infrastructure.
+- cloud/integration layers depend on a pinned IDE revision and own authentication,
+  remote transports, deployment orchestration and cloud UI outside this repository.
+- `saturn-examples`: authored object projects with explicit imports and copied
+  project-owned extension source when required.
+- reusable source kits live outside the IDE repository and carry their own implementation,
+  provenance, licenses and acceptance tests.
 
 A trusted local project can export browser display factories from `browser.ts`.
 The host bundles this explicit entry and supplies its factories to Shell. It
@@ -289,7 +285,7 @@ GitHub remains repository authority: a Saturn policy cannot remove direct GitHub
 
 Workflow SDK is optional project-owned scenario orchestration, outside core and runtime.
 Scenario helpers take existing typed Signal references. A durable workflow coordinates
-simulation stimuli and measured assertions; Firmverse owns the scan cycle in a separate
+simulation stimuli and measured assertions; the selected execution backend owns its cycle in a separate
 process. Neither saving source nor retrying a workflow deploys or flashes a PLC.
 
 ### Operator feedback → authored DSL proposal
@@ -317,22 +313,22 @@ worked around by using another user's OAuth credential.
 История диалога хранится в sessionStorage на проект и identity; это история вкладки
 браузера, не долговременный многопользовательский журнал. Архив не сохраняется там.
 ZIP разбирается локально с лимитами 32 МБ входа, 64 МБ распаковки, 8 МБ на файл,
-1000 записей и проверкой путей. Это инвентаризация Lanmon, не доказательство успешной
-миграции. Только имена файлов, категории, названия INI-секций и ссылки MAP отправляются
-в модель. Скрипты, строки подключения и настройки пользователей не исполняются/не отправляются.
+1000 записей и проверкой путей. Это ограниченный локальный разбор вложения, не доказательство успешной миграции. Содержимое
+формат-специфических проектов обрабатывается только подключённым importer; core не знает их
+секций, скриптов, адресов или других соглашений.
 
 SaaS владеет AI Gateway, авторизацией, адресатами и публикацией заметок. Обычный ответ
 не вызывает внешних записей. Кнопка публикации заметки — отдельное явное действие.
 Модель не получает инструменты runtime-команд, shell, изменения CI, прав, зависимостей
 или прошивки. Предложения DSL проходят отдельную границу workspace/AST, review и CI;
-ответ в чате не является checked artifact. Автоматический перенос Lanmon-карт/скриптов
-и создание PR из ассистента пока не реализованы; эти критерии остаются открытыми.
+ответ в чате не является checked artifact. Формат-специфическая миграция и создание PR из ассистента не входят в core; такие возможности
+подключаются через явные importer/integration boundaries.
 
 
-## Importers as vendor boundary
+## Importers as extension boundary
 
-Legacy SCADA formats are not part of the Saturn domain model. Saturn exposes only the
-`ScadaImporter` source contract. A vendor source kit may parse its own archives and produce
+External SCADA formats are not part of the Saturn domain model. Saturn exposes only the
+`ScadaImporter` source contract. An importer source kit may parse its input and produce
 ordinary authored Saturn TypeScript plus diagnostics. The project opts in explicitly from
 `browser.ts`; the IDE does not maintain a global importer registry.
 
