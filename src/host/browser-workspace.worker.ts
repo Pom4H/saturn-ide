@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { restrictAuthoringIO } from './authoring-isolation';
 import * as core from '../core';
 import { canonical } from '../core/artifact';
 import type { AuthoredFile, AuthoringFrame, AuthoringOperation } from '../core/authoring';
@@ -6,8 +7,9 @@ import { MemoryLanguage, resolveSource, type SourceLibrary } from '../workspace/
 import { authoringChanges } from '../workspace/authoring-operations';
 import { authoringFrame, authoredModules, sourcePlan, type EvaluatedEntry } from '../workspace/source-model';
 
+restrictAuthoringIO();
 interface Request { files: AuthoredFile[]; library: SourceLibrary; operation: 'check' | 'plan' | 'language'; edit?: AuthoringOperation; query?: { operation: string; path: string; position: number; locale: core.Locale } }
-/** Runs only inside an opaque-origin, no-network worker. It never receives tokens, cookies or host API handles. */
+/** Executes only in the disposable opaque-origin worker, never in the application or server. */
 function evaluate(files: readonly AuthoredFile[], editor: boolean) {
   const sources = new Map(files.map(file => ['/project/' + file.path, editor ? sourcePlan(file).source : file.source]));
   const cache = new Map<string, { exports: Record<string, unknown> }>();
@@ -22,7 +24,6 @@ function evaluate(files: readonly AuthoredFile[], editor: boolean) {
       if (!target) throw new Error(`Only project modules and @saturn/core can be imported here: ${name}`);
       return requireModule(target);
     };
-    // The ordinary TS-emitted JS module executes in the disposable worker, not in the application or a server.
     new Function('require', 'module', 'exports', emitted + '\n//# sourceURL=saturn:' + path)(require, module, module.exports);
     return module.exports;
   };
@@ -59,7 +60,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
       const candidate = request.files.map(file => ({ ...file, source: changes.find(change => change.path === file.path)?.source ?? file.source }));
       language.set(candidate); const problems = language.diagnostics();
       if (problems.length) throw new Error(problems.map(problem => problem.message.ru).join('\n'));
-      frame(candidate); // Type compatibility, signal identity and port occupancy are checked before editing any buffer.
+      frame(candidate);
       self.postMessage({ value: changes }); return;
     }
     self.postMessage({ value: { frame: current, problems: [] } });
