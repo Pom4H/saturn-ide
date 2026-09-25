@@ -4,11 +4,34 @@ import { acknowledgeAlarm, projectSnapshot, transitionAlarm, type AlarmEvent } f
 import type { Store } from "./store";
 import type { Events } from "./events";
 
+import type { RuntimeDiagnostics, RuntimeStatistics } from '../core/diagnostics';
+
 type RuntimeStore = Pick<Store, 'bindSemantic' | 'latest' | 'alarmStates' | 'append'>;
 export class Runtime {
   snapshot: Snapshot = { samples: {}, alarms: {} };
   private queue: Promise<unknown> = Promise.resolve();
   private clock = 0;
+  private statistics: RuntimeStatistics = { pendingObservations: 0, persistedBatches: 0, persistedSamples: 0, writeFailures: 0, lastWriteMs: null };
+  /** This path remains available when the historian fails. It never records its own inspection. */
+  inspect(driver?: Driver): RuntimeDiagnostics {
+    return { at: Date.now(), projectId: this.project.id, process: { pid: process.pid, uptimeSeconds: process.uptime() },
+      runtime: { ...this.statistics }, sources: driver?.status?.().map(source => ({ ...source })) ?? [] };
+  }
+  private async append(samples: Sample[], events: AlarmEvent[]) {
+    const started = performance.now();
+    try {
+      await this.store.append(samples, events);
+      this.statistics.persistedBatches++;
+      this.statistics.persistedSamples += samples.length;
+      this.statistics.lastWriteAt = Date.now();
+      delete this.statistics.lastError;
+    } catch (error) {
+      this.statistics.writeFailures++;
+      // Diagnostic consumers receive an error category, never SQL/connection strings or credentials.
+      this.statistics.lastError = 'PERSISTENCE_FAILED';
+      throw error;
+    } finally { this.statistics.lastWriteMs = performance.now() - started; }
+  }
   constructor(public project: Project, readonly store: RuntimeStore, readonly events: Pick<Events, 'emit'>, readonly notify: (id: string) => void) {}
   async init() {
     for (const definition of Object.values(this.project.signals)) await this.store.bindSemantic(definition.id,definition.semanticId??definition.id);
@@ -46,6 +69,7 @@ export class Runtime {
   observe(batch: readonly Observation[]): Promise<void> {
     // Capture ingress time and own the batch before it can wait behind persistence.
     const receivedAt = Date.now(), input = batch.map(item => ({...item}));
+    this.statistics.pendingObservations++;
     return this.serial(async () => {
       const at = this.clock = Math.max(receivedAt, this.clock + 1);
       const definitions = new Map(Object.values(this.project.signals).map(s => [s.id, s]));
@@ -80,18 +104,18 @@ export class Runtime {
         alarms[rule.id] = state;
         changes.push({ ...state, event: state.active ? "active" : "clear" });
       }
-      await this.store.append(samples, changes);
+      await this.append(samples, changes);
       this.snapshot = { samples: nextSamples, alarms };
       this.events.emit("telemetry", this.snapshot);
       for (const e of changes) { this.events.emit("alarm", e); if (e.active) this.notify(e.id); }
-    });
+    }).finally(() => { this.statistics.pendingObservations--; });
   }
   acknowledge(id: string): Promise<void> {
     return this.serial(async () => {
       const at = Math.max(Date.now(), this.clock + 1), state = acknowledgeAlarm(this.snapshot.alarms[id], at);
       if (!state) return;
       const event: AlarmEvent = { ...state, event: "ack" };
-      await this.store.append([], [event]);
+      await this.append([], [event]);
       this.clock = at;
       this.snapshot = { ...this.snapshot, alarms: { ...this.snapshot.alarms, [id]: state } };
       this.events.emit("telemetry", this.snapshot);

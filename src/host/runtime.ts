@@ -7,6 +7,7 @@ import { decodeProject } from '../runtime/decode-project';
 import { Store } from '../runtime/store';
 import { Events } from '../runtime/events';
 import { Runtime } from '../runtime/engine';
+import { historyResponse } from './history-api';
 import { RevisionStore } from '../runtime/revisions';
 import { InstallationManager } from '../runtime/installation';
 import { ProjectInstallation } from '../runtime/project-installation';
@@ -72,6 +73,8 @@ export async function createRuntimeHost(options: RuntimeHostOptions) {
           if (!role) throw new RequestError(401, 'Runtime credentials required');
           if (request.method === 'GET') {
             if (path === '/api/state') return json(snapshot());
+            if (path === '/api/diagnostics') return json({ ...runtime.inspect(manager.installation instanceof ProjectInstallation ? manager.installation.driver : undefined), phase: manager.phase, applied: manager.applied });
+            if (path === '/api/history/range') return historyResponse(store, runtime.project, url);
             if (path === '/api/releases') return json(await releaseState());
             if (path === '/api/events') return events.response(request, snapshot());
             if (path === '/api/alarms') return json(await store.events());

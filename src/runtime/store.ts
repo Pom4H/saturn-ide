@@ -1,4 +1,6 @@
 import { SQL } from "bun";
+import type { Signal } from "../core";
+import { historyRange, type HistoryRange, type HistoryWindow } from "../core/history";
 import type { AlarmState, Sample } from "../core";
 import type { AlarmEvent } from '../core/operational';
 import type { PushSubscription } from "web-push";
@@ -47,6 +49,38 @@ export class Store {
   async history(identity: string, limit = 300): Promise<Sample[]> {
     const rows: SampleRow[] = await this.sql`SELECT signal,semantic,at,value,quality,details FROM samples WHERE semantic=${identity} ORDER BY at DESC,id DESC LIMIT ${Math.max(1, Math.min(1000, Math.trunc(limit)))}`;
     return rows.reverse().map(decode);
+  }
+  /** SQL reduces a selected interval before transport; no unbounded raw archive is sent to a browser. */
+  async range(signal: Signal, input: HistoryRange): Promise<HistoryWindow> {
+    const query = historyRange(input), { from, to, points } = query;
+    if (typeof signal.initial !== 'number') throw new RangeError('Numeric history required');
+    const identity = signal.semanticId ?? signal.id, width = (to - from) / points;
+    // These fragments are fixed dialect syntax, never caller-controlled SQL.
+    const numeric = this.adapter === 'sqlite' ? "json_type(value) IN ('integer','real')" : "jsonb_typeof(value::jsonb) = 'number'";
+    const receipt = this.adapter === 'sqlite' ? "COALESCE(json_extract(details, '$.receivedAt'), at)" : "COALESCE((details::jsonb->>'receivedAt')::double precision, at)";
+    const rows: { bucket: number | string; count: number | string; good: number | string; minimum: number | string | null; maximum: number | string | null; last: number | string | null }[] = await this.sql.unsafe(`
+      WITH bounds AS (SELECT $1 AS from_ms, $2 AS to_ms, $3 AS width_ms, $4 AS identity, $5 AS fresh_ms), input AS (
+        SELECT at, value, quality, ${receipt} AS received,
+          CAST(FLOOR((at - from_ms) * 1.0 / width_ms) AS INTEGER) AS bucket,
+          CASE WHEN ${numeric} THEN CAST(value AS DOUBLE PRECISION) ELSE NULL END AS numeric_value,
+          id, fresh_ms
+        FROM samples CROSS JOIN bounds WHERE semantic = identity AND at >= from_ms AND at < to_ms
+      ), ranked AS (
+        SELECT *, CASE WHEN quality = 'good' AND numeric_value IS NOT NULL AND received >= 0 AND received <= at AND at - received <= fresh_ms THEN 1 ELSE 0 END AS usable,
+          ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY at DESC, id DESC) AS n FROM input
+      )
+      SELECT bucket, COUNT(*) AS count, SUM(usable) AS good,
+        MIN(CASE WHEN usable = 1 THEN numeric_value END) AS minimum,
+        MAX(CASE WHEN usable = 1 THEN numeric_value END) AS maximum,
+        MAX(CASE WHEN usable = 1 AND n = 1 THEN numeric_value END) AS last
+      FROM ranked GROUP BY bucket ORDER BY bucket`, [from, to, width, identity, signal.staleAfter ?? 5000]);
+    const byBucket = new Map(rows.map(row => [Number(row.bucket), row]));
+    const value = (n: number | string | null | undefined) => n == null ? null : Number(n);
+    return { ...query, signal: signal.id, axis: 'event', buckets: Array.from({ length: points }, (_, i) => {
+      const row = byBucket.get(i);
+      return { at: from + i * width, until: from + (i + 1) * width, count: Number(row?.count ?? 0), good: Number(row?.good ?? 0),
+        min: value(row?.minimum), max: value(row?.maximum), last: value(row?.last) };
+    }) };
   }
   async latest(): Promise<Sample[]> {
     const rows: SampleRow[] = await this.sql`SELECT signal,semantic,at,value,quality,details FROM (SELECT signal,semantic,at,value,quality,details,ROW_NUMBER() OVER(PARTITION BY semantic ORDER BY at DESC,id DESC) AS n FROM samples) ranked WHERE n=1`;

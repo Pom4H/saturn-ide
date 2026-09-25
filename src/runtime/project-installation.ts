@@ -90,6 +90,7 @@ export class ProjectInstallation implements Installation {
     };
     const context: AcquisitionContext = {
       project: this.project, snapshot: structuredClone(snapshot), signal: session.controller.signal, observe,
+      diagnostics: () => this.engine.inspect(this.driver),
       publish: values => observe(Object.entries(values).map(([signal,value]) => ({signal,value,quality:'good'}))),
     };
     // Driver contract: a rejected start releases resources, or releases them on signal.abort.

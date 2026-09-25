@@ -26,6 +26,11 @@ import type { ScadaImporter } from '../core/importer';
 import { alarmNeedsAttention, projectSnapshot } from '../core/operational';
 import type { SemanticNode } from '../semantic';
 import { Signals } from './signals';
+import { Performance } from './performance';
+import type { HistoryRange, HistoryWindow } from '../core/history';
+import type { RuntimeDiagnostics } from '../core/diagnostics';
+const loadPerformanceHistory = (id: string, range: HistoryRange, abort: AbortSignal) => api<HistoryWindow>(`history/range?signal=${encodeURIComponent(id)}&from=${range.from}&to=${range.to}&points=${range.points}`, undefined, abort);
+const loadPerformanceDiagnostics = (abort: AbortSignal) => api<RuntimeDiagnostics>('diagnostics', undefined, abort);
 import './resources.css';
 const Scene3D = lazy(() => import('./scene3d'));
 const surfaces = Object.keys(editorNames) as EditorId[];
@@ -287,7 +292,8 @@ function Workbench({displays,importers}:AppProps) {
             </div></aside>}
           </div>}
           {surface === 'source' && <div className="source-workspace">{sourcePanel}<div className="source-note"><strong>TypeScript</strong><span>UTF-8</span><kbd>⌘ S</kbd></div></div>}
-          {surface === 'signals' && <Signals project={state.project} snapshot={state.snapshot} selected={signal?.id} locale={locale} now={now} connected={connected} select={id=>{session.selectSignal(id);dispatchPanel({type:'open',tab:'graphs'});}} open={openSemantic} canOpen={canOpenSemantic}/>}
+          {surface === 'performance' && <Performance key={`${state.project.id}:${state.revision}`} project={state.project} snapshot={state.snapshot} now={now} connected={connected} locale={locale} loadHistory={loadPerformanceHistory} loadDiagnostics={loadPerformanceDiagnostics} inspect={id => session.selectSignal(id)}/>}
+        {surface === 'signals' && <Signals project={state.project} snapshot={state.snapshot} selected={signal?.id} locale={locale} now={now} connected={connected} select={id=>{session.selectSignal(id);dispatchPanel({type:'open',tab:'graphs'});}} open={openSemantic} canOpen={canOpenSemantic}/>}
           {surface === 'reports' && <Reports project={state.project} locale={locale} selected={nav.report} onSelect={id => session.selectReport(id)}/>}
           {surface === 'hmi' && <HmiSurface project={state.project} locale={locale} refresh={refresh}/>}
           {surface === 'docs' && <section className="documentation-surface">

@@ -4,6 +4,10 @@ type IconDef=()=>ReactNode;
 const p={fill:'none',stroke:'currentColor',strokeWidth:1.75,strokeLinecap:'round' as const,strokeLinejoin:'round' as const};
 
 const icons:Readonly<Record<string,IconDef>>={
+  performance:()=> <><path {...p} d="M3 3v18h18M6 16l4-7 4 4 6-9"/></>,
+  server:()=> <><rect {...p} x="4" y="3" width="16" height="7" rx="1"/><rect {...p} x="4" y="14" width="16" height="7" rx="1"/><path {...p} d="M7 6.5h.1M11 6.5h6M7 17.5h.1M11 17.5h6"/></>,
+  pause:()=> <><path {...p} d="M8 5v14M16 5v14"/></>,
+  play:()=> <path {...p} d="m8 4 12 8-12 8z"/>,
   assistant:()=> <><path {...p} d="M4 4h16v12H9l-5 4zM8 8h8M8 12h5"/></>,
   diagram:()=> <><rect {...p} x="3" y="3" width="7" height="7" rx="1"/><rect {...p} x="14" y="14" width="7" height="7" rx="1"/><path {...p} d="M7 10v4a3 3 0 0 0 3 3h4M17 14v-4a3 3 0 0 0-3-3h-4"/></>,
   source:()=> <><path {...p} d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></>,

@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { chromium } from 'playwright';
+import { createApp } from '../src/host/dev';
+import type { RuntimeDiagnostics } from '../src/core/diagnostics';
+import type { HistoryWindow } from '../src/core/history';
+
+const root = resolve(import.meta.dir, '..'), out = join(root, 'artifacts', 'infrastructure');
+mkdirSync(join(root, '.saturn'), { recursive: true }); mkdirSync(out, { recursive: true });
+const dir = mkdtempSync(join(root, '.saturn', 'infrastructure-browser-')), projectDir = join(dir, 'project');
+cpSync(resolve(root, '../saturn-examples/infrastructure'), projectDir, { recursive: true });
+const app = await createApp({ projectDir, dataDir: join(dir, 'data'), databaseUrl: ':memory:', port: 0, preview: 'manual' });
+let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+try {
+  assert.deepEqual(app.state().problems, [], JSON.stringify(app.state().problems));
+  const base = app.server.url;
+  const state = app.state();
+  const read = async <T>(path: string): Promise<T> => { const response = await fetch(new URL(`/api/${path}`, base)); assert(response.ok, await response.clone().text()); return response.json() as Promise<T>; };
+  const post = async (path: string, body: unknown) => {
+    const response = await fetch(new URL(`/api/${path}`, base), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Saturn-Key': state.key }, body: JSON.stringify(body) });
+    assert(response.ok, await response.clone().text()); return response.json();
+  };
+  const releases = await read<{ checked: string; published: string | null; applied: string | null }>('releases');
+  assert(releases.checked, 'Example failed to build');
+  // A live, read-only OS collector still requires an explicit publish/apply.
+  await post('publish', { hash: releases.checked, expectedPublished: releases.published });
+  await post('apply', { hash: releases.checked, expectedApplied: releases.applied });
+  browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : { channel: process.env.CI ? 'chrome' : undefined }), args: ['--no-sandbox'] });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme: 'dark' });
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => { localStorage.setItem('saturn.locale', 'ru'); localStorage.setItem('saturn.theme', 'system'); });
+  await page.goto(base.toString());
+  await page.getByRole('treeitem', { name: 'Производительность', exact: true }).click();
+  await page.locator('section.performance').waitFor();
+  // Collapse the shared bottom panel with its existing keyboard action; never create a duplicate panel.
+  await page.keyboard.press('Control+j');
+  await page.waitForFunction(() => document.querySelector('[data-current-value]')?.textContent !== '—');
+  await page.waitForFunction(() => (document.querySelector('.perf-line')?.getAttribute('d')?.length ?? 0) > 10);
+  await page.locator('[data-signal="EDGE-01.cpu"]').focus(); await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('.perf-resource.selected').getAttribute('data-signal'), 'EDGE-01.disk');
+  await page.getByRole('searchbox', { name: 'Поиск в диспетчере' }).fill('память');
+  assert.equal(await page.locator('.perf-resource').count(), 2);
+  await page.getByRole('searchbox', { name: 'Поиск в диспетчере' }).fill('');
+  await page.locator('[data-signal="EDGE-01.memory"]').click();
+  await page.waitForFunction(() => document.querySelector('.perf-chart')?.getAttribute('data-chart-signal') === 'EDGE-01.memory' && (document.querySelector('.perf-line')?.getAttribute('d')?.length ?? 0) > 10);
+  // Let real observations accumulate. No injected telemetry or drawn benchmark curve.
+  await page.waitForTimeout(Number(process.env.CAPTURE_MS ?? 12_000));
+  await page.screenshot({ path: join(out, 'performance-dark.png'), fullPage: true });
+  const before = await read<RuntimeDiagnostics>('diagnostics');
+  await page.getByRole('button', { name: 'Пауза', exact: true }).click();
+  const displayed = await page.locator('[data-current-value]').textContent();
+  await page.waitForTimeout(2300);
+  assert.equal(await page.locator('[data-current-value]').textContent(), displayed);
+  const during = await read<RuntimeDiagnostics>('diagnostics');
+  assert(during.runtime.persistedSamples > before.runtime.persistedSamples, 'Display pause stopped acquisition');
+  await page.screenshot({ path: join(out, 'performance-paused.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Продолжить', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Период графика' }).selectOption('86400000');
+  await page.waitForResponse(response => response.url().includes('history/range') && response.status() === 200);
+  await page.getByRole('combobox', { name: 'Период графика' }).selectOption('60000');
+  await page.getByRole('tab', { name: 'Runtime и источники' }).click();
+  await page.getByText('system-metrics', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Пакеты', exact: true }).click();
+  assert.equal(await page.getByRole('columnheader', { name: /Пакеты/ }).getAttribute('aria-sort'), 'descending');
+  await page.screenshot({ path: join(out, 'runtime-sources.png'), fullPage: true });
+  await page.getByRole('tab', { name: 'Ресурсы', exact: true }).click();
+  await page.waitForFunction(() => (document.querySelector('.perf-line')?.getAttribute('d')?.length ?? 0) > 10);
+  // Fault injection is confined to the browser test, not product telemetry.
+  await page.route('**/api/history/range?**', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"Test archive outage"}' }));
+  await page.getByText('Архив не обновляется. Показан последний полученный интервал.').waitFor({ timeout: 10000 });
+  await page.getByRole('tab', { name: 'Runtime и источники' }).click();
+  await page.getByText('system-metrics', { exact: true }).waitFor();
+  assert.equal(await page.getByText('Диагностика не обновляется.', { exact: false }).count(), 0);
+  await page.unroute('**/api/history/range?**');
+  await page.getByRole('tab', { name: 'Ресурсы', exact: true }).click();
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.waitForTimeout(2200);
+  await page.screenshot({ path: join(out, 'performance-light.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  const overflow = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, shell: document.querySelector('.shell')?.scrollWidth }));
+  assert(overflow.document <= overflow.viewport + 1, JSON.stringify(overflow));
+  await page.screenshot({ path: join(out, 'performance-mobile.png'), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.locator('[data-signal="EDGE-01.cpu"]').click(); await page.waitForTimeout(2200);
+  await page.screenshot({ path: join(out, 'performance-cpu.png'), fullPage: true });
+  const current = await read<RuntimeDiagnostics>('diagnostics');
+  const to = Date.now();
+  const history = await read<HistoryWindow>(`history/range?signal=EDGE-01.cpu&from=${to - 60000}&to=${to}&points=60`);
+  assert(history.buckets.some(bucket => bucket.good > 0));
+  assert.deepEqual(errors, []);
+  writeFileSync(join(out, 'verification.json'), JSON.stringify({ runtime: Bun.version, platform: process.platform, applied: releases.checked, checks: ['explicit live publish/apply', 'real OS observations', 'range history', 'resource keyboard navigation', 'search', 'display-only pause', 'source sorting', 'SQL outage independent diagnostics', 'system light/dark', '390px responsive'], diagnostics: current, history: { buckets: history.buckets.length, observations: history.buckets.reduce((n, b) => n + b.count, 0) }, overflow, errors }, null, 2));
+  console.log('PASS: infrastructure live acquisition → SQLite → real shell; keyboard/search/pause/sort/range/outage/theme/mobile.', out);
+} catch (error) {
+  const pages = browser?.contexts().flatMap(context => context.pages());
+  await pages?.[0]?.screenshot({ path: join(out, 'failure.png'), fullPage: true }).catch(() => {});
+  throw error;
+} finally { await browser?.close(); await app.close(); rmSync(dir, { recursive: true, force: true }); }

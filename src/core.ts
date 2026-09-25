@@ -343,11 +343,14 @@ export function observation<S extends Signal>(snapshot:Snapshot,signal:S):Sample
 export interface DriverContext {
   project:Project; snapshot:Snapshot; publish:(values:Record<string,Value>)=>Promise<void>;
   signal?:AbortSignal; observe?:import('./core/acquisition').Observe;
+  /** @ru Диагностика текущего runtime без запросов в SQL. @en SQL-independent runtime inspection. */
+  diagnostics?:import('./core/diagnostics').ProtocolContext['diagnostics'];
 }
 export interface Driver {
   mode:'simulation'|'live';
   start(context:DriverContext):Promise<()=>void|Promise<void>>;
   write?:(signal:string,value:Value)=>Promise<void>;
+  status?:()=>readonly import('./core/diagnostics').SourceStatus[];
 }
 export interface PresentationBase {readonly id:string;readonly x:number;readonly y:number;readonly width:number;readonly height:number;readonly z?:number;readonly signal?:Signal}
 export type PresentationElement =

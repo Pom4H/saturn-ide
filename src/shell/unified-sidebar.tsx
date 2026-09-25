@@ -24,7 +24,7 @@ export function UnifiedSidebar({locale,surface,catalog,activeSource,selected,mob
       children:node.kind==='entity'?node.resource!.editors.filter(editor=>editor!=='source').map(editor=>action(node.resource!,editor)):node.children.map(convert)});
     const unlocated=catalog.resources.filter(resource=>!resource.source&&resource.kind!=='project');
     return [
-      {id:'views',name:ru?'Представления':'Views',icon:'diagram',children:(['diagram','signals','reports','hmi','docs','targets','git','dependencies'] as const).map(editor=>({id:`view:${editor}`,name:editorNames[editor][locale],icon:editor,editor,children:[]}))},
+      {id:'views',name:ru?'Представления':'Views',icon:'diagram',children:(['diagram','signals','performance','reports','hmi','docs','targets','git','dependencies'] as const).map(editor=>({id:`view:${editor}`,name:editorNames[editor][locale],icon:editor,editor,children:[]}))},
       {id:'files',name:ru?'Файлы проекта':'Project files',icon:'project',children:resourceTree(catalog).map(convert)},
       ...(unlocated.length?[{id:'unlocated',name:ru?'Объекты без найденного исходника':'Objects without located source',icon:'warning',children:unlocated.map(resource=>({id:`entity:${resource.uri}`,name:resource.entityId??resource.name[locale],icon:resource.icon,resource,children:resource.editors.filter(editor=>editor!=='source').map(editor=>action(resource,editor))}))}]:[]),
     ] satisfies Row[];

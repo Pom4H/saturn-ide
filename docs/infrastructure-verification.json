@@ -1,0 +1,58 @@
+{
+  "runtime": "1.4.2",
+  "platform": "linux",
+  "applied": "sha256:82b462b06c76de50d8cc33b5939b96bdc3f55e9cce1b5d0bfca0fa3e90baba36",
+  "checks": [
+    "explicit live publish/apply",
+    "real OS observations",
+    "range history",
+    "resource keyboard navigation",
+    "search",
+    "display-only pause",
+    "source sorting",
+    "SQL outage independent diagnostics",
+    "system light/dark",
+    "390px responsive"
+  ],
+  "diagnostics": {
+    "at": 1790325617450,
+    "projectId": "infrastructure",
+    "process": {
+      "pid": 2692,
+      "uptimeSeconds": 50.042757075000004
+    },
+    "runtime": {
+      "pendingObservations": 0,
+      "persistedBatches": 46,
+      "persistedSamples": 503,
+      "writeFailures": 0,
+      "lastWriteMs": 0.5707169999950565,
+      "lastWriteAt": 1790325616623
+    },
+    "sources": [
+      {
+        "id": "LOCAL",
+        "protocol": "system-metrics",
+        "phase": "online",
+        "attempts": 1,
+        "receivedBatches": 46,
+        "readDurationMs": 20.596370999999635,
+        "lastReceivedAt": 1790325616623,
+        "channels": 11,
+        "pendingWrites": 0
+      }
+    ],
+    "phase": "running",
+    "applied": "sha256:82b462b06c76de50d8cc33b5939b96bdc3f55e9cce1b5d0bfca0fa3e90baba36"
+  },
+  "history": {
+    "buckets": 60,
+    "observations": 45
+  },
+  "overflow": {
+    "viewport": 390,
+    "document": 390,
+    "shell": 390
+  },
+  "errors": []
+}

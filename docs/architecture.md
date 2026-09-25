@@ -345,3 +345,12 @@ Saturn TypeScript → normal check/Git/publish/apply
 Generated files are confined to `imports/<importer-id>/`. Import changes source only:
 the applied runtime is unchanged until the normal publish/apply lifecycle. Presentation
 elements reference canonical Saturn signals; they are not modeled as fake equipment.
+
+## Infrastructure is an observation source
+
+The Performance surface consumes canonical Signal/Sample quality and bounded
+history windows. Local OS/process instrumentation remains a project-owned source
+kit, composed through defineProtocol/acquire. The runtime exposes read-only
+inspection independently of SQL; inspection never generates another measurement.
+No separate authored infrastructure model or plugin registry exists. See
+[infrastructure.md](infrastructure.md) for contracts, UI, accounting and limits.

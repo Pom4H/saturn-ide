@@ -42,6 +42,9 @@ test('portable release runs outside authoring, isolates credentials, CAS applies
     let url = await start();
     const call = (path: string, token = tokens.read, body?: unknown) => fetch(new URL(path, url), { method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
     expect((await call('/api/state', '')).status).toBe(401);
+    expect((await call('/api/diagnostics', '')).status).toBe(401);
+    expect((await call('/api/history/range?signal=n&from=0&to=1&points=1', '')).status).toBe(401);
+    expect((await call('/api/diagnostics', tokens.read, { write: true })).status).toBe(404);
     expect((await call('/api/file')).status).toBe(404);
     expect((await call('/api/builds', tokens.read, { artifact })).status).toBe(403);
     expect((await call('/api/command', tokens.deploy, { id: 'n', value: 1 })).status).toBe(403);
@@ -52,6 +55,14 @@ test('portable release runs outside authoring, isolates credentials, CAS applies
     await deployRelease({ artifactFile: join(output, 'artifact.json'), url, token: tokens.deploy, expectedPublished: null, expectedApplied: null });
     const reading = async () => (await (await call('/api/state')).json()).snapshot.samples.n.value as number;
     const before = await until(reading, n => n > 2);
+    const diagnostics = await (await call('/api/diagnostics')).json();
+    expect(diagnostics.projectId).toBe('test-runtime');
+    expect(diagnostics.process.pid).not.toBe(process.pid);
+    expect(diagnostics.runtime.persistedSamples).toBeGreaterThan(0);
+    const to = Date.now();
+    const range = await (await call(`/api/history/range?signal=n&from=${to - 60_000}&to=${to}&points=60`)).json();
+    expect(range.buckets.length).toBe(60);
+    expect(range.buckets.some((b: { good: number }) => b.good > 0)).toBe(true);
     blocker = Bun.spawn([process.execPath, '-e', 'while(true){}'], { stdout: 'ignore', stderr: 'ignore' });
     await until(reading, n => n > before + 3); blocker.kill(); await blocker.exited; blocker = undefined;
     expect((await call('/api/command', tokens.control, { id: 'n', value: 1000, expectedApplied: null })).status).toBe(409);

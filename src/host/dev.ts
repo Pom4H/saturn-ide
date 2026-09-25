@@ -10,6 +10,7 @@ import { Git } from '../workspace/git';
 import { Store } from '../runtime/store';
 import { Events } from '../runtime/events';
 import { Runtime } from '../runtime/engine';
+import { historyResponse } from './history-api';
 import { Push, validateSubscription } from '../runtime/push';
 import { InstallationManager } from '../runtime/installation';
 import { ProjectInstallation } from '../runtime/project-installation';
@@ -130,6 +131,8 @@ export async function createApp(options: { assistant?:AssistantService; projectD
           const asset=browser.assets.get(path); if(asset)return new Response(asset,{headers:{'Cache-Control':'no-cache'}});
           if(path==='/api/assistant')return json(options.assistant?await options.assistant.status():{available:false,notes:false,recipients:[],detail:'Подключите сервер ассистента в настройках host. Импорт внешних проектов доступен через project-owned importer extensions.'});
           if (path === '/api/state') return json(state());
+          if (path === '/api/diagnostics') return json({ ...runtime.inspect(active()?.driver), phase: manager.phase, applied: manager.applied });
+          if (path === '/api/history/range') return historyResponse(store, runtime.project, url);
           if (path === '/api/events') return events.response(request, state());
           if (path === '/api/resources') return json({...indexResources(workspace, authoringProject(), draft?.artifact.hash ?? manager.applied ?? ''),workspace:hash(workspace.root)});
           if (path === '/api/documentation') { const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ru'; return new Response(projectDocumentation(authoringProject(),{locale}), { headers:{'Content-Type':'text/markdown; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'} }); }

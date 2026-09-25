@@ -1,5 +1,6 @@
 import { ProjectError, validateReading, type Driver, type DriverContext, type Project, type Quality, type Sample, type Signal, type SignalSpec, type Value } from '../core';
 import { canonical } from './artifact';
+import type { ProtocolContext } from './diagnostics';
 
 /** Driver input, projected from Sample. `at` and semantic identity belong to runtime.
  * @ru Без value разрешено только ухудшение качества, не новое измерение.
@@ -32,7 +33,7 @@ export interface ProtocolDefinition<C, A> {
   readonly validate?: (channel: { readonly signal: Signal | SignalSpec; readonly address: A }) => void;
   /** @ru Только runtime вызывает connect. При rejected connect плагин освобождает свои ресурсы.
    * @en Only runtime calls connect. A rejected connect must release resources acquired by the plugin. */
-  readonly connect: (config: C, signal: AbortSignal) => Promise<ProtocolSession<A>>;
+  readonly connect: (config: C, signal: AbortSignal, context: ProtocolContext) => Promise<ProtocolSession<A>>;
 }
 export interface AcquisitionOptions {
   mode?: Driver['mode'];
@@ -45,7 +46,7 @@ export interface AcquisitionOptions {
 }
 export interface PreparedProtocol {
   readonly signals: readonly Signal[];
-  open(signal: AbortSignal): Promise<{
+  open(signal: AbortSignal, context?: ProtocolContext): Promise<{
     read?: (signal: AbortSignal) => Promise<readonly Observation[]>;
     subscribe?: (emit: Observe, signal: AbortSignal) => Promise<void>;
     write?: (id: string, value: Value, signal: AbortSignal) => Promise<void>;
@@ -101,8 +102,8 @@ export function defineProtocol<C, A>(definition: ProtocolDefinition<C, A>) {
         });
         const byId = new Map(channels.map(channel => [channel.signal.id, channel]));
         return { signals,
-          async open(signal) {
-            const session = await definition.connect(config, signal);
+          async open(signal, context = {}) {
+            const session = await definition.connect(config, signal, context);
             return {
               read: session.read ? abort => session.read!(channels, abort) : undefined,
               subscribe: session.subscribe ? (emit, abort) => session.subscribe!(channels, emit, abort) : undefined,

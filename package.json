@@ -72,6 +72,8 @@
     "./assistant-contract": "./src/core/assistant.ts",
     "./importer": "./src/core/importer.ts",
     "./operational": "./src/core/operational.ts",
-    "./inspection": "./src/core/inspection.ts"
+    "./inspection": "./src/core/inspection.ts",
+    "./history": "./src/core/history.ts",
+    "./diagnostics": "./src/core/diagnostics.ts"
   }
 }

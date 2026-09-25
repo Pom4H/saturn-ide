@@ -2,11 +2,8 @@ import type { Driver, Value } from '../core';
 import { acquisitionError, prepareAcquisition, validateObservation, type AcquisitionContext, type Observation,
   type Observe, type PreparedProtocol, type ProtocolSource } from '../core/acquisition';
 
-export interface SourceStatus {
-  id: string; protocol: string;
-  phase: 'idle' | 'connecting' | 'online' | 'backoff' | 'faulted' | 'stopped';
-  attempts: number; receivedBatches: number; lastReceivedAt?: number; error?: string;
-}
+import type { SourceStatus, ProtocolContext } from '../core/diagnostics';
+export type { SourceStatus } from '../core/diagnostics';
 export interface AcquisitionDriver extends Driver {
   start(context: AcquisitionContext): Promise<() => Promise<void>>;
   status(): readonly SourceStatus[];
@@ -56,7 +53,7 @@ function enqueue<T>(worker: Worker, generation: Generation, write: boolean, acti
   generation.tail = result.then(() => {}, () => {});
   return result.finally(() => { if (write) generation.pendingWrites--; });
 }
-async function run(worker: Worker, observe: Observe, stop: AbortSignal): Promise<void> {
+async function run(worker: Worker, observe: Observe, stop: AbortSignal, context: ProtocolContext): Promise<void> {
   const { source, plan, status } = worker, settings = source.options;
   if (!plan.signals.length) return;
   const signals = new Map(plan.signals.map(signal => [signal.id, signal]));
@@ -86,7 +83,7 @@ async function run(worker: Worker, observe: Observe, stop: AbortSignal): Promise
     };
     try {
       status.phase = 'connecting'; status.attempts++;
-      opening = Promise.resolve().then(() => plan.open(controller.signal));
+      opening = Promise.resolve().then(() => plan.open(controller.signal, context));
       opening.then(() => { openingSettled = true; }, () => { openingSettled = true; });
       session = await limited(opening, controller, settings.timeoutMs);
       controller.signal.throwIfAborted();
@@ -95,7 +92,11 @@ async function run(worker: Worker, observe: Observe, stop: AbortSignal): Promise
       worker.current = generation; status.phase = 'online'; delete status.error;
       if (session.read) {
         while (!controller.signal.aborted) {
-          const batch = await enqueue(worker, generation, false, () => session!.read!(controller.signal));
+          const batch = await enqueue(worker, generation, false, async () => {
+            const started = performance.now();
+            try { return await session!.read!(controller.signal); }
+            finally { status.readDurationMs = performance.now() - started; }
+          });
           await emit(batch); backoff = settings.reconnectMs;
           await delay(settings.pollMs, controller.signal);
         }
@@ -139,7 +140,7 @@ export function acquire(...sources: readonly ProtocolSource[]): AcquisitionDrive
   let workers: Worker[] = [], controller: AbortController | undefined;
   return {
     mode: sources.every(source => source.options.mode === 'simulation') ? 'simulation' : 'live',
-    status: () => workers.map(worker => ({ ...worker.status })),
+    status: () => workers.map(worker => ({ ...worker.status, channels: worker.plan.signals.length, pendingWrites: worker.current?.pendingWrites ?? 0 })),
     async start(context) {
       if (controller) throw acquisitionError('ACQUISITION_RUNNING', 'Acquisition is already started', 'Сбор уже запущен');
       const observe = context.observe;
@@ -150,7 +151,7 @@ export function acquire(...sources: readonly ProtocolSource[]): AcquisitionDrive
       const abort = () => runController.abort(context.signal?.reason ?? cancelled());
       context.signal?.addEventListener('abort', abort, { once: true });
       if (context.signal?.aborted) abort();
-      for (const worker of workers) worker.task = run(worker, observe, runController.signal).catch(error => {
+      for (const worker of workers) worker.task = run(worker, observe, runController.signal, { diagnostics: context.diagnostics }).catch(error => {
         worker.failure = error; worker.status.phase = 'faulted'; worker.status.error = String(error);
       });
       let closing: Promise<void> | undefined;

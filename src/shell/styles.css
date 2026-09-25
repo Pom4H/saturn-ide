@@ -113,3 +113,6 @@ table{width:100%;border-collapse:collapse;text-align:left;font-size:12px}th{font
   .topbar,.unified-sidebar,.resource-tabs,.surface-toolbar,.statusbar,.shell-panel,.shell-alert,.no-print,.palette-backdrop{display:none!important}
   .report-page{margin:0;padding:12mm 8mm;border:0;max-width:none;overflow:visible}.report-table th{position:static}tr,.report-page footer{break-inside:avoid}@page{size:A4 landscape;margin:10mm}
 }
+
+/* Shared chart accents follow the active system/light/dark theme. */
+:root{--chart-1:var(--accent);--chart-2:var(--syntax-keyword);--chart-3:var(--good);--chart-4:var(--syntax-number)}
