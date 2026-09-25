@@ -8,10 +8,13 @@ import { connectionTip } from '../src/topology';
 import { fixture } from '../tests/helpers';
 
 const input=fixture(),artifacts='artifacts/physical-editor';mkdirSync(artifacts,{recursive:true});
+console.log('STAGE start host');
 const app=await createApp({projectDir:input.root,dataDir:join(input.dir,'data'),databaseUrl:':memory:',port:0,preview:'simulation'});
+console.log('STAGE start Chromium');
 const browser=await chromium.launch({headless:true,channel:process.env.CI?'chrome':undefined,args:['--no-sandbox','--enable-unsafe-swiftshader']});
 const context=await browser.newContext({viewport:{width:1440,height:960},recordVideo:{dir:join(artifacts,'video')}});
 const page=await context.newPage(),errors:string[]=[],checks:string[]=[];
+page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(20000);
 page.on('pageerror',error=>errors.push(error.message));
 const until=async(check:()=>Promise<boolean>,message:string)=>{
   for(let i=0;i<200;i++){if(await check())return;await page.waitForTimeout(50);}throw new Error(message);
@@ -21,14 +24,17 @@ const scene=page.locator('.scene3d'),data=async(key:string)=>await scene.getAttr
 type ScreenPoint={x:number;y:number};
 type Tip=ScreenPoint&{z:number};
 try{
+  console.log('STAGE open editor');
   await page.goto(app.server.url.toString());
   await page.locator('[data-equipment="P-01"]').waitFor({timeout:30000});
   await page.getByRole('button',{name:'Edit',exact:true}).click();
   await page.getByRole('button',{name:'3D',exact:true}).click();
   await until(async()=>Number(await data('frames'))>35,'3D did not produce real frames');
+  console.log('STAGE 3D ready');
   const original=await state(),equipment=original.project.equipment.find(e=>e.id==='P-01');assert(equipment);
   const screen=(JSON.parse(await data('equipment-screens')??'[]') as (ScreenPoint&{id:string})[]).find(e=>e.id===equipment.id);assert(screen);
   const builds=await data('equipment-builds'),camera=JSON.parse(await data('camera-pose')??'[]') as number[];
+  console.log('STAGE equipment drag');
   await page.mouse.move(screen.x,screen.y);await page.mouse.down();await page.mouse.move(screen.x+36,screen.y-12,{steps:8});
   await until(async()=>await data('drag-kind')==='equipment','equipment gesture not captured');
   await page.waitForTimeout(120);
@@ -50,6 +56,7 @@ try{
   checks.push('lostpointercapture cancels the same gesture and leaves authored coordinates unchanged');
 
   // Use a genuinely visible connector; do not assume that a projected point is unoccluded.
+  console.log('STAGE cable pick');
   const plugs=JSON.parse(await data('cable-plugs')??'[]') as (ScreenPoint&{id:string;end:'from'|'to'})[];
   let chosen:typeof plugs[number]|undefined;
   for(const plug of plugs){
@@ -79,5 +86,8 @@ try{
   errors.push(String(error));await page.screenshot({path:join(artifacts,'failure.png')}).catch(()=>{});throw error;
 }finally{
   writeFileSync(join(artifacts,'report.json'),JSON.stringify({checks,errors},null,2));
-  await context.close();await browser.close();await app.close();input.clean();
+  console.log('STAGE close context');await context.close();
+  console.log('STAGE close browser');await browser.close();
+  console.log('STAGE close host');await app.close();input.clean();
+  console.log('STAGE complete');
 }

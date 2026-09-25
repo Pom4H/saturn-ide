@@ -87,7 +87,8 @@ jobs:
         run: bun scripts/importer-browser-test.ts
         working-directory: saturn-ide
       - name: Physical editor browser acceptance
-        run: bun scripts/physical-interaction-browser-test.ts
+        timeout-minutes: 3
+        run: timeout --kill-after=10s 120s bun scripts/physical-interaction-browser-test.ts
         working-directory: saturn-ide
       - name: Keep physical editor evidence
         if: always()
