@@ -7,27 +7,30 @@ import type { IDEState } from '../src/protocol';
 import { connectionTip } from '../src/topology';
 import { fixture } from '../tests/helpers';
 
-const input=fixture(),artifacts='artifacts/physical-editor';mkdirSync(artifacts,{recursive:true});
+const artifacts='artifacts/physical-editor';mkdirSync(artifacts,{recursive:true});
+// The hosted headless compositor stalls even an independent native RAF on this WebGL scene.
+// A real visible Chromium window on the runner's virtual display keeps the same renderer/test.
+const display=process.env.CI?Bun.spawn(['Xvfb',':99','-screen','0','1440x960x24'],{stdout:'ignore',stderr:'ignore'}):null;
+if(display){process.env.DISPLAY=':99';await Bun.sleep(500);}
+const input=fixture();
 const app=await createApp({projectDir:input.root,dataDir:join(input.dir,'data'),databaseUrl:':memory:',port:0,preview:'simulation'});
-const browser=await chromium.launch({headless:true,channel:process.env.CI?'chrome':undefined,args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
-// Screenshots are evidence. Do not couple gesture acceptance to the screencast compositor.
-const context=await browser.newContext({viewport:{width:1440,height:960}});
-const page=await context.newPage(),errors:string[]=[],checks:string[]=[];
+const browser=await chromium.launch({headless:!process.env.DISPLAY,channel:process.env.CI?'chrome':undefined,args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader']});
+const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage();
+const errors:string[]=[],checks:string[]=[];
 page.setDefaultTimeout(15000);page.on('pageerror',error=>errors.push(error.message));
 const scene=page.locator('.scene3d');
 const data=async(key:string)=>await scene.count()?await scene.getAttribute(`data-${key}`):null;
 const state=async()=>await(await fetch(new URL('/api/state',app.server.url))).json() as IDEState;
 const until=async(check:()=>Promise<boolean>,message:string)=>{
-  const end=Date.now()+20000;while(Date.now()<end){if(await check())return;await page.waitForTimeout(80);}throw new Error(message);
+  const end=Date.now()+25000;while(Date.now()<end){if(await check())return;await page.waitForTimeout(80);}throw new Error(message);
 };
 type XY={x:number;y:number};
 try{
-  await page.goto(app.server.url.toString());
+  await page.goto(app.server.url.toString());await page.bringToFront();
   await page.locator('[data-equipment="P-01"]').waitFor({timeout:30000});
   await page.getByRole('button',{name:'Edit',exact:true}).click();
   await page.getByRole('button',{name:'3D',exact:true}).click();
   await scene.waitFor({timeout:45000});
-  await page.evaluate(()=>{let count=0;const tick=()=>{document.documentElement.dataset.nativeFrames=String(++count);requestAnimationFrame(tick);};requestAnimationFrame(tick);});
   await until(async()=>Number(await data('frames'))>35,'3D did not produce real frames');
   const original=await state(),equipment=original.project.equipment.find(e=>e.id==='P-01');assert(equipment);
   const screen=(JSON.parse(await data('equipment-screens')??'[]') as (XY&{id:string})[]).find(e=>e.id===equipment.id);assert(screen);
@@ -69,13 +72,11 @@ try{
   await page.keyboard.press('Escape');await page.mouse.up();
   await until(async()=>await data('drag-tip')==='null','cancel left preview');
   assert.deepEqual((await state()).project.cables,original.project.cables);
-  checks.push('world-space cable pickup, Shift elevation and source-safe cancellation');
-  assert.deepEqual(errors,[]);
+  checks.push('world-space cable pickup, Shift elevation and source-safe cancellation');assert.deepEqual(errors,[]);
 }catch(error){
-  errors.push(String(error));
-  console.log('FAILURE STATE',await page.evaluate(()=>({nativeFrames:document.documentElement.dataset.nativeFrames,hidden:document.hidden,scene:document.querySelector('.scene3d')?.outerHTML})).catch(()=>null));
+  errors.push(String(error));console.log('FAILURE',await page.evaluate(()=>({hidden:document.hidden,scene:document.querySelector('.scene3d')?.outerHTML})).catch(()=>null));
   await page.screenshot({path:join(artifacts,'failure.png'),timeout:3000}).catch(()=>{});throw error;
 }finally{
   writeFileSync(join(artifacts,'report.json'),JSON.stringify({checks,errors},null,2));
-  await context.close();await browser.close();await app.close();input.clean();
+  await context.close();await browser.close();await app.close();input.clean();display?.kill();
 }
