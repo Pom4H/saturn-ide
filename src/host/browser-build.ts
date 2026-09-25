@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 /** Bundle trusted local project browser.ts separately from the headless runtime artifact. */
 export async function browserAssets(appRoot: string, projectRoot: string, dataDir: string) {
@@ -11,8 +11,8 @@ export async function browserAssets(appRoot: string, projectRoot: string, dataDi
     build.onResolve({filter:/^(react|react-dom)(\/.*)?$/},args=>({path:Bun.resolveSync(args.path,appRoot)}));
   }}] });
   if (!result.success) throw new Error(result.logs.map(log=>log.message).join('\n'));
-  const assets = new Map(result.outputs.map(output=>['/assets/'+output.path.split('/').at(-1), output]));
-  const css = result.outputs.filter(output=>output.path.endsWith('.css')).map(output=>`<link rel="stylesheet" href="/assets/${output.path.split('/').at(-1)}">`).join('');
+  const assets = new Map(result.outputs.map(output=>['/assets/'+basename(output.path), output]));
+  const css = result.outputs.filter(output=>output.path.endsWith('.css')).map(output=>`<link rel="stylesheet" href="/assets/${basename(output.path)}">`).join('');
   const html = readFileSync(join(appRoot,'src/shell/index.html'),'utf8').replace('<link rel="stylesheet" href="./styles.css">',css).replace('../host/browser.tsx','/assets/app.js');
   return { html, assets };
 }

@@ -9,6 +9,10 @@ import { Workspace } from './files';
 import { Language } from './language';
 import { execute } from './git';
 export interface DraftBuild { artifact: BuildArtifact; project: Project; positions: Record<string, PositionSource> }
+function buildFailure(error:unknown){
+  const message=(value:unknown)=>value instanceof Error?value.message:value&&typeof value==='object'&&'message' in value?String((value as {message:unknown}).message):String(value);
+  return error instanceof AggregateError?error.errors.map(message).join('\n'):message(error);
+}
 export class BuildError extends Error {
   constructor(readonly problems: Problem[]) { super('Project check failed'); }
 }
@@ -33,16 +37,19 @@ export class Builder {
     const entrypoints = [this.workspace.file('project.ts')];
     if (sourceFiles.some(f => f.path === 'server.ts')) entrypoints.push(this.workspace.file('server.ts'));
     const imports=projectImports(this.appRoot);
-    const result = await Bun.build({ entrypoints, outdir, naming: '[name].mjs', target: 'bun', plugins: [{ name: 'project-imports', setup: build => {
-      // Bundle project code and Saturn contracts; preserve installed SDK packages/native assets.
-      // No protocol-specific package names or plugin registry in the compiler.
-      build.onResolve({ filter: /^[^./]/ }, args => {
-        const entry=imports[args.path]?.[0];
-        if(entry)return {path:entry};
-        return { path: args.path, external: true };
-      });
-    } }] });
-    if (!result.success) throw new Error(result.logs.map(l => l.message).join('\n'));
+    let result:Awaited<ReturnType<typeof Bun.build>>;
+    try {
+      result = await Bun.build({ entrypoints, outdir, naming: '[name].mjs', target: 'bun', plugins: [{ name: 'project-imports', setup: build => {
+        // Bundle project code and Saturn contracts; preserve installed SDK packages/native assets.
+        // No protocol-specific package names or plugin registry in the compiler.
+        build.onResolve({ filter: /^[^./]/ }, args => {
+          const entry=imports[args.path]?.[0];
+          if(entry)return {path:entry};
+          return { path: args.path, external: true };
+        });
+      } }] });
+    } catch(error) { throw new Error('Bundle failed: '+buildFailure(error)); }
+    if (!result.success) throw new Error('Bundle failed: '+result.logs.map(l => l.message).join('\n'));
     const project = (await import(pathToFileURL(join(outdir, 'project.mjs')).href)).default as Project;
     validateProject(project);
     const after = await digest(canonical(this.sources().map(({ path, source }) => ({ path, source }))));
