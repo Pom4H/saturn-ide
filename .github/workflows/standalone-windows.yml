@@ -60,9 +60,11 @@ jobs:
           if(Test-Path '..\saturn-plugins\node_modules'){Remove-Item '..\saturn-plugins\node_modules' -Force -Recurse}
           New-Item -ItemType Junction -Path '..\saturn-examples\node_modules' -Target $modules | Out-Null
           New-Item -ItemType Junction -Path '..\saturn-plugins\node_modules' -Target $modules | Out-Null
-      - name: Check source before packaging
+      - name: Typecheck source before packaging
         working-directory: saturn-ide
-        run: bun run check
+        run: |
+          bun x tsc --noEmit
+          bun x tsc6 --noEmit
       - name: Build Windows portable Saturn
         working-directory: saturn-ide
         run: bun scripts/build-standalone.ts windows-x64 dist/standalone ../saturn-examples/pumping-station
