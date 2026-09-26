@@ -16,8 +16,8 @@ const tab=(name:string)=>page.getByRole('tab',{name,exact:true});
 const shot=async(name:string)=>page.screenshot({path:`artifacts/shell-panel-${name}.png`});
 const onePanel=async()=>{assert.equal(await panel.count(),1);assert.equal(await page.locator('.runtime-dock,.diagram-dock').count(),0);assert.equal(await page.getByRole('tabpanel').count(),1);};
 try {
-  mkdirSync('artifacts',{recursive:true});await page.goto(app.server.url.toString());await page.locator('[data-equipment="P-01"]').waitFor();
-  await tab('Терминал').click();const input=page.getByRole('textbox',{name:'Команда сигнала'});
+  mkdirSync('artifacts',{recursive:true});await page.goto(app.server.url.toString());await page.locator('[data-equipment="P-01"]').waitFor();await page.getByRole('combobox',{name:'Вид проводника'}).selectOption('folders');
+  await tab('Терминал').click();const input=page.getByRole('combobox',{name:'Команда оболочки'});
   await input.fill('help');await input.press('Enter');await page.locator('.shell-terminal-log').getByText('set <signal> <value>',{exact:false}).waitFor();
   await input.fill('set P-01.run false');
   for(const name of ['Исходник','Отчёты','Документация','Схема']) {
@@ -30,9 +30,9 @@ try {
   const separator=page.getByRole('separator',{name:'Высота нижней панели'});
   const before=(await panel.boundingBox())!.height;await separator.focus();await separator.press('ArrowUp');assert.equal((await panel.boundingBox())!.height,before+20);
   const grip=(await separator.boundingBox())!;await page.mouse.move(grip.x+grip.width/2,grip.y+3);await page.mouse.down();await page.mouse.move(grip.x+grip.width/2,grip.y-77,{steps:8});await page.mouse.up();assert.ok((await panel.boundingBox())!.height>before+70);
-  await page.getByRole('button',{name:'Развернуть панель',exact:true}).click();assert.ok((await panel.boundingBox())!.height>500);
-  await page.getByRole('button',{name:'Восстановить размер панели',exact:true}).click();assert.ok((await panel.boundingBox())!.height<400);
-  await tab('Терминал').focus();await page.keyboard.press('ArrowRight');assert.equal(await panel.getAttribute('data-tab'),'notifications');
+  const resizedHeight=(await panel.boundingBox())!.height;await page.getByRole('button',{name:'Развернуть панель',exact:true}).click();assert.ok((await panel.boundingBox())!.height>500);
+  await page.getByRole('button',{name:'Восстановить размер панели',exact:true}).click();assert.equal((await panel.boundingBox())!.height,resizedHeight);
+  await tab('Терминал').focus();await page.keyboard.press('ArrowRight');assert.equal(await panel.getAttribute('data-tab'),'assistant');await page.keyboard.press('ArrowRight');assert.equal(await panel.getAttribute('data-tab'),'notifications');
   await shot('notifications-light');await page.emulateMedia({colorScheme:'dark'});await shot('notifications-dark');await page.emulateMedia({colorScheme:'light'});
   await page.locator('[data-equipment="PLC-01"] .equipment-id').click();await tab('Терминал').click();await input.fill('set V-01.opening 0');await input.press('Enter');
   await until(async()=>app.state().snapshot.alarms['high-pressure']?.active===true,'Alarm never activated');await bell.click();await page.getByRole('button',{name:'Квитировать',exact:true}).waitFor();

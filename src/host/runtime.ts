@@ -1,3 +1,6 @@
+import {reportResponse} from './report-api';
+import {ReportError} from '../runtime/report';
+import { compareRuns } from '../runtime/compare';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
@@ -77,6 +80,9 @@ export async function createRuntimeHost(options: RuntimeHostOptions) {
             if (path === '/api/history/range') return historyResponse(store, runtime.project, url);
             if (path === '/api/releases') return json(await releaseState());
             if (path === '/api/events') return events.response(request, snapshot());
+            if(path === '/api/telemetry/runs')return json(await store.runs());
+            if(path === '/api/telemetry/compare')return json(await compareRuns(store,revisions,url.searchParams.get('a')??'',url.searchParams.get('b')??'',url.searchParams.get('signal')??'',Number(url.searchParams.get('duration')),Number(url.searchParams.get('bucket'))));
+            if(path === '/api/report')return await reportResponse(store,runtime.project,manager.applied??'',url);
             if (path === '/api/alarms') return json(await store.events());
             if (path === '/api/history') {
               const signal = Object.values(runtime.project.signals).find(signal => signal.id === url.searchParams.get('signal'));
@@ -117,7 +123,7 @@ export async function createRuntimeHost(options: RuntimeHostOptions) {
             return json(await releaseState());
           });
         } catch (error) {
-          return json({ error: error instanceof Error ? error.message : 'Runtime request failed' }, error instanceof RequestError ? error.status : 409);
+          return json({ error: error instanceof Error ? error.message : 'Runtime request failed' }, error instanceof RequestError || error instanceof ReportError ? error.status : 409);
         }
       },
     });

@@ -1,7 +1,10 @@
+import {ResourceDetails,type DetailTarget} from './resource-details';
+import type { GitState } from '../core/git';
+import { GitSurface } from './git-surface';
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { equipmentSignals, interfaceProfile, text, type Equipment, type Locale, type Project, type Snapshot, type Text, type Value } from '../core';
+import { equipmentSignals, text, type Equipment, type Locale, type Project, type Snapshot, type Text, type Value } from '../core';
 import { availableEditors, editorNames, findResources, type EditorId, type ProjectResource } from '../core/resources';
-import { related, routeConnections, type PhysicalRoute } from '../topology';
+import { routeConnections, type PhysicalRoute } from '../topology';
 import { api, browserClient } from './api';
 import { useShell } from './use-shell';
 import { useLayoutEditing } from './use-layout-editing';
@@ -34,7 +37,7 @@ const loadPerformanceDiagnostics = (abort: AbortSignal) => api<RuntimeDiagnostic
 import './resources.css';
 const Scene3D = lazy(() => import('./scene3d'));
 const surfaces = Object.keys(editorNames) as EditorId[];
-interface GitState { available: boolean; branch: string; status: string; log: string; remotes: string; diff: string }
+
 interface Releases { checked: string | null; published: string | null; applied: string | null; phase: string; error: string }
 interface SemanticChange { semanticId:string; kind:string; type:'added'|'removed'|'renamed'|'changed'; before?:string; after?:string; message:Record<Locale,string> }
 interface RenamePreview { kind:'rename-equipment'; from:string; to:string; semanticId:string; source:string; affected:readonly {semanticId:string;id:string;kind:string}[] }
@@ -58,13 +61,15 @@ function Workbench({displays,importers}:AppProps) {
   const dark = theme === 'dark' || theme === 'system' && systemDark;
   const [clock, setClock] = useState(Date.now()), [operator, setOperator] = useState(false);
   const now = Math.max(clock, Date.now());
+  const [detailTarget,setDetailTarget]=useState<DetailTarget|null>(null);
+  useEffect(()=>setDetailTarget(null),[surface,selected,nav.signal,nav.report,active]);
   const [tree, setTree] = useState(true), [inspect, setInspect] = useState(false);
   const [panel,dispatchPanel]=useReducer(panelReducer,initialPanel);
   const alarmHistory=useAlarmHistory(state?.project.id,shell.alarmVersion,connected);
   const [dimension, setDimension] = useState<'2d' | '3d'>('2d'), [interaction, setInteraction] = useState<'select'|'edit'>('select'), [selectedIds,setSelectedIds]=useState<string[]>([]), [ports, setPorts] = useState(false), [fit, setFit] = useState(0);
   const [zoom,setZoom]=useState({step:0,factor:1});
   const [cablePreview,setCablePreview]=useState<{id:string;end:'from'|'to';x:number;y:number;z:number}|null>(null);
-  const [git, setGit] = useState<GitState | null>(null), [message, setMessage] = useState(''), [gitBusy, setGitBusy] = useState(false);
+  const [git, setGit] = useState<GitState | null>(null), [gitBusy, setGitBusy] = useState(false);
   const [releases, setReleases] = useState<Releases | null>(null);
   const [documentation, setDocumentation] = useState(''), [semanticChanges, setSemanticChanges] = useState<SemanticChange[]>([]);
   const [renameId, setRenameId] = useState(''), [renamePreview, setRenamePreview] = useState<RenamePreview | null>(null), [renameVersion, setRenameVersion] = useState(''), [renameBusy, setRenameBusy] = useState(false);
@@ -139,7 +144,7 @@ function Workbench({displays,importers}:AppProps) {
         if(next)void session.execute({type:'open',uri:next.uri,editor:next.editor}).then(()=>{const id=session.getSnapshot().selected;setSelectedIds(id?[id]:[]);}).catch(fail);
       }
       if (mod && event.key.toLowerCase() === 's' && !operator) void save();
-      if (event.key === 'Escape') { setPalette(false); setMobileNav(false);  }
+      if (event.key === 'Escape') { setPalette(false); setMobileNav(false);if(!typing&&!target?.closest('[role=menu],[role=dialog]'))setInspect(false); }
     };
     addEventListener('keydown', key, true); return () => removeEventListener('keydown', key, true);
   }, [operator, session, surface]);
@@ -171,8 +176,8 @@ function Workbench({displays,importers}:AppProps) {
       await api('push/subscribe', { subscription: subscription.toJSON() });
     } catch (e) { fail(e); }
   };
-  const gitAction = async (action: string) => {
-    setGitBusy(true); try { setGit(await api<GitState>('git', { action, message })); setMessage(''); await refresh(); } catch (e) { fail(e); } finally { setGitBusy(false); }
+  const gitAction = async (action: string, message?:string, commit?:string) => {
+    setGitBusy(true); try { setGit(await api<GitState>('git', { action, message, commit, expectedHead:git?.head||undefined })); await refresh();return true; } catch (e) { fail(e);return false; } finally { setGitBusy(false); }
   };
 
   const previewRename = async () => {
@@ -184,7 +189,7 @@ function Workbench({displays,importers}:AppProps) {
     setRenameBusy(true);try{await api('refactor/rename',{uri:resource.uri,nextId:renamePreview.to,version:renameVersion,apply:true});setRenamePreview(null);setRenameVersion('');await refresh();}catch(e){fail(e);}finally{setRenameBusy(false);}
   };  if (!state || !previewProject) return <main className="empty-state"><h1>Saturn IDE</h1><p>{error || (ru ? 'Подключение к рабочему проекту…' : 'Connecting to the workspace…')}</p></main>;
   const snapshot: Snapshot = projectSnapshot(state.project.signals, state.snapshot, { now, connected });
-  const equipment = state.project.equipment.find(e => e.id === selected), references = equipment ? related(state.project, equipment) : null;
+  const equipment = state.project.equipment.find(e => e.id === selected);
   const activeResource = catalog.resources.find(r => r.uri === nav.active?.uri);
   const signal = Object.values(state.project.signals).find(s => s.id === nav.signal) ?? Object.values(state.project.signals)[0];
   const activeAlarms = Object.values(snapshot.alarms).filter(alarmNeedsAttention), file = documents.get(active);
@@ -193,7 +198,6 @@ function Workbench({displays,importers}:AppProps) {
     cablePreview,beginCable:(id:string,which:'from'|'to',x:number,y:number,z:number)=>{if(operator)return false;setCablePreview({id,end:which,x,y,z});return true;},
     moveCable:(x:number,y:number,z:number)=>setCablePreview(previous=>previous?{...previous,x,y,z}:null),endCable:(target?:{device:string;port:string},cancel?:boolean)=>void finishCable(target,cancel),displays };
   const controlFor = (e?: Equipment) => e ? equipmentSignals(e).find(signal=>signal.writable) : undefined;
-  const control = controlFor(equipment);
   const sourcePanel = <section className="code-pane"><div className="pane-heading"><code title={active}>{active}</code><button disabled={!file || file.draft === file.source || file.saving || dragging} onClick={() => void save()}>{file?.saving ? '…' : ru ? 'Сохранить' : 'Save'}</button></div>
     {file ? <Editor path={active} source={file.draft} locale={locale} dragging={dragging} snapshot={snapshot} signals={state.project.signals} now={now} change={draft => session.documents.edit(active, draft)} save={() => void save()}/> : <p>{ru ? 'Откройте исходник объекта' : 'Open an object source'}</p>}</section>;
   if (location.pathname === '/hmi') {
@@ -219,12 +223,18 @@ function Workbench({displays,importers}:AppProps) {
     ...surfaces.filter(s => !operator || !['source', 'git', 'targets'].includes(s)).filter(s => editorNames[s][locale].toLowerCase().includes(query.toLowerCase())).map(s => ({ id: s, name: editorNames[s][locale], icon: s, run: () => chooseSurface(s) })),
     ...findResources(catalog, query, locale).filter(r => !operator || ['device', 'report', 'project'].includes(r.kind)).map(r => ({ id: r.uri, name: `${r.name[locale]} ${r.entityId ?? ''}`, icon: r.icon, run: () => void openResource(r) })),
   ].slice(0, 30);
+  const deviceEdit=equipment?<div className="semantic-rename">
+                <label><span>{ru?'Tag / ID':'Tag / ID'}</span><input aria-label={ru?'Новый tag оборудования':'New equipment tag'} value={renameId} onChange={event=>{setRenameId(event.target.value);setRenamePreview(null);}}/></label>
+                <button disabled={renameBusy||!renameId.trim()||renameId===equipment.id} onClick={()=>void previewRename()}>{renameBusy?'…':ru?'Проверить':'Preview'}</button>
+                {renamePreview&&<div className="rename-preview"><strong>{renamePreview.from} → {renamePreview.to}</strong><span>{ru?'Затронуто: ':'Affected: '}{renamePreview.affected.length}</span><small>{renamePreview.affected.slice(0,6).map(item=>item.id).join(', ')||'—'}</small><button disabled={renameBusy} onClick={()=>void applyRename()}>{ru?'Применить AST-изменение':'Apply AST change'}</button></div>}
+              </div>:null;
+  const inspected:DetailTarget=detailTarget??(surface==='signals'&&signal?{kind:'signal',id:signal.id}:surface==='reports'&&(state.project.reports?.length??0)>0?{kind:'report',id:state.project.reports!.find(r=>r.id===nav.report)?.id??state.project.reports![0]!.id}:surface==='diagram'&&equipment?{kind:'device',id:equipment.id}:activeResource?{kind:activeResource.kind,id:activeResource.entityId??activeResource.uri}:{kind:'project',id:state.project.id});
+  const contextResource=catalog.resources.find(r=>inspected.kind==='signal'?r.kind==='device'&&r.entityId===signal?.owner?.id:r.kind===inspected.kind&&(r.uri===inspected.id||r.entityId===inspected.id))??activeResource;
   const viewItems:MenuItem[]=[
     ...(surface==='diagram'?[
       {id:'fit',label:ru?'Вписать схему':'Fit diagram',icon:'fit',run:()=>setFit(f=>f+1)},
       {id:'ports',label:ru?'Порты':'Ports',icon:'ports',checked:ports,run:()=>setPorts(!ports)},
-      {id:'inspect',label:ru?'Свойства':'Inspector',icon:'inspector',checked:inspect,run:()=>setInspect(!inspect)},
-    ]:activeResource?availableEditors(activeResource,'browser').filter(editor=>editor!==surface).map(editor=>({id:editor,label:editorNames[editor][locale],icon:editor,run:()=>openResource(activeResource,editor)})):[]),
+    ]:[]),
     {id:'sidebar',label:ru?'Проводник':'Explorer',icon:'sidebar',divider:true,checked:matchMedia('(max-width:760px)').matches?mobileNav:tree,run:()=>{if(matchMedia('(max-width:760px)').matches)setMobileNav(!mobileNav);else setTree(!tree);}},
     {id:'panel',label:ru?'Нижняя панель':'Bottom panel',icon:'panel',shortcut:'⌘ J',checked:panel.open,run:()=>dispatchPanel({type:'toggle'})},
     ...(['light','dark','system'] as const).map((value,index)=>({id:value,label:value==='light'?(ru?'Светлая тема':'Light theme'):value==='dark'?(ru?'Тёмная тема':'Dark theme'):(ru?'Как в системе':'System theme'),icon:value==='light'?'sun':'moon',divider:index===0,checked:theme===value,run:()=>setTheme(value)})),
@@ -253,49 +263,22 @@ function Workbench({displays,importers}:AppProps) {
             <button aria-label={`${ru?'Закрыть':'Close'} ${label}`} onClick={()=>void closeTabs([tab])}><ResourceIcon icon="close" size={12}/></button>
           </div>;
         })}<MenuButton className="tab-actions icon-button" label={ru?'Действия вкладки':'Tab actions'} icon="more" items={nav.active?tabMenu(nav.active):[{id:'open',label:ru?'Открыть схему':'Open diagram',icon:'diagram',run:()=>chooseSurface('diagram')}]} /></nav>}
-        {nav.active&&<div className="surface-toolbar"><strong>{editorNames[surface][locale]}</strong>
+        {nav.active&&<div className="surface-toolbar"><strong>{surface==='source'?(ru?'Исходник':'Source'):editorNames[surface][locale]}</strong>
           {surface === 'diagram' && <><div className="segmented"><button aria-pressed={dimension === '2d'} onClick={() => setDimension('2d')}>2D</button><button aria-pressed={dimension === '3d'} onClick={() => setDimension('3d')}>3D</button></div><div className="segmented" aria-label={ru?'Режим схемы':'Diagram mode'}><button aria-pressed={interaction==='select'} onClick={()=>setInteraction('select')}>S · Select</button><button aria-pressed={interaction==='edit'} disabled={operator} onClick={()=>setInteraction('edit')}>Edit</button></div></>}
           <span className="spacer"/><MenuButton className="view-menu" label={ru?'Действия':'Actions'} items={viewItems}>{ru?'Вид':'View'}</MenuButton>
-          <div className="toolbar-actions">
-            {surface === 'diagram' && <>
-              <div className="toolbar-group" role="group" aria-label={ru?'Вид схемы':'Diagram view'}>
-                <button title={ru?'Вписать всю схему в рабочую область':'Fit the entire diagram'} onClick={() => { setFit(f => f + 1);  }}><ResourceIcon icon="fit" size={16}/>{ru?'Вписать':'Fit'}</button>
-                <button title={ru?'Показать точки подключения оборудования':'Show equipment connection points'} aria-pressed={ports} onClick={() => { setPorts(!ports);  }}><ResourceIcon icon="ports" size={16}/>{ru?'Порты':'Ports'}</button>
-              </div>
-              <div className="toolbar-group" role="group" aria-label={ru?'Панели схемы':'Diagram panes'}>
-                <button title={ru?'Свойства выбранного оборудования':'Selected equipment properties'} aria-pressed={inspect} onClick={()=>{setInspect(!inspect);}}><ResourceIcon icon="inspector" size={16}/>{ru?'Свойства':'Inspector'}</button>
-              </div>
-            </>}
-            {surface!=='diagram'&&activeResource&&availableEditors(activeResource,'browser').includes(surface)&&<div className="toolbar-group" role="group" aria-label={ru?'Перейти к объекту':'Go to object'}>
-              {availableEditors(activeResource,'browser').includes('diagram')&&<button title={ru?'Показать этот объект на схеме':'Show this object in the diagram'} onClick={()=>{void openResource(activeResource,'diagram');}}><ResourceIcon icon="diagram" size={16}/>{ru?'На схеме':'Show in diagram'}</button>}
-              {surface!=='source'&&!operator&&availableEditors(activeResource,'browser').includes('source')&&<button title={activeResource.source?.path} onClick={()=>{void openResource(activeResource,'source');}}><ResourceIcon icon="source" size={16}/>{ru?'Показать в коде':'Show in code'}</button>}
-            </div>}
-          </div>
+          <button className="inspector-toggle" aria-label={ru?'Свойства':'Inspector'} aria-pressed={inspect} onClick={()=>setInspect(!inspect)}><ResourceIcon icon="inspector" size={16}/><span>{ru?'Свойства':'Inspector'}</span></button>
+          {contextResource&&availableEditors(contextResource,'browser').some(editor=>editor!==surface&&(!operator||!['source','git','targets'].includes(editor)))&&<MenuButton className="resource-view-menu" label={ru?'Перейти':'Go to'} items={availableEditors(contextResource,'browser').filter(editor=>editor!==surface&&(!operator||!['source','git','targets'].includes(editor))).map(editor=>({id:editor,label:editorNames[editor][locale],icon:editor,run:()=>openResource(contextResource,editor)}))}>{ru?'Перейти':'Go to'}</MenuButton>}
         </div>}
-        <div className="surface-content">
+        <div className="surface-layout"><div className="surface-content">
           {!nav.active?<section className="empty-state"><h2>{ru?'Откройте файл или представление':'Open a file or view'}</h2><p>{ru?'Файлы и устройства находятся в дереве слева.':'Files and devices are in the explorer on the left.'}</p><button onClick={()=>chooseSurface('diagram')}>{ru?'Открыть схему':'Open diagram'}</button></section>:<>
-          {surface === 'diagram' && <div className="diagram-workspace"><section className="diagram-pane"><div className="diagram-canvas">{dimension === '2d' ? <><Scene {...scene}/><div className="mobile-scene-zoom" aria-label={ru?'Масштаб схемы':'Diagram zoom'}><button aria-label={ru?'Приблизить схему':'Zoom in'} onClick={()=>setZoom(value=>({step:value.step+1,factor:.76}))}>+</button><button aria-label={ru?'Отдалить схему':'Zoom out'} onClick={()=>setZoom(value=>({step:value.step+1,factor:1/.76}))}>−</button></div></> : <Suspense fallback={<p className="empty-state">3D…</p>}><Scene3D {...scene}/></Suspense>}</div></section>
-            {inspect && equipment && <aside className="inspector"><div className="pane-heading"><strong>{equipment.id}</strong><button aria-label={ru ? 'Закрыть свойства' : 'Close inspector'} onClick={() => setInspect(false)}>×</button></div><div className="inspector-body"><h2><ResourceIcon icon={equipment.icon}/> {text(equipment.label, locale)}</h2><p className="muted">x {equipment.x}, y {equipment.y}</p>
-              {equipment.knowledge.summary&&<p className="equipment-knowledge-summary">{text(equipment.knowledge.summary,locale)}</p>}
-              {!!equipment.knowledge.constraints?.length&&<div className="equipment-constraints"><h3>{ru?'Ограничения класса':'Class constraints'}</h3>{equipment.knowledge.constraints.map(constraint=><div key={constraint.id} className={'constraint '+constraint.severity}><strong>{text(constraint.label,locale)}</strong>{constraint.description&&<span>{text(constraint.description,locale)}</span>}</div>)}</div>}
-              {control && <Control signal={control} sample={snapshot.samples[control.id]} locale={locale} enabled={connected} send={send}/>}
-              {!operator && <button className="text-button" onClick={() => { const r = catalog.resources.find(r => r.kind === 'device' && r.entityId === equipment.id); if (r) void openResource(r, 'source'); }}>{ru ? 'Показать в коде' : 'Show in code'} ↗</button>}
-              {!operator && <div className="semantic-rename">
-                <label><span>{ru?'Tag / ID':'Tag / ID'}</span><input aria-label={ru?'Новый tag оборудования':'New equipment tag'} value={renameId} onChange={event=>{setRenameId(event.target.value);setRenamePreview(null);}}/></label>
-                <button disabled={renameBusy||!renameId.trim()||renameId===equipment.id} onClick={()=>void previewRename()}>{renameBusy?'…':ru?'Проверить':'Preview'}</button>
-                {renamePreview&&<div className="rename-preview"><strong>{renamePreview.from} → {renamePreview.to}</strong><span>{ru?'Затронуто: ':'Affected: '}{renamePreview.affected.length}</span><small>{renamePreview.affected.slice(0,6).map(item=>item.id).join(', ')||'—'}</small><button disabled={renameBusy} onClick={()=>void applyRename()}>{ru?'Применить AST-изменение':'Apply AST change'}</button></div>}
-              </div>}
-              <h3>{ru ? 'Сигналы' : 'Signals'}</h3>{references?.signals.map(s => <button className="reference" key={s.id} onClick={() => {session.selectSignal(s.id);dispatchPanel({type:'open',tab:'graphs'});}}><code>{s.id}</code><strong>{snapshot.samples[s.id]?.quality === 'good' ? fmt(snapshot.samples[s.id]?.value) : '—'} <small>{s.unit}</small></strong></button>)}
-              <h3>{ru ? 'Соединения' : 'Connections'}</h3>{references?.connections.map(c => <div className="connection-reference" key={c.id}><strong>{c.kind} · {c.id}</strong><button onClick={() => selectEquipment(c.from.device)}>{c.from.device}.{c.from.port}</button> → <button onClick={() => selectEquipment(c.to.device)}>{c.to.device}.{c.to.port}</button></div>)}
-              <h3>{ru ? 'Интерфейсы' : 'Interfaces'}</h3>{Object.values(equipment.ports).map(port=><div className="connection-reference" key={port.port} data-interface={port.terminal.interfaceId??port.terminal.family}><strong>{port.port} · {port.terminal.interfaceId?interfaceProfile(port.terminal.interfaceId).label:port.terminal.family}</strong><span>{port.terminal.family} · {port.terminal.role}{port.terminal.unit?` · ${port.terminal.unit}`:''}{port.terminal.valueType?` · ${port.terminal.valueType}`:''}</span></div>)}
-              <h3>{ru ? 'Связанные объекты' : 'Related resources'}</h3>{catalog.resources.find(r => r.kind === 'device' && r.entityId === equipment.id)?.related.map(uri => { const r = catalog.resources.find(r => r.uri === uri); return r ? <button className="reference resource-link" key={uri} onClick={() => void openResource(r)}><ResourceIcon icon={r.icon}/>{r.name[locale]} ↗</button> : null; })}
-            </div></aside>}
+          {surface === 'diagram' && <div className="diagram-workspace"><section className="diagram-pane"><div className="diagram-canvas">{!state.project.equipment.length&&<div className="empty-project"><h2>{ru?'Добавьте первое оборудование':'Add your first device'}</h2><p>{ru?'Модель проекта готова. Устройства, связи и отчёты появятся здесь по мере добавления.':'Your project model is ready. Devices, connections and reports will appear as you add them.'}</p>{!operator&&<button className="primary" onClick={()=>setCreateDevice(true)}>{ru?'Добавить оборудование':'Add equipment'}</button>}</div>}{dimension === '2d' ? <><Scene {...scene}/><div className="mobile-scene-zoom" aria-label={ru?'Масштаб схемы':'Diagram zoom'}><button aria-label={ru?'Приблизить схему':'Zoom in'} onClick={()=>setZoom(value=>({step:value.step+1,factor:.76}))}>+</button><button aria-label={ru?'Отдалить схему':'Zoom out'} onClick={()=>setZoom(value=>({step:value.step+1,factor:1/.76}))}>−</button></div></> : <Suspense fallback={<p className="empty-state">3D…</p>}><Scene3D {...scene}/></Suspense>}</div></section>
+
           </div>}
           {surface === 'source' && <div className="source-workspace">{sourcePanel}<div className="source-note"><strong>TypeScript</strong><span>UTF-8</span><kbd>⌘ S</kbd></div></div>}
-          {surface === 'performance' && <Performance key={`${state.project.id}:${state.revision}`} project={state.project} snapshot={state.snapshot} now={now} connected={connected} locale={locale} loadHistory={loadPerformanceHistory} loadDiagnostics={loadPerformanceDiagnostics} inspect={id => session.selectSignal(id)}/>}
-        {surface === 'signals' && <Signals project={state.project} snapshot={state.snapshot} selected={signal?.id} locale={locale} now={now} connected={connected} select={id=>{session.selectSignal(id);dispatchPanel({type:'open',tab:'graphs'});}} open={openSemantic} canOpen={canOpenSemantic}/>}
+          {surface === 'performance' && <Performance key={`${state.project.id}:${state.revision}`} project={state.project} snapshot={snapshot} now={now} connected={connected} locale={locale} loadHistory={loadPerformanceHistory} loadDiagnostics={loadPerformanceDiagnostics} inspect={id => { session.selectSignal(id); setInspect(true); }}/>}
+          {surface === 'signals' && <Signals project={state.project} snapshot={snapshot} selected={signal?.id} locale={locale} now={now} connected={connected} select={id=>{session.selectSignal(id);setInspect(true);dispatchPanel({type:'open',tab:'graphs'});}} open={openSemantic} canOpen={canOpenSemantic}/>}
           {surface === 'reports' && <Reports project={state.project} locale={locale} selected={nav.report} onSelect={id => session.selectReport(id)}/>}
-          {surface === 'hmi' && <HmiSurface project={state.project} locale={locale} refresh={refresh}/>}
+          {surface === 'hmi' && <HmiSurface project={state.project} locale={locale} refresh={refresh} inspect={id=>{setDetailTarget({kind:'screen',id});setInspect(true);}}/>}
           {surface === 'docs' && <section className="documentation-surface">
             <header><div><h1>{ru?'Документация проекта':'Project documentation'}</h1><p>{ru?'Генерируется из checked Project и semantic graph. Отдельного формата документации нет.':'Generated from the checked Project and semantic graph. There is no second documentation model.'}</p></div><span>{semanticChanges.length?(ru?'Изменений до applied: ':'Changes vs applied: ')+semanticChanges.length:(ru?'Совпадает с applied':'Matches applied')}</span></header>
             {semanticChanges.length>0&&<div className="semantic-changes"><h2>{ru?'Семантические изменения':'Semantic changes'}</h2>{semanticChanges.map(change=><div key={change.semanticId} className={'semantic-change '+change.type}><code>{change.kind}</code><span>{change.message[locale]}</span><small>{change.semanticId}</small></div>)}</div>}
@@ -303,13 +286,15 @@ function Workbench({displays,importers}:AppProps) {
           </section>}
           {surface === 'targets' && <section className="environment-surface"><DeploymentPlan locale={locale} openCode={async()=>{await refresh();const resource=session.getCatalog().resources.find(r=>r.source?.path==='targets/deployment.ts');if(resource)await openResource(resource,'source');}}/><h1>{ru ? 'Среда исполнения' : 'Runtime environment'}</h1><dl><dt>{ru ? 'Проект' : 'Project'}</dt><dd>{state.project.id}</dd><dt>{ru ? 'Подключение' : 'Connection'}</dt><dd>localhost · {mode}</dd><dt>Source Git</dt><dd>{git?.branch || '—'}</dd><dt>Checked</dt><dd><code>{releases?.checked || '—'}</code></dd><dt>Published</dt><dd><code>{releases?.published || '—'}</code></dd><dt>Applied</dt><dd><code>{releases?.applied || state.revision || '—'}</code></dd><dt>Storage</dt><dd>{state.adapter}</dd></dl>{semanticChanges.length>0&&<><h2>{ru?'Что изменится при apply':'What changes on apply'}</h2><div className="semantic-changes">{semanticChanges.map(change=><div key={change.semanticId} className={'semantic-change '+change.type}><code>{change.kind}</code><span>{change.message[locale]}</span></div>)}</div></>}<button onClick={() => void notify()}>{ru ? 'Включить Web Push' : 'Enable Web Push'}</button><h2>{ru ? 'Целевые файлы' : 'Target files'}</h2>{catalog.resources.filter(r => r.kind === 'target' || r.kind === 'hmi').map(r => <button className="reference" key={r.uri} onClick={() => void openResource(r)}>{r.name[locale]} ↗</button>)}<p className="muted">{ru ? 'Публикация, применение сборки и прошивка не запускаются открытием файла.' : 'Opening a file never publishes, applies or flashes a build.'}</p></section>}
           {surface === 'dependencies' && <Dependencies locale={locale} plugins={plugins} changed={next=>{setPlugins(next);void refresh();}}/>}
-          {surface === 'git' && <section className="git-surface">{git?.available ? <><div className="git-controls"><input aria-label={ru ? 'Описание коммита' : 'Commit message'} placeholder={ru ? 'Что изменено?' : 'What changed?'} value={message} onChange={e => setMessage(e.target.value)}/><button disabled={gitBusy || !message.trim() || !git.status.trim() || session.documents.dirty} onClick={() => void gitAction('commit')}>{ru ? 'Коммит' : 'Commit'}</button>{git.remotes && <><button disabled={gitBusy || session.documents.dirty} onClick={() => void gitAction('pull')}>Pull</button><button disabled={gitBusy} onClick={() => void gitAction('push')}>Push</button></>}</div><h3>{ru ? 'Изменения проекта' : 'Project changes'}</h3><pre>{git.status || (ru ? 'Рабочая копия чистая' : 'Working tree is clean')}{git.diff ? `\n${git.diff}` : ''}</pre><h3>{ru ? 'Последние коммиты' : 'Recent commits'}</h3><pre className="muted">{git.log}</pre></> : <button onClick={() => void gitAction('init')}>{ru ? 'Создать Git-репозиторий' : 'Initialize Git repository'}</button>}</section>}
+          {surface === 'git' && <GitSurface state={git} busy={gitBusy} dirty={session.documents.dirty} locale={locale} action={gitAction}/>}
           </>}
         </div>
-        <ShellPanel operator={operator} importers={importers} onImported={refresh} pluginUpdates={plugins.filter(p=>p.update)} openDependencies={()=>chooseSurface('dependencies')} panel={panel} dispatch={dispatchPanel} project={state.project} snapshot={snapshot} selectedIds={selectedIds} primaryId={selected} signalId={surface==='signals'?signal?.id:undefined} locale={locale} connected={connected} shellError={error} problems={state.problems} mode={state.mode} events={alarmHistory.events} historyError={alarmHistory.error} send={send} acknowledge={async id=>{await api('ack',{id});}} onInspect={()=>{chooseSurface('diagram');setInspect(true);}}/>
+        {nav.active&&inspect&&<ResourceDetails key={`${inspected.kind}:${inspected.id}`} editor={surface} activeSource={active} target={inspected} project={state.project} snapshot={snapshot} catalog={catalog} documents={documents} plugins={plugins} locale={locale} connected={connected} revision={state.revision} operator={operator} close={()=>setInspect(false)} open={(r,editor)=>{void openResource(r,editor);}} signal={id=>{chooseSurface('signals');session.selectSignal(id);dispatchPanel({type:'open',tab:'graphs'});}} send={send} deviceEdit={deviceEdit} deviceEditId={equipment?.id}/>}
+        </div>
+        <ShellPanel commands={shell.commands} operator={operator} importers={importers} onImported={refresh} pluginUpdates={plugins.filter(p=>p.update)} openDependencies={()=>chooseSurface('dependencies')} panel={panel} dispatch={dispatchPanel} project={state.project} snapshot={snapshot} selectedIds={selectedIds} primaryId={selected} signalId={surface==='signals'?signal?.id:undefined} locale={locale} connected={connected} shellError={error} problems={state.problems} mode={state.mode} events={alarmHistory.events} historyError={alarmHistory.error} acknowledge={async id=>{await api('ack',{id});}} onInspect={id=>{selectEquipment(id);setInspect(true);}}/>
       </main>
     </div>
-    <footer className="statusbar"><span className={connected ? 'good' : 'bad'} title={ru?'Состояние соединения с runtime':'Runtime connection status'}>{connected ? state.mode==='simulation'?(ru?'Симулятор':'Simulator'):(ru?'Связь активна':'Connected') : ru ? 'Нет связи' : 'Disconnected'}</span><button onClick={() => chooseSurface('git')}>⑂ {git?.branch || '—'}</button><span>{[...documents.values()].filter(b => b.draft !== b.source).length} {ru ? 'несохранённых' : 'unsaved'}</span>{file && file.draft !== file.source && <button onClick={() => { if (confirm(ru ? 'Отбросить несохранённый текст этого файла?' : 'Discard this file’s unsaved text?')) void session.documents.reload(active, true).catch(fail); }}>{ru ? 'Перечитать файл' : 'Reload file'}</button>}<span className="spacer"/><button title={state.revision} onClick={()=>chooseSurface('targets')}>applied {state.revision.slice(0, 8)}</button><button className="status-panel-toggle" aria-label={ru?'Нижняя панель':'Bottom panel'} aria-pressed={panel.open} onClick={()=>dispatchPanel({type:'toggle'})}><ResourceIcon icon="panel" size={15}/></button></footer>
+    <footer className="statusbar"><span className={connected ? 'good' : 'bad'} title={ru?'Состояние соединения с runtime':'Runtime connection status'}>{connected ? state.mode==='simulation'?(ru?'Симулятор':'Simulator'):(ru?'Связь активна':'Connected') : ru ? 'Нет связи' : 'Disconnected'}</span><button onClick={() => chooseSurface('git')}>⑂ {git?.branch || '—'}</button><span>{[...documents.values()].filter(b => b.draft !== b.source).length} {ru ? 'несохранённых' : 'unsaved'}</span>{file && file.draft !== file.source && <button onClick={() => { if (confirm(ru ? 'Отбросить несохранённый текст этого файла?' : 'Discard this file’s unsaved text?')) void session.documents.reload(active, true).catch(fail); }}>{ru ? 'Перечитать файл' : 'Reload file'}</button>}<span className="spacer"/><button title={state.revision} onClick={()=>chooseSurface('targets')}>applied {state.revision.slice(0, 8)}</button></footer>
     {palette && <div className="palette-backdrop" onPointerDown={e => { if (e.target === e.currentTarget) setPalette(false); }}><div role="dialog" aria-modal="true" aria-label={ru ? 'Перейти к' : 'Go to'} className="command-palette"><input autoFocus aria-label={ru ? 'Поиск' : 'Search'} placeholder={ru ? 'Объект, раздел или файл…' : 'Object, surface or file…'} value={query} onChange={e => { setQuery(e.target.value); setChoice(0); }} onKeyDown={e => {
       if (e.key === 'ArrowDown') { e.preventDefault(); setChoice(c => Math.min(c + 1, commands.length - 1)); } if (e.key === 'ArrowUp') { e.preventDefault(); setChoice(c => Math.max(0, c - 1)); }
       if (e.key === 'Enter') { e.preventDefault(); commands[choice]?.run(); setPalette(false); } if (e.key === 'Tab') { e.preventDefault(); setChoice(c => (c + (e.shiftKey ? -1 : 1) + Math.max(1, commands.length)) % Math.max(1, commands.length)); }

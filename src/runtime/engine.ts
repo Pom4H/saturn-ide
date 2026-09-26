@@ -1,3 +1,4 @@
+import type { TelemetryRun } from '../core/telemetry-run';
 import { qualityState, validateValue, type Driver, type Project, type Sample, type Snapshot, type Value } from "../core";
 import { validateObservation, type Observation } from "../core/acquisition";
 import { acknowledgeAlarm, projectSnapshot, transitionAlarm, type AlarmEvent } from '../core/operational';
@@ -6,7 +7,7 @@ import type { Events } from "./events";
 
 import type { RuntimeDiagnostics, RuntimeStatistics } from '../core/diagnostics';
 
-type RuntimeStore = Pick<Store, 'bindSemantic' | 'latest' | 'alarmStates' | 'append'>;
+type RuntimeStore = Pick<Store, 'bindSemantic' | 'latest' | 'alarmStates' | 'append'> & Partial<Pick<Store,'endRun'>>;
 export class Runtime {
   snapshot: Snapshot = { samples: {}, alarms: {} };
   private queue: Promise<unknown> = Promise.resolve();
@@ -66,7 +67,7 @@ export class Runtime {
   ingest(values: Record<string, unknown>): Promise<void> {
     return this.observe(Object.entries(values).map(([signal,value]) => ({signal,value,quality:'good'})));
   }
-  observe(batch: readonly Observation[]): Promise<void> {
+  observe(batch: readonly Observation[], provenance?:TelemetryRun): Promise<void> {
     // Capture ingress time and own the batch before it can wait behind persistence.
     const receivedAt = Date.now(), input = batch.map(item => ({...item}));
     this.statistics.pendingObservations++;
@@ -84,6 +85,7 @@ export class Runtime {
         if (!measured && (!old || old.at === 0)) continue;
         samples.push({
           signal: item.signal, semantic: definition.semanticId ?? definition.id,
+          provenance:measured?provenance:old?.provenance,
           value: measured ? item.value as Value : old!.value, quality: item.quality, at,
           receivedAt: measured ? item.receivedAt ?? receivedAt : old!.receivedAt ?? old!.at,
           sourceAt: measured ? item.sourceAt : old!.sourceAt,

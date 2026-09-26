@@ -29,7 +29,7 @@ export class Builder {
     const projectLock = join(this.workspace.root, 'bun.lock');
     const lock = existsSync(projectLock) ? projectLock : join(this.appRoot, 'bun.lock');
     const lockHash = existsSync(lock) ? await digest(readFileSync(lock, 'utf8')) : null;
-    const coreHash = await digest(['core.ts', 'core/acquisition.ts', 'runtime/acquisition.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
+    const coreHash = await digest(['core.ts', 'core/acquisition.ts', 'core/reporting.ts', 'core/report-output.ts', 'runtime/acquisition.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
     const inputKey = await digest(canonical({ sourceDigest, coreHash, lockHash, bunVersion: Bun.version }));
     this.language.clear(); const problems = this.language.diagnostics();
     if (problems.length) throw new BuildError(problems);

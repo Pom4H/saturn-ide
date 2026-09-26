@@ -21,3 +21,14 @@ export function resourceTree(catalog:ResourceCatalog):ResourceTreeNode[] {
   const sort=(nodes:ResourceTreeNode[])=>{nodes.sort((a,b)=>Number(b.kind==='directory')-Number(a.kind==='directory')||a.name.localeCompare(b.name,'en',{numeric:true}));for(const node of nodes)sort(node.children);};
   sort(roots);return roots;
 }
+
+/** Flat files keep their real path and declarations; no synthesized folders or files. */
+export function flatResourceFiles(catalog:ResourceCatalog):ResourceTreeNode[]{
+ const files:ResourceTreeNode[]=[];const walk=(nodes:ResourceTreeNode[])=>{for(const node of nodes)if(node.kind==='directory')walk(node.children);else files.push(node);};walk(resourceTree(catalog));return files.sort((a,b)=>a.path.localeCompare(b.path,'en',{numeric:true}));
+}
+export function resourceFileIcon(resource:ProjectResource|undefined,path:string):string{
+ if(resource&&resource.kind!=='file')return resource.icon;
+ if(/\.md$/i.test(path))return 'docs';if(/(?:^|\/)(package|tsconfig)[^/]*\.json$/.test(path))return 'settings';
+ if(/\.(json|ya?ml)$/.test(path))return 'settings';if(/\.(test|spec)\.tsx?$|^tests\//.test(path))return 'test';
+ if(/(?:^|\/)(server|driver)\.ts$/.test(path))return 'terminal';if(/(?:^|\/)browser\.ts$/.test(path))return 'hmi';return 'source';
+}

@@ -1,9 +1,9 @@
-import { text, type Locale, type Report, type Sample, type Value } from './core';
+import { type AggregateReport, type Sample, type Value } from './core';
 import { sampleInterval } from './core/operational';
 export interface ReportBucket {from:number;to:number;values:Record<string,Value|null>;coverage:Record<string,number>}
-export interface ReportResult {id:string;label:Report['label'];from:number;to:number;generatedAt:number;revision:string;columns:Report['columns'];rows:ReportBucket[]}
+export interface ReportResult {id:string;label:AggregateReport['label'];from:number;to:number;generatedAt:number;revision:string;columns:AggregateReport['columns'];rows:ReportBucket[]}
 /** Zero-order hold, bounded by signal freshness. Missing intervals are never filled with zero. */
-export function aggregateReport(report:Report,series:ReadonlyMap<string,readonly Sample[]>,from:number,to:number,revision=''):ReportResult {
+export function aggregateReport(report:AggregateReport,series:ReadonlyMap<string,readonly Sample[]>,from:number,to:number,revision=''):ReportResult {
   if(![from,to].every(Number.isFinite)||from>=to||to-from>31*86400_000||!Number.isSafeInteger(report.bucketMs)||report.bucketMs<1000||Math.ceil((to-from)/report.bucketMs)>1000)throw new Error('Invalid report range (maximum 31 days / 1000 buckets)');
   const rows:ReportBucket[]=[];
   for(let start=from;start<to;start+=report.bucketMs)rows.push({from:start,to:Math.min(to,start+report.bucketMs),values:{},coverage:{}});
@@ -31,12 +31,5 @@ export function aggregateReport(report:Report,series:ReadonlyMap<string,readonly
   }
   return {id:report.id,label:report.label,columns:report.columns,from,to,generatedAt:Date.now(),revision,rows};
 }
-export function reportCsv(result:ReportResult,locale:Locale):string {
-  // Neutralize spreadsheet formula injection in labels/string-valued signals.
-  const cell=(value:unknown)=>{let s=String(value??'');if(typeof value==='string'&&/^[\s]*[=+@-]/.test(s))s="'"+s;return `"${s.replace(/"/g,'""')}"`;};
-  const entries=Object.entries(result.columns);
-  return '\uFEFF'+[
-    ['UTC from','UTC to',...entries.flatMap(([key,c])=>[`${text(c.label,locale)}${c.unit?` (${c.unit})`:''}`,`${key} coverage %`])],
-    ...result.rows.map(row=>[new Date(row.from).toISOString(),new Date(row.to).toISOString(),...entries.flatMap(([key])=>[row.values[key]??'',Math.round((row.coverage[key]??0)*10000)/100])]),
-  ].map(row=>row.map(cell).join(',')).join('\r\n');
-}
+/** Shared CSV target for both aggregate and typed SQL reports. */
+export {outputCsv as reportCsv} from './core/report-output';

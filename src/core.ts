@@ -1,3 +1,6 @@
+import {validateQueryReport,type QueryReport,type ReportSchema,type SchemaRow} from './core/reporting';
+export * from './core/reporting';
+import {validateSchedule,type ReportSchedule} from './core/cron';
 export type Locale = 'en' | 'ru';
 export type Text = string | Readonly<Record<Locale, string>>;
 export const text = (value: Text, locale: Locale): string => typeof value === 'string' ? value : value[locale];
@@ -209,11 +212,15 @@ export interface Column { label:Text; signal:Signal; aggregate:Aggregate; unit?:
 export function column<S extends Signal<number>>(signal:S, aggregate:Exclude<Aggregate,'last'>, label:Text, unit?:string):Column & {signal:S} ;
 export function column<S extends Signal>(signal:S, aggregate:'last', label:Text, unit?:string):Column & {signal:S};
 export function column(signal:Signal, aggregate:Aggregate, label:Text, unit?:string):Column {return {signal,aggregate,label,unit};}
-export interface Report<C extends Record<string,Column> = Record<string,Column>> { id:string; label:Text; columns:C; bucketMs:number }
-export type ReportRow<R extends Report> = {from:number;to:number;values:{[K in keyof R['columns']]: SignalValue<R['columns'][K]['signal']>|null}};
+export interface AggregateReport<C extends Record<string,Column> = Record<string,Column>> { id:string; label:Text; columns:C; bucketMs:number; schedule?:readonly ReportSchedule[] }
+export type Report<C extends Record<string,Column> = Record<string,Column>> = AggregateReport<C>|QueryReport;
+export type ReportRow<R extends Report> = R extends QueryReport<infer S>?SchemaRow<S>:R extends AggregateReport<infer C>?{from:number;to:number;values:{[K in keyof C]:SignalValue<C[K]['signal']>|null}}:never;
+export const reportSignals=(r:Report):readonly Signal[]=>'sql' in r?r.signals:Object.values(r.columns).map(c=>c.signal);
 /** @ru Отчёт по истории с типизированными ссылками на сигналы. Окна времени — [from,to), UTC.
  * @en Historical report with typed signal references. Time windows are [from,to), UTC. */
-export function report<const C extends Record<string,Column>>(id:string, options:Omit<Report<C>,'id'>):Report<C> { return {...options,id}; }
+export function report<const C extends Record<string,Column>>(id:string,options:Omit<AggregateReport<C>,'id'>):AggregateReport<C>;
+export function report<const S extends ReportSchema>(id:string,options:Omit<QueryReport<S>,'id'|'columns'>&{columns:readonly import('./core/reporting').ReportColumn<keyof NoInfer<S> & string>[]}):QueryReport<S>;
+export function report(id:string,options:Omit<AggregateReport,'id'>|Omit<QueryReport,'id'>):Report{return {...options,id};}
 export interface Project {
   id:string; label:Text; signals:Record<string,Signal>; equipment:Equipment[]; pipes:Pipe[]; cables?:Cable[];
   alarms:Alarm[]; hmi?:Hmi; hmis?:HmiInterface[]; reports?:Report[];
@@ -233,7 +240,7 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
   for(const equipment of definition.equipment)for(const value of Object.values(equipment))add(value);
   for(const edge of [...definition.pipes,...definition.cables??[]])add(edge.kind==='pipe'?edge.flow:edge.signal);
   for(const alarm of definition.alarms??[])add(alarm.signal);
-  for(const report of definition.reports??[])for(const column of Object.values(report.columns))add(column.signal);
+  for(const report of definition.reports??[])for(const signal of reportSignals(report))add(signal);
   for(const screen of [definition.hmi,...definition.hmis??[]])if(screen&&'elements' in screen)for(const element of screen.elements??[])if(element.signal)add(element.signal);
   return Object.fromEntries(found);
 }
@@ -310,6 +317,8 @@ export function validateProject(p:Project):void {
   }
   for(const a of p.alarms){ref(a.signal,'number');requireThat(Number.isFinite(a.above)&&(a.hysteresis===undefined||Number.isFinite(a.hysteresis)&&a.hysteresis>=0),'ALARM_LIMIT','Invalid alarm threshold','Неверный порог тревоги');}
   for(const r of p.reports??[]){
+    if(r.schedule){if(!Array.isArray(r.schedule)||r.schedule.length>20)throw new Error('Too many report schedules');for(const schedule of r.schedule){validateSchedule(schedule);if(!('sql' in r)&&Math.ceil(schedule.periodMs/r.bucketMs)>1000)throw new Error('Scheduled report exceeds 1000 buckets');}}
+    if('sql' in r){validateQueryReport(r);for(const signal of r.signals)ref(signal);continue;}
     requireThat(Number.isInteger(r.bucketMs)&&r.bucketMs>=1000&&Object.keys(r.columns).length>0,'REPORT_WINDOW','Invalid report window/columns','Неверное окно/колонки отчёта');
     for(const c of Object.values(r.columns)){ref(c.signal,c.aggregate==='last'?undefined:'number');requireThat(['mean','min','max','integral','last'].includes(c.aggregate),'REPORT_AGGREGATE','Invalid aggregation','Неверная агрегация');}
   }
@@ -330,6 +339,7 @@ export function validateProject(p:Project):void {
 }
 export interface Sample<T extends Value=Value> {
   signal:string; semantic?:string; value:T; quality:Quality; at:number;
+  provenance?:import('./core/telemetry-run').TelemetryRun;
   /** Source timestamp may differ from receipt time; both are useful for stale/replay diagnostics. */
   sourceAt?:number; receivedAt?:number; sequence?:number; state?:QualityState;
 }

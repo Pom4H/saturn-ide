@@ -18,7 +18,10 @@
     "release:build": "bun scripts/build-release.ts",
     "release:deploy": "bun scripts/deploy-release.ts",
     "standalone:build": "bun scripts/build-standalone.ts",
-    "standalone:video": "bun scripts/standalone-video.ts"
+    "standalone:video": "bun scripts/standalone-video.ts",
+    "cli": "bun src/host/cli.ts",
+    "ide:build": "bun scripts/build-ide.ts",
+    "start": "bun src/host/application.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.1",
@@ -31,6 +34,10 @@
     "@lezer/highlight": "1.2.4",
     "@opentui/core": "0.5.12",
     "@opentui/react": "0.5.12",
+    "@types/bun": "^1.4.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/three": "^0.186.0",
     "@types/web-push": "^3.6.4",
     "codemirror": "6.0.2",
     "fflate": "^0.8.3",
@@ -41,10 +48,6 @@
     "web-push": "3.6.7"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.0",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.2.0",
-    "@types/three": "^0.186.0",
     "@typescript/native": "npm:typescript@7.0.2",
     "aedes": "0.51.3",
     "modbus-serial": "8",
@@ -76,6 +79,8 @@
     "./operational": "./src/core/operational.ts",
     "./inspection": "./src/core/inspection.ts",
     "./history": "./src/core/history.ts",
-    "./diagnostics": "./src/core/diagnostics.ts"
+    "./diagnostics": "./src/core/diagnostics.ts",
+    "./commands": "./src/shell/model/commands/engine.ts",
+    "./command-catalog": "./src/shell/model/commands/catalog.ts"
   }
 }

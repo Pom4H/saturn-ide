@@ -1,25 +1,18 @@
-import { aggregateReport, reportCsv } from '../reports';
-import type { Project, Sample } from '../core';
-import type { Store } from '../runtime/store';
-import { HttpError } from '../workspace/files';
-export async function reportResponse(store: Store, project: Project, revision: string, url: URL): Promise<Response> {
-  const definition = project.reports?.find(r => r.id === url.searchParams.get('id'));
-  if (!definition) throw new HttpError(404, 'Unknown report');
-  const from = Number(url.searchParams.get('from')), to = Number(url.searchParams.get('to'));
-  if (![from, to].every(Number.isSafeInteger) || from >= to || to > Date.now() + 1000 || to - from > 31 * 86400_000 || Math.ceil((to - from) / definition.bucketMs) > 1000) throw new HttpError(400, 'Invalid report period (31 days / 1000 buckets maximum)');
-  const series = new Map<string, Sample[]>();
-  type Row = { signal: string; semantic: string | null; at: number | string; value: string; quality: Sample['quality'] };
-  let count = 0;
-  const signals=new Map(Object.values(definition.columns).map(column=>[column.signal.semanticId??column.signal.id,column.signal]));
-  for (const [identity,signal] of signals) {
-    const id=signal.id;
-    const before: Row[] = await store.sql`SELECT signal,semantic,at,value,quality FROM samples WHERE semantic=${identity} AND at<${from} ORDER BY at DESC,id DESC LIMIT 1`;
-    const rows: Row[] = await store.sql`SELECT signal,semantic,at,value,quality FROM samples WHERE semantic=${identity} AND at>=${from} AND at<${to} ORDER BY at,id LIMIT 50001`;
-    count += rows.length;
-    if (rows.length > 50000 || count > 200000) throw new HttpError(413, 'Too many observations; select a shorter period');
-    series.set(id, [...before, ...rows].map(r => ({ signal:r.signal, semantic:r.semantic??undefined, at:Number(r.at), value:JSON.parse(r.value), quality:r.quality })));
-  }
-  const report = aggregateReport(definition, series, from, to, revision);
-  if (url.searchParams.get('format') === 'csv') return new Response(reportCsv(report, url.searchParams.get('locale') === 'en' ? 'en' : 'ru'), { headers: { 'Content-Type': 'text/csv;charset=utf-8', 'Content-Disposition': `attachment; filename="${definition.id}.csv"`, 'Cache-Control': 'no-store' } });
-  return Response.json(report, { headers: { 'Cache-Control': 'no-store' } });
+import {reportHtml,outputCsv,type ReportOutput} from '../core/report-output';
+import {reportXlsx} from '../runtime/report-xlsx';
+import type {Project,Locale} from '../core';
+import type {Store} from '../runtime/store';
+import {runReport,loadReport,ReportError} from '../runtime/report';
+export function reportDownload(report:ReportOutput,format:string,locale:Locale):Response{
+  const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':`attachment; filename="${report.id.replace(/[^A-Za-z0-9_-]/g,'_')}.${format}"`};
+  if(format==='xlsx')return new Response(reportXlsx(report,locale),{headers:{...headers,'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}});
+  if(format==='html')return new Response(reportHtml(report,locale),{headers:{...headers,'Content-Type':'text/html;charset=utf-8'}});
+  if(format==='csv')return new Response(outputCsv(report,locale),{headers:{...headers,'Content-Type':'text/csv;charset=utf-8'}});
+  if(format!=='json')throw new ReportError(400,'Unknown report format');return Response.json(report,{headers:{'Cache-Control':'no-store'}});
+}
+export async function reportResponse(store:Store,project:Project,revision:string,url:URL):Promise<Response>{
+  let inputs:unknown;try{inputs=JSON.parse(url.searchParams.get('inputs')??'{}');}catch{throw new ReportError(400,'Invalid report inputs JSON');}
+  const artifact=url.searchParams.get('artifact');
+  const report=artifact?await loadReport(store,artifact):await runReport(store,project,revision,url.searchParams.get('id')??'',Number(url.searchParams.get('from')),Number(url.searchParams.get('to')),{inputs});
+  return reportDownload(report,url.searchParams.get('format')??'json',url.searchParams.get('locale')==='en'?'en':'ru');
 }

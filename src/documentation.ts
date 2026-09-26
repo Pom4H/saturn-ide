@@ -48,7 +48,7 @@ export function projectDocumentation(project:Project,options:DocumentationOption
     lines.push('- `'+edge.id+'`: '+edge.from.device+'.'+edge.from.port+' → '+edge.to.device+'.'+edge.to.port+' ('+edge.kind+state+')');
   }lines.push('');}
   if(project.alarms.length){lines.push('## '+h('Тревоги','Alarms'),'');for(const alarm of project.alarms)lines.push('- **'+text(alarm.label,locale)+'** (`'+alarm.id+'`): `'+alarm.signal.id+'` > '+alarm.above+(alarm.hysteresis?' ± '+alarm.hysteresis:''));lines.push('');}
-  if((project.reports?.length??0)>0){lines.push('## '+h('Отчёты','Reports'),'');for(const report of project.reports??[])lines.push('- **'+text(report.label,locale)+'** (`'+report.id+'`): '+Object.values(report.columns).map(column=>'`'+column.signal.id+'` / '+column.aggregate).join(', '));lines.push('');}
+  if((project.reports?.length??0)>0){lines.push('## '+h('Отчёты','Reports'),'');for(const report of project.reports??[])lines.push('- **'+text(report.label,locale)+'** (`'+report.id+'`): '+('sql' in report?'SQL · '+Object.keys(report.schema).join(', '):Object.values(report.columns).map(column=>'`'+column.signal.id+'` / '+column.aggregate).join(', ')));lines.push('');}
   lines.push('## '+h('Поток данных','Data flow'),'','equipment knowledge → typed Signal<T> → binding/origin → quality → runtime → HMI / alarms / history / reports','','## '+h('Правило изменений','Change rule'),'',h('Переименование tag/ID не должно менять semantic identity. Перед удалением или заменой Saturn вычисляет blast radius по тому же графу.','Renaming a tag/ID must not change semantic identity. Before deletion or replacement Saturn computes blast radius from the same graph.'),'');
   return lines.join('\n');
 }

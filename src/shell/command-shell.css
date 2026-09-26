@@ -1,0 +1,24 @@
+.command-composer{flex:0 0 auto;position:relative;min-width:0;background:var(--editor)}
+.shell-terminal-main{position:relative}
+.shell-terminal-main .command-input-row{height:42px;gap:10px;padding:0 8px 0 12px;background:var(--editor)}
+.command-input-row .command-prompt{display:flex;gap:7px;align-items:center;white-space:nowrap;font:12px var(--mono)}
+.command-prompt b{color:var(--muted);font-weight:400}
+.shell-terminal-main .command-input-row input{height:100%;padding:0;box-shadow:none;outline:none}
+.shell-terminal-main .command-input-row button{display:flex;gap:6px;align-items:center;padding:0 8px;color:var(--muted);background:transparent;border:0}
+.shell-terminal-main .command-input-row button span{color:var(--muted);font:10px var(--mono)}
+.command-keybar{display:flex;justify-content:space-between;gap:12px;min-height:24px;padding:2px 12px 5px;color:var(--muted);font:10px/1.6 var(--ui);border-top:1px solid color-mix(in srgb,var(--border) 45%,transparent)}
+.command-suggestions{position:absolute;z-index:8;bottom:100%;left:8px;right:8px;max-height:min(180px,calc(var(--panel-height,320px) - 116px));overflow:auto;background:var(--raised);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow);padding:4px;scrollbar-width:thin}
+.command-suggestion{display:flex;align-items:center;gap:10px;min-height:43px;padding:5px 8px;border-radius:5px;cursor:pointer;color:var(--text)}
+.command-suggestion[aria-selected=true]{background:var(--accent-soft)}
+.command-suggestion-icon{display:grid;place-items:center;width:28px;height:28px;flex:0 0 28px;color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,transparent);border-radius:6px}
+.command-suggestion-text{display:flex;flex:1;min-width:0;flex-direction:column}
+.command-suggestion-text strong{font:12px/1.5 var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.command-suggestion-text small{font:11px/1.4 var(--ui);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.command-suggestion-group{font:10px var(--mono);color:var(--muted)}
+.command-suggestion kbd{padding:1px 4px;border:1px solid var(--border);border-radius:3px}
+.shell-terminal-row>span{white-space:pre-wrap}
+.command-launchers{display:flex;align-items:center;gap:4px;padding:5px 8px;border-bottom:1px solid var(--border);flex:0 0 auto;overflow:auto}
+.command-launchers button{display:flex;align-items:center;gap:5px;white-space:nowrap;border:0;background:transparent;font:11px var(--mono);padding:3px 7px;color:var(--muted)}
+.command-launchers button:hover{color:var(--accent);background:var(--accent-soft)}
+.shell-terminal-signals .command-context-note{display:block;font:11px/1.6 var(--ui);padding:8px 7px;color:var(--muted)}
+@media(max-width:650px){.command-keybar>span:last-child,.command-suggestion-group,.command-input-row button span{display:none}.command-suggestions{left:3px;right:3px;max-height:min(140px,calc(var(--panel-height,320px) - 116px))}.command-input-row .command-prompt{font-size:10px;gap:3px}.shell-terminal-main .command-input-row{padding-left:6px;gap:5px}.command-launchers{padding:3px}.command-launchers button{padding:3px 5px}}

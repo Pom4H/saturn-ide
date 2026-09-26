@@ -13,7 +13,7 @@ try{
   mkdirSync('artifacts',{recursive:true});await page.goto(app.server.url.toString());await page.locator('[data-equipment="P-01"]').waitFor();
   await page.locator('.shell-panel').waitFor();assert(await page.locator('.equipment-strip').count()===0,'Old equipment strip still occupies the scene');
   await page.getByRole('tab',{name:'Терминал',exact:true}).click();
-  const command=page.getByRole('textbox',{name:'Команда сигнала'});await command.fill('help');await command.press('Enter');await page.locator('.shell-terminal-log').getByText('set <signal> <value>',{exact:false}).waitFor();
+  const command=page.getByRole('combobox',{name:'Команда оболочки'});await command.fill('help');await command.press('Enter');await page.locator('.shell-terminal-log').getByText('set <signal> <value>',{exact:false}).waitFor();
   assert(await page.locator('.shell-terminal-row[data-level="info"]').count()>0,'Terminal info output missing');
   await command.fill('unknown');await command.press('Enter');await page.locator('.shell-terminal-row[data-level="warn"]').getByText('Неизвестная команда',{exact:false}).waitFor();
   await command.fill('set P-01.run invalid');await command.press('Enter');await until(async()=>await page.locator('.shell-terminal-row[data-level="error"]').count()>0,'Terminal error output missing');
@@ -79,7 +79,7 @@ try{
   const loosePlug=free.plugs.find(item=>item.id==='run-command'&&item.end==='from'),do2=free.ports.find(item=>item.device==='PLC-01'&&item.port==='DO2');assert(loosePlug&&do2,'Loose 3D plug or DO2 missing');
   await page.mouse.move(loosePlug.x,loosePlug.y);await page.mouse.down();await page.mouse.move(do2.x,do2.y,{steps:14});await page.mouse.up();
   await until(async()=>app.state().project.cables?.find(item=>item.id==='run-command')?.unplugged===undefined&&app.state().project.cables?.find(item=>item.id==='run-command')?.from.port==='DO2','3D loose plug did not reconnect');
-  await page.getByRole('button',{name:'S · Select'}).click();await page.getByRole('button',{name:'Вписать'}).click();
+  await page.getByRole('button',{name:'S · Select'}).click();await page.getByRole('button',{name:'Действия',exact:true}).click();await page.getByRole('menuitem',{name:'Вписать схему',exact:true}).click();
   await until(async()=>await page.locator('.scene3d').evaluate(node=>{const equipment=JSON.parse((node as HTMLElement).dataset.equipmentScreens??'[]') as {id:string;x:number;y:number}[];return ['P-01','TK-01'].every(id=>{const item=equipment.find(candidate=>candidate.id===id);return !!item&&item.x>235&&item.x<1400&&item.y>100&&item.y<790;});}),'3D fit did not put equipment in view');
   const equipmentScreens=await page.locator('.scene3d').evaluate(node=>JSON.parse((node as HTMLElement).dataset.equipmentScreens??'[]') as {id:string;x:number;y:number}[]);
   const pumpPoint=equipmentScreens.find(item=>item.id==='P-01'),tankPoint=equipmentScreens.find(item=>item.id==='TK-01');assert(pumpPoint&&tankPoint,'3D equipment projections missing');
