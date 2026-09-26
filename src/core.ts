@@ -382,6 +382,8 @@ function resolveAutoHmi(definition:ProjectDefinition,intent:AutoHmi):Hmi {
 export interface FirmwareContext {outDir:string;run:(argv:string[])=>Promise<void>}
 export interface FirmwareTarget<L extends string=string> {readonly id:string;readonly languages:readonly L[];build(context:FirmwareContext):Promise<void>}
 
+export { buildIR, projectIR, projectMermaid, type SaturnIR, type IrNode, type IrEdge, type EditorProjectionState, type IrProjection } from './core/ir';
+
 export { deployment, type DeploymentPlan, type DeploymentStep } from './core/deployment';
 export { defineProtocol } from './core/acquisition';
 export type { Observation, Observe, ProtocolDefinition, ProtocolSession, ProtocolChannel, ProtocolEndpoint, ProtocolSource } from './core/acquisition';
