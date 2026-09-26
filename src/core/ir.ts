@@ -51,19 +51,6 @@ const labelOf = (value: Equipment['label'] | Project['label']): string =>
 
 const endpointId = (device: string, port: string) => `${device}:${port}`;
 
-function connectionNodes(edge: Pipe | Cable): IrNode[] {
-  const nodes: IrNode[] = [
-    { id: endpointId(edge.from.device, edge.from.port), kind: 'port', metadata: { device: edge.from.device, port: edge.from.port } },
-    { id: endpointId(edge.to.device, edge.to.port), kind: 'port', metadata: { device: edge.to.device, port: edge.to.port } },
-  ];
-  if (edge.kind === 'pipe') {
-    nodes.push({ id: `${edge.id}:flow`, kind: 'signal', semanticId: edge.flow.semanticId ?? edge.flow.id });
-  } else if (edge.signal) {
-    nodes.push({ id: `${edge.id}:signal`, kind: 'signal', semanticId: edge.signal.semanticId ?? edge.signal.id });
-  }
-  return nodes;
-}
-
 /** Build the canonical semantic graph. Geometry is metadata, never identity. */
 export function buildIR(project: Project): SaturnIR {
   const nodes: IrNode[] = [
