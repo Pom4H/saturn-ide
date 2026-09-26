@@ -18,7 +18,10 @@
     "release:build": "bun scripts/build-release.ts",
     "release:deploy": "bun scripts/deploy-release.ts",
     "standalone:build": "bun scripts/build-standalone.ts",
-    "standalone:video": "bun scripts/standalone-video.ts"
+    "standalone:video": "bun scripts/standalone-video.ts",
+    "cli": "bun src/host/cli.ts",
+    "ide:build": "bun scripts/build-ide.ts",
+    "start": "bun src/host/application.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.1",
@@ -83,6 +86,8 @@
     "./source-model": "./src/workspace/source-model.ts",
     "./source-operations": "./src/workspace/authoring-operations.ts",
     "./browser-workspace": "./src/host/browser-workspace.ts",
-    "./browser-authoring-assets": "./scripts/browser-authoring-assets.ts"
+    "./browser-authoring-assets": "./scripts/browser-authoring-assets.ts",
+    "./commands": "./src/shell/model/commands/engine.ts",
+    "./command-catalog": "./src/shell/model/commands/catalog.ts"
   }
 }

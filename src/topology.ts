@@ -1,4 +1,4 @@
-import { isAttached, type ConnectionEnd, type Cable, type Endpoint, type Equipment, type Pipe, type Point, type Project } from './core';
+import { isAttached, reportSignals, type ConnectionEnd, type Cable, type Endpoint, type Equipment, type Pipe, type Point, type Project } from './core';
 export interface PhysicalRoute {id:string;kind:'pipe'|'cable';points:Point[];valid:boolean;error?:string}
 interface Box {id:string;x:number;y:number;right:number;bottom:number}
 export const connections=(project:Project)=>([...project.pipes,...project.cables??[]]);
@@ -155,5 +155,5 @@ export function related(project:Project,equipment:Equipment) {
     owner(c.from)===equipment.id||owner(c.to)===equipment.id);
   const refs=new Set(Object.values(equipment).filter((v):v is {id:string;initial:number|boolean|string}=>!!v&&typeof v==='object'&&'id' in v&&'initial' in v).map(s=>s.id));
   for(const edge of edges){const signal=edge.kind==='pipe'?edge.flow:edge.signal;if(signal)refs.add(signal.id);}
-  return {signals:Object.values(project.signals).filter(s=>refs.has(s.id)),connections:edges,alarms:project.alarms.filter(a=>refs.has(a.signal.id)),reports:(project.reports??[]).filter(r=>Object.values(r.columns).some(c=>refs.has(c.signal.id)))};
+  return {signals:Object.values(project.signals).filter(s=>refs.has(s.id)),connections:edges,alarms:project.alarms.filter(a=>refs.has(a.signal.id)),reports:(project.reports??[]).filter(r=>reportSignals(r).some(s=>refs.has(s.id)))};
 }

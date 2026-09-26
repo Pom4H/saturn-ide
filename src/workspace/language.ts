@@ -62,6 +62,11 @@ export class Language {
   }
   complete(path: string, source: string, position: number) {
     const file = this.set(path, source);
-    return this.service.getCompletionsAtPosition(file, position, { includeCompletionsForModuleExports: false, includeCompletionsWithInsertText: true })?.entries.slice(0, 150).map(e => ({ label: e.name, type: e.kind === 'function' ? 'function' : e.kind === 'property' ? 'property' : 'variable' })) ?? [];
+    const info = this.service.getCompletionsAtPosition(file, position, { includeCompletionsForModuleExports: false, includeCompletionsWithInsertText: true });
+    return info?.entries.slice(0, 150).map(e => {
+      const span = e.replacementSpan ?? info.optionalReplacementSpan ?? { start: position, length: 0 };
+      return { label: e.name, type: e.kind === 'function' ? 'function' : e.kind === 'property' ? 'property' : 'variable',
+        from: span.start, to: span.start + span.length, insertText: e.insertText ?? e.name };
+    }) ?? [];
   }
 }

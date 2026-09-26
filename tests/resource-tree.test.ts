@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resourceTree } from '../src/shell/model/resource-tree';
+import { resourceTree,flatResourceFiles,resourceFileIcon } from '../src/shell/model/resource-tree';
 import type { ProjectResource } from '../src/core/resources';
 test('explorer follows real nested paths, retains multi-entity files and never invents a source',()=>{
   const file=(uri:string,path:string,kind:ProjectResource['kind']='file'):ProjectResource=>({uri,source:{path},kind,name:{en:uri,ru:uri},icon:kind,editors:['source'],related:[]});
@@ -13,4 +13,10 @@ test('explorer follows real nested paths, retains multi-entity files and never i
   assert.deepEqual(shared.children.map(node=>node.resource?.uri),['P-01','V-01']);
   assert.ok(!JSON.stringify(tree).includes('invented.ts'));
   assert.equal(tree[0]!.children[0]!.children[0]!.children[0]!.path,'plugins/vendor/hmi/frame.ts');
+});
+
+test('flat file view preserves shared declarations, identical basenames and real paths',()=>{
+ const file=(uri:string,path:string,kind:ProjectResource['kind']='file'):ProjectResource=>({uri,source:{path},kind,name:{en:uri,ru:uri},icon:kind,editors:['source'],related:[]});
+ const catalog={project:'p',revision:'r',resources:[file('a','a/device.ts','device'),file('b','b/device.ts','device'),file('report','a/device.ts','report'),file('readme','README.md')]};
+ const files=flatResourceFiles(catalog);assert.deepEqual(files.map(f=>f.path),['a/device.ts','b/device.ts','README.md']);assert.equal(files[0]?.children.length,2);assert.equal(resourceFileIcon(files[2]?.resource,'README.md'),'docs');assert.equal(resourceFileIcon(undefined,'package.json'),'settings');
 });

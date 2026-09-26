@@ -103,8 +103,10 @@ commands use the existing APIs and revisions, not file-side effects.
 `bun dev` starts the existing workspace/runtime host and browser UI. `bun tui [url]` attaches
 a real React/OpenTUI UI to it; `bun shell:list [url]` prints resources without needing a TTY.
 The terminal supports resource search, source editing/saving, textual connections/signals,
-SQL report output and Git status/diff. It does not yet expose control/ack, deploy, firmware,
-terminal IntelliSense or every browser workflow. Exiting the attached TUI does not stop dev.
+SQL report output and Git status/diff. F7 now opens the shared command console with control/ack, topology, source
+draft insertion with genuine TypeScript completion, and the composing host AI adapter.
+Deploy, firmware, full terminal-editor IntelliSense and every browser workflow are not complete.
+The same command engine is used by the browser panel and `bun cli`; see [command-shell](../command-shell.md). Exiting the attached TUI does not stop dev.
 The dev server itself still shares a process with runtime; ADR-0001's isolation work is NOT closed.
 
 ## Acceptance and next extensions

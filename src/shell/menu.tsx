@@ -65,7 +65,7 @@ function MenuPopup({menu,close,fail}:{menu:OpenMenu;close:(restore?:boolean)=>vo
     </button></div>)}
   </div>;
 }
-export function MenuButton({label,items,icon='chevron-down',className='',children}:{label:string;items:MenuItem[];icon?:string;className?:string;children?:ReactNode}) {
+export function MenuButton({label,items,icon='chevron-down',className='',children,disabled=false}:{label:string;items:MenuItem[];icon?:string;className?:string;children?:ReactNode;disabled?:boolean}) {
   const menu=useMenu(),ref=useRef<HTMLButtonElement>(null);
-  return <button ref={ref} type="button" className={`menu-trigger ${className}`} aria-label={label} title={label} aria-haspopup="menu" aria-expanded={menu.current!==null&&menu.current===ref.current} onClick={event=>menu.dropdown(event.currentTarget,label,items)} onKeyDown={event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();menu.dropdown(event.currentTarget,label,items);}}}>{children}<ResourceIcon icon={icon} size={15}/></button>;
+  return <button ref={ref} disabled={disabled} type="button" className={`menu-trigger ${className}`} aria-label={label} title={label} aria-haspopup="menu" aria-expanded={menu.current!==null&&menu.current===ref.current} onClick={event=>menu.dropdown(event.currentTarget,label,items)} onKeyDown={event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();menu.dropdown(event.currentTarget,label,items);}}}>{children}<ResourceIcon icon={icon} size={15}/></button>;
 }

@@ -1,5 +1,8 @@
 import { planSourceOperation } from './authoring';
 import { readAuthoredFiles } from '../core/authoring';
+import {ReportError} from '../runtime/report';
+import { compareRuns } from '../runtime/compare';
+import { IDEUpdates } from './updates';
 import { mkdirSync, watch } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { browserAssets } from './browser-build';
@@ -23,7 +26,7 @@ import { reportResponse } from './report-api';
 import { projectDocumentation } from '../documentation';
 import { impact, semanticDiff, semanticGraph } from '../semantic';
 import { previewEquipmentRename } from '../workspace/refactor';
-import { createDeployment, deploymentWorkflow, initialDeployment } from '../workspace/deployment';
+import { createDeployment, deploymentWorkflow, inspectDeployment } from '../workspace/deployment';
 import type { DeploymentPlan } from '../core/deployment';
 import { ProjectPlugins } from '../workspace/plugins';
 import { applyImportPlan } from '../workspace/importers';
@@ -38,6 +41,7 @@ const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 
 /** Composition root for local development; runtime modules themselves know no workspace. */
 export async function createApp(options: { assistant?:AssistantService; appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation' } = {}) {
   const appRoot=options.appRoot??defaultAppRoot;
+  const updates=new IDEUpdates(Bun.env.SATURN_IDE_VERSION??(await Bun.file(join(appRoot,'package.json')).json()).version);
   const workspace = new Workspace(options.projectDir ?? resolve(Bun.env.SATURN_PROJECT ?? '../saturn-examples/pumping-station'));
   const dataDir = options.dataDir ?? join(appRoot, '.saturn', hash(workspace.root).slice(0, 12));
   mkdirSync(dataDir, { recursive: true });
@@ -143,20 +147,25 @@ export async function createApp(options: { assistant?:AssistantService; appRoot?
           if (path === '/api/semantic/diff') return json(draft ? semanticDiff(runtime.project,draft.project) : []);
           if (path === '/api/impact') { const id=url.searchParams.get('id')??''; const result=impact(authoringProject(),id); if(!result) throw new HttpError(404,'Unknown semantic entity'); return json(result); }
           if (path === '/api/releases') return json({ key, source: draft?.artifact.provenance ?? null, checked: draft?.artifact.hash ?? null, ...await revisions.state(), phase: manager.phase, error: manager.error });
-          if(path==='/api/deployment/template')return json({plan:initialDeployment,exists:workspace.list().includes('targets/deployment.ts')});
+          if(path==='/api/deployment/template')return json(inspectDeployment(workspace));
           if(path==='/api/plugins')return json(plugins.list());
           if(path==='/api/import/context')return json({projectVersion:workspace.read('project.ts').version});
           if(path==='/api/templates')return json(deviceTemplates.map(({signals,...item})=>item));
           if (path === '/api/files') return json(workspace.list());
           if (path === '/api/file') return json(workspace.read(url.searchParams.get('path') ?? 'project.ts'));
+          if (path === '/api/ide') return json(updates.state);
           if (path === '/api/git') return json(await git.status());
+          if (path === '/api/git/review') return json(await git.review(url.searchParams.get('commit')??undefined));
+          if (path === '/api/git/preview') return json({diff:await git.preview(url.searchParams.get('commit')??'')});
           if (path === '/api/report') return await reportResponse(store, runtime.project, manager.applied ?? '', url);
           if (path === '/api/history') {
             const id=url.searchParams.get('signal')??'',definition=Object.values(authoringProject().signals).find(signal=>signal.id===id);
             if(!definition)throw new HttpError(404,'Unknown signal');
             return json(await store.history(definition.semanticId??definition.id));
           }
-          if (path === '/api/alarms') return json(await store.events());
+          if(path === '/api/telemetry/runs')return json(await store.runs());
+            if(path === '/api/telemetry/compare')return json(await compareRuns(store,revisions,url.searchParams.get('a')??'',url.searchParams.get('b')??'',url.searchParams.get('signal')??'',Number(url.searchParams.get('duration')),Number(url.searchParams.get('bucket'))));
+            if (path === '/api/alarms') return json(await store.events());
           if (path === '/sw.js') return new Response(Bun.file(join(appRoot, 'src/shell/sw.js')), { headers: { 'Content-Type': 'application/javascript', 'Cache-Control': 'no-cache' } });
           return json({ error: 'Not found' }, 404);
         }
@@ -262,15 +271,16 @@ export async function createApp(options: { assistant?:AssistantService; appRoot?
           await runtime.ingest(b.values as Record<string, unknown>); return json({ accepted: true });
         }
         if (path === '/api/ack') { if (manager.phase !== 'running') throw new HttpError(409, 'Runtime is not running'); await runtime.acknowledge(field(b, 'id')); return json({ ok: true }); }
+        if (path === '/api/ide/check') return json(await updates.check());
         if (path === '/api/git') {
           if (gitBusy) throw new HttpError(409, 'Git operation already running'); gitBusy = true;
-          try { const result = await git.action(field(b, 'action'), typeof b.message === 'string' ? b.message : undefined); await reload(); return json(result); } finally { gitBusy = false; }
+          try { const result = await git.action(field(b, 'action'), typeof b.message === 'string' ? b.message : undefined, {expectedHead:typeof b.expectedHead==='string'?b.expectedHead:undefined,commit:typeof b.commit==='string'?b.commit:undefined}); await reload(); return json(result); } finally { gitBusy = false; }
         }
         if (path === '/api/push/subscribe') { const sub = validateSubscription(b.subscription); const all = await store.subscriptions(); if (all.length >= 100 && !all.some(s => s.endpoint === sub.endpoint)) throw new HttpError(429, 'Subscription limit reached'); await store.subscribe(sub); return json({ ok: true }); }
         if (path === '/api/push/unsubscribe') { await store.unsubscribe(field(b, 'endpoint')); return json({ ok: true }); }
         if (path === '/api/push/test') { await push.send('Saturn', 'Push delivery test / Проверка доставки'); return json({ sent: true }); }
         throw new HttpError(404, 'Not found');
-      } catch (error) { return json({ error: error instanceof Error ? error.message : String(error) }, error instanceof HttpError ? error.status : 400); }
+      } catch (error) { return json({ error: error instanceof Error ? error.message : String(error) }, error instanceof HttpError || error instanceof ReportError ? error.status : 400); }
     },
   });
   let closed = false;

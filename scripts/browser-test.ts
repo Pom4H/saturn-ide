@@ -22,7 +22,7 @@ try{
   await until(async()=>(await fetch(`${base}/api/state`)).ok,'bun dev did not start');
   assert((await state()).problems.length===0,JSON.stringify((await state()).problems));checks.push('actual bun dev starts with the typed demo project');
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
-  const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(e.message));await page.goto(base);
+  const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(e.message));await page.goto(base);await page.getByRole('combobox',{name:'Вид проводника'}).selectOption('folders');
   await page.locator('[data-equipment="P-01"] [data-rpm="1450"]').waitFor({timeout:30000});
   const activityNav=page.getByRole('tree',{name:'Структура проекта'});
   const captureSurface=async(name:string,file:string,ready?:()=>Promise<void>)=>{await activityNav.getByRole('treeitem',{name:name==='Исходник'?'P-01.device.ts':name,exact:true}).click();if(ready)await ready();await screenshot(page,`artifacts/${file}`);};
@@ -41,7 +41,7 @@ try{
   await activityNav.getByRole('treeitem',{name:'P-01.device.ts',exact:true}).click();await page.locator('.cm-content').waitFor();
   assert((await page.locator('.code-pane .pane-heading').innerText()).includes('P-01.device.ts'),'device opens its real named source');
   await activityNav.getByRole('treeitem',{name:'P-01.device.ts',exact:true}).click();
-  await page.getByRole('button',{name:'На схеме',exact:true}).click();
+  await page.getByRole('button',{name:'Перейти',exact:true}).click();await page.getByRole('menuitem',{name:'Схема',exact:true}).click();
   assert(await page.locator('.unified-sidebar [data-icon="pump"]').count()>=1,'Explicit view navigation must preserve device identity');
   checks.push('one device resource, one named source and a consistent class icon across editors');
   await page.getByRole('button',{name:'Edit',exact:true}).click();

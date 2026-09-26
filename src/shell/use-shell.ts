@@ -4,12 +4,16 @@ import type { Snapshot } from '../core';
 import type { ShellHost } from '../core/resources';
 import { ShellSession } from './model/session';
 import { ShellClient } from './client';
+import { CommandShell } from './model/commands/engine';
 /** Common React binding for both renderers. Session/documents remain independently testable TypeScript. */
 export function useShell(client: ShellClient, host: ShellHost, authoring = true) {
   const [session] = useState(() => new ShellSession(host, client));
   const navigation = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const documents = useSyncExternalStore(session.documents.subscribe, session.documents.getSnapshot, session.documents.getSnapshot);
   const [state, setState] = useState<IDEState | null>(null), [connected, setConnected] = useState(false), [error, setError] = useState('');
+  const current = useRef({ state, connected }); current.current = { state, connected };
+  const [commands] = useState(() => new CommandShell({ session, state: () => current.current.state, connected: () => current.current.connected, request: (path, body, signal) => client.request(path, body, signal) }));
+  useEffect(() => () => commands.dispose(), [commands]);
   const [alarmVersion, setAlarmVersion] = useState(0);
   const generation = useRef(0), initiallyOpened = useRef(false);
   const refresh = async () => {
@@ -45,5 +49,5 @@ export function useShell(client: ShellClient, host: ShellHost, authoring = true)
     });
     return () => { abort.abort(); generation.current++; };
   }, [client, session, authoring]);
-  return { client, session, navigation, documents, catalog: session.getCatalog(), state, connected, error, setError, refresh, alarmVersion };
+  return { client, session, commands, navigation, documents, catalog: session.getCatalog(), state, connected, error, setError, refresh, alarmVersion };
 }

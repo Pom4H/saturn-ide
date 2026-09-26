@@ -1,3 +1,4 @@
+import type { TelemetryRun } from '../core/telemetry-run';
 import { SQL } from "bun";
 import type { Signal } from "../core";
 import { historyRange, type HistoryRange, type HistoryWindow } from "../core/history";
@@ -7,7 +8,7 @@ import type { PushSubscription } from "web-push";
 export type { AlarmEvent } from '../core/operational';
 
 interface SampleRow { signal: string; semantic: string | null; at: number | string; value: string; quality: Sample["quality"]; details: string | null }
-type SampleDetails = Pick<Sample, 'sourceAt' | 'receivedAt' | 'sequence' | 'state'>;
+type SampleDetails = Pick<Sample, 'sourceAt' | 'receivedAt' | 'sequence' | 'state' | 'provenance'>;
 const decode = (r: SampleRow): Sample => ({ ...(r.details ? JSON.parse(r.details) as SampleDetails : {}),
   signal:r.signal, semantic:r.semantic??undefined, at:Number(r.at), value:JSON.parse(r.value), quality:r.quality });
 export class Store {
@@ -29,9 +30,15 @@ export class Store {
       const columns: {name:string}[] = await db`PRAGMA table_info(samples)`;
       if (!columns.some(column => column.name === 'details')) await db`ALTER TABLE samples ADD COLUMN details TEXT`;
     }
+    if(this.adapter==='postgres')await db`ALTER TABLE samples ADD COLUMN IF NOT EXISTS run_id TEXT`;
+    else {const columns:{name:string}[]=await db`PRAGMA table_info(samples)`;if(!columns.some(c=>c.name==='run_id'))await db`ALTER TABLE samples ADD COLUMN run_id TEXT`;}
+    await db`CREATE INDEX IF NOT EXISTS samples_run_semantic_at ON samples(run_id,semantic,at)`;
+    await db`CREATE TABLE IF NOT EXISTS telemetry_runs (id TEXT PRIMARY KEY, build TEXT NOT NULL, source_revision TEXT, mode TEXT NOT NULL, started_at BIGINT NOT NULL)`;
     await db`UPDATE samples SET semantic=signal WHERE semantic IS NULL`;
     await db`CREATE INDEX IF NOT EXISTS samples_signal_at ON samples(signal, at)`;
     await db`CREATE INDEX IF NOT EXISTS samples_semantic_at ON samples(semantic, at)`;
+    if(this.adapter==='postgres')await db`ALTER TABLE telemetry_runs ADD COLUMN IF NOT EXISTS ended_at BIGINT`;
+    else {const columns:{name:string}[]=await db`PRAGMA table_info(telemetry_runs)`;if(!columns.some(c=>c.name==='ended_at'))await db`ALTER TABLE telemetry_runs ADD COLUMN ended_at BIGINT`;}
     await db`CREATE TABLE IF NOT EXISTS alarm_events (id TEXT PRIMARY KEY, alarm TEXT NOT NULL, at BIGINT NOT NULL, state TEXT NOT NULL)`;
     await db`CREATE INDEX IF NOT EXISTS alarms_at ON alarm_events(at)`;
     await db`CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, subscription TEXT NOT NULL)`;
@@ -39,11 +46,21 @@ export class Store {
   async append(samples: Sample[], events: AlarmEvent[] = []) {
     await this.sql.begin(async tx => {
       for (const s of samples) {
-        const details: SampleDetails = {sourceAt:s.sourceAt,receivedAt:s.receivedAt,sequence:s.sequence,state:s.state};
-        await tx`INSERT INTO samples (id,signal,semantic,at,value,quality,details) VALUES (${crypto.randomUUID()},${s.signal},${s.semantic ?? s.signal},${s.at},${JSON.stringify(s.value)},${s.quality},${JSON.stringify(details)})`;
+        const details: SampleDetails = {sourceAt:s.sourceAt,receivedAt:s.receivedAt,sequence:s.sequence,state:s.state,provenance:s.provenance};
+        if(s.provenance){const r=s.provenance;await tx`INSERT INTO telemetry_runs (id,build,source_revision,mode,started_at) VALUES (${r.id},${r.build},${r.sourceRevision},${r.mode},${r.startedAt}) ON CONFLICT (id) DO NOTHING`;}
+        await tx`INSERT INTO samples (id,signal,semantic,at,value,quality,details,run_id) VALUES (${crypto.randomUUID()},${s.signal},${s.semantic ?? s.signal},${s.at},${JSON.stringify(s.value)},${s.quality},${JSON.stringify(details)},${s.provenance?.id??null})`;
       }
       for (const e of events) await tx`INSERT INTO alarm_events (id,alarm,at,state) VALUES (${crypto.randomUUID()},${e.id},${e.at},${JSON.stringify(e)})`;
     });
+  }
+  async runs():Promise<TelemetryRun[]>{
+    const rows:{id:string;build:string;source_revision:string|null;mode:TelemetryRun['mode'];started_at:number|string;ended_at:number|string|null}[]=await this.sql`SELECT * FROM telemetry_runs ORDER BY started_at DESC LIMIT 100`;
+    return rows.map(r=>({id:r.id,build:r.build,sourceRevision:r.source_revision,mode:r.mode,startedAt:Number(r.started_at),...(r.ended_at===null?{}:{endedAt:Number(r.ended_at)})}));
+  }
+  async endRun(id:string,at:number){await this.sql`UPDATE telemetry_runs SET ended_at=${at} WHERE id=${id} AND ended_at IS NULL`;}
+  async runSamples(run:string,identity:string,to:number):Promise<Sample[]>{
+    const rows:SampleRow[]=await this.sql`SELECT signal,semantic,at,value,quality,details FROM samples WHERE run_id=${run} AND semantic=${identity} AND at<${to} ORDER BY at,id LIMIT 50001`;
+    if(rows.length>50000)throw new Error('Too many observations; shorten comparison');return rows.map(decode);
   }
   async bindSemantic(signal:string,semantic:string) { await this.sql`UPDATE samples SET semantic=${semantic} WHERE signal=${signal} AND (semantic IS NULL OR semantic=signal)`; }
   async history(identity: string, limit = 300): Promise<Sample[]> {

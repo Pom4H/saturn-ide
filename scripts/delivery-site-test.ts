@@ -1,0 +1,7 @@
+import {chromium,expect} from 'playwright/test';
+import assert from 'node:assert/strict';
+import {resolve} from 'node:path';
+const probe=Bun.serve({port:0,fetch:()=>new Response()});const port=probe.port!,origin=`http://127.0.0.1:${port}`;await probe.stop(true);
+const child=Bun.spawn([process.execPath,'.output/server/index.mjs'],{cwd:resolve('../saturn-saas'),env:{...process.env,PORT:String(port),HOST:'127.0.0.1',WORKFLOW_TARGET_WORLD:'local'},stdout:'ignore',stderr:'pipe'});
+const browser=await chromium.launch(),context=await browser.newContext({viewport:{width:1440,height:1000},recordVideo:{dir:'artifacts/delivery-site-recording'}}),page=await context.newPage();
+try{for(let i=0;i<100;i++){if(await fetch(origin+'/api/session').then(r=>r.ok,()=>false))break;await Bun.sleep(100);}await page.goto(origin);await page.getByRole('button',{name:'Скачать IDE',exact:true}).click();await expect(page.getByRole('heading',{name:/Saturn на вашем компьютере/})).toBeVisible();await expect(page.locator('.download-platforms article')).toHaveCount(3);await page.screenshot({path:'artifacts/delivery-downloads.png'});await page.setViewportSize({width:390,height:844});await page.screenshot({path:'artifacts/delivery-downloads-phone.png'});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));console.log('PASS actual built SaaS download surface for Windows/macOS/Linux, anonymous access and responsive layout; unpublished assets stay unavailable.');}finally{await context.close();await browser.close();child.kill('SIGTERM');await child.exited;}

@@ -250,6 +250,10 @@ For a terminal Shell connected to the same workspace server:
 bun tui
 ```
 
+The same command engine runs in the browser terminal, OpenTUI and `bun cli`.
+Agents can use `bun cli --schema`, `--json`, `--complete` and `--batch`.
+See [command shell](docs/command-shell.md).
+
 ## Development
 
 ```sh
@@ -262,6 +266,11 @@ bun run test:browser
 The architecture guard keeps core, workspace, runtime, shell and host ownership explicit and
 forbids product code from introducing a second authored project model.
 
+`bun run ide:build` packages a native executable (GUI/CLI/TUI/worker). `bun run standalone:build`
+packages the portable Windows host. Typed SQL reports export CSV, real XLSX and printable HTML
+from the IDE or a Bun worker. See [delivery and jobs](docs/delivery-and-jobs.md),
+[report migration](docs/report-migration.md) and [project structure](docs/project-structure.md).
+
 More detail:
 
 - [Architecture](docs/architecture.md)
@@ -269,6 +278,8 @@ More detail:
 - [Runtime deployment](docs/runtime-deployment.md)
 - [Importer contract](docs/importers.md)
 - [Infrastructure and performance](docs/infrastructure.md)
+- [Command shell](docs/command-shell.md)
+- [Delivery and jobs](docs/delivery-and-jobs.md)
 - [Verification](docs/verification.md)
 
 ---

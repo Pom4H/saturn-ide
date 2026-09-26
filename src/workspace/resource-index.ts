@@ -1,3 +1,4 @@
+import {reportSignals} from '../core';
 import ts from 'typescript';
 import { isAttached, type Project } from '../core';
 const text = (label: Project['label'], locale: 'en' | 'ru') => typeof label === 'string' ? label : label[locale];
@@ -41,7 +42,7 @@ export function indexResources(workspace: { list(): string[]; read(path: string)
       name: { en: text(equipment.label, 'en'), ru: text(equipment.label, 'ru') }, entityId: equipment.id, semanticId: deviceIdentity.get(equipment.id), source: sourceOf(equipment.id), parent: root,
       editors: ['diagram', 'source', 'signals'], related: [...new Set([
         ...connected.flatMap(e => [e.from, e.to].filter(isAttached).map(end => end.device)).filter(id => id !== equipment.id).map(deviceUri),
-        ...(project.reports ?? []).filter(r => Object.values(r.columns).some(c => signals.has(c.signal.id))).map(r => uri('report', r.id)),
+        ...(project.reports ?? []).filter(r => reportSignals(r).some(s => signals.has(s.id))).map(r => uri('report', r.id)),
       ])] });
   }
   for (const report of project.reports ?? []) resources.push({ uri: uri('report', report.id), kind: 'report', icon: 'report',

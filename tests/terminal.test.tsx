@@ -31,3 +31,28 @@ test('actual OpenTUI React renderer shows the shared document after a Shell comm
     expect(setup.captureCharFrame()).toContain('1200');
   } finally { setup.renderer.destroy(); }
 });
+
+test('OpenTUI command input uses actual keyboard Tab and Enter with the shared engine',async()=>{
+  const { CommandShell }=await import('../src/shell/model/commands/engine');
+  const { CommandTerminal }=await import('../src/shell/command-terminal');
+  const session=new ShellSession('terminal',{read:async path=>({path,source:'',version:'1'}),save:async file=>file});
+  const state:IDEState={project,positions:{},problems:[],revision:'tui-applied',snapshot:{samples:{},alarms:{}},mode:'simulation',adapter:'sqlite',key:'',pushPublicKey:''};
+  const calls:unknown[]=[];
+  const commands=new CommandShell({session,state:()=>state,connected:()=>true,request:async<T,>(_path:string,body?:unknown)=>{calls.push(body);return {accepted:true} as T;}});
+  const setup=await testRender(<CommandTerminal commands={commands}/>,{width:110,height:28});
+  try{
+    await act(async()=>{await commands.setInput('set P-01.run ');});await setup.renderOnce();
+    expect(setup.captureCharFrame()).toContain('true');expect(setup.captureCharFrame()).toContain('[SIG]');
+    await act(async()=>{setup.mockInput.pressTab();await Bun.sleep(10);});await setup.renderOnce();
+    expect(commands.getSnapshot().input).toBe('set P-01.run true ');expect(calls).toHaveLength(0);
+    await act(async()=>{setup.mockInput.pressEnter();await Bun.sleep(10);});await setup.renderOnce();
+    expect(calls).toEqual([{signal:'P-01.run',value:true,expectedApplied:'sha256:tui-applied'}]);
+    expect(setup.captureCharFrame()).toContain('Команда принята');
+    await act(async()=>{await commands.setInput('/runtime ge');});await setup.renderOnce();
+    await act(async()=>{setup.mockInput.pressTab();await Bun.sleep(10);});await setup.renderOnce();
+    expect(commands.getSnapshot().input).toBe('/runtime get ');
+    await act(async()=>{await commands.setInput('draft');setup.mockInput.pressEscape();await Bun.sleep(10);});await setup.renderOnce();
+    expect(commands.getSnapshot().input).toBe('draft');expect(commands.getSnapshot().suggestions).toHaveLength(0);
+    await Bun.write('artifacts/command-tui.txt',setup.captureCharFrame());
+  }finally{commands.dispose();await act(async()=>setup.renderer.destroy());}
+});

@@ -9,17 +9,25 @@ import type { ReportResult } from '../reports';
 import { ShellSession } from './model/session';
 import { ShellClient } from './client';
 import { useShell } from './use-shell';
+import { CommandShell } from './model/commands/engine';
+import { CommandTerminal } from './command-terminal';
+import { displaySample } from './model/observations';
 
-export function TerminalApp({ client, quit }: { client: ShellClient; quit: () => void }) {
+export function TerminalApp({ client, quit, consoleOnly = false }: { client: ShellClient; quit: () => void; consoleOnly?:boolean }) {
   const shell = useShell(client, 'terminal');
   useKeyboard(key => { if (!shell.state && key.ctrl && (key.name === 'c' || key.name === 'q')) { key.preventDefault(); quit(); } });
   if (!shell.state) return <text>{shell.error || 'Saturn: connecting to the local workspace…'}</text>;
-  return <TerminalView client={client} session={shell.session} state={shell.state} connected={shell.connected} connectionError={shell.error} quit={quit}/>;
+  return <TerminalView commands={shell.commands} consoleOnly={consoleOnly} client={client} session={shell.session} state={shell.state} connected={shell.connected} connectionError={shell.error} quit={quit}/>;
 }
 /** Terminal projections are text, not browser DOM or substituted SVG screenshots. */
-export function TerminalView({ client, session, state, connected, connectionError, quit }: {
-  client: ShellClient; session: ShellSession; state: IDEState; connected: boolean; connectionError?: string; quit: () => void;
+export function TerminalView({ client, session, state, connected, connectionError, quit, commands, consoleOnly=false }: {
+  commands?:CommandShell; consoleOnly?:boolean; client: ShellClient; session: ShellSession; state: IDEState; connected: boolean; connectionError?: string; quit: () => void;
 }) {
+  const current=useRef({state,connected});current.current={state,connected};
+  const [fallback]=useState(()=>new CommandShell({session,state:()=>current.current.state,connected:()=>current.current.connected,request:(path,body,signal)=>client.request(path,body,signal)}));
+  const commandShell=commands??fallback;
+  const [consoleOpen,setConsoleOpen]=useState(consoleOnly);
+  useEffect(()=>()=>fallback.dispose(),[fallback]);
   const nav = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const buffers = useSyncExternalStore(session.documents.subscribe, session.documents.getSnapshot, session.documents.getSnapshot);
   const { width, height } = useTerminalDimensions();
@@ -54,12 +62,14 @@ export function TerminalView({ client, session, state, connected, connectionErro
     return () => { cancelled = true; };
   }, [nav.surface, nav.active?.uri, client, locale, state.project]);
   useKeyboard(key => {
-    if (key.ctrl && (key.name === 'q' || key.name === 'c')) {
+    if (key.ctrl && (key.name === 'q' || !consoleOpen && key.name === 'c')) {
       key.preventDefault();
       if (session.documents.dirty && !quitArmed) { setQuitArmed(true); setMessage(locale === 'ru' ? 'Есть черновики. Ctrl+Q ещё раз — выйти без сохранения.' : 'Unsaved drafts. Ctrl+Q again discards them.'); }
       else quit(); return;
     }
     setQuitArmed(false);
+    if(key.name==='f7'){key.preventDefault();setConsoleOpen(value=>!value);return;}
+    if(consoleOpen)return;
     if (key.ctrl && key.name === 's') { key.preventDefault(); void session.execute({ type: 'save' }).then(() => setMessage('Saved')).catch(e => setMessage(String(e))); }
     if (key.ctrl && key.name === 'k') { key.preventDefault(); setFocus('search'); }
     if (key.name === 'tab') { key.preventDefault(); setFocus(f => f === 'tree' ? 'source' : 'tree'); }
@@ -74,14 +84,15 @@ export function TerminalView({ client, session, state, connected, connectionErro
   const equipment = state.project.equipment.find(e => e.id === nav.selected);
   const edges = [...state.project.pipes, ...state.project.cables ?? []].filter(e => !equipment || [e.from, e.to].filter(isAttached).map(end => end.device).includes(equipment.id));
   const signalLines = Object.values(state.project.signals).map(signal => {
-    const sample = state.snapshot.samples[signal.id];
-    const good = connected && sample?.quality === 'good' && now - sample.at <= (signal.staleAfter ?? 5000);
+    const sample = displaySample(signal,state.snapshot.samples[signal.id],connected,now);
+    const good = sample?.quality === 'good';
     return `${signal.id.padEnd(22)} ${good ? String(sample.value) : '—'} ${signal.unit ?? ''} [${good ? 'good' : 'stale'}]`;
   });
   const detail = nav.surface === 'signals' ? signalLines.join('\n')
     : nav.surface === 'reports' || nav.surface === 'git' ? output || 'Loading…'
     : nav.surface === 'targets' ? `Local ${state.mode}\nApplied ${state.revision || '—'}\nStorage ${state.adapter}`
     : `${resource?.name[locale] ?? ''}\n${resource?.source?.path ?? ''}\n\n${edges.map(e => `${e.kind}: ${endLabel(e.from)} -> ${endLabel(e.to)}`).join('\n')}\n\n${signalLines.join('\n')}`;
+  if(consoleOpen)return <box width="100%" height="100%" flexDirection="column"><text> Saturn · {text(state.project.label,locale)} · {connected?'SSE':'OFFLINE'} {message}</text><CommandTerminal commands={commandShell}/></box>;
   return <box width="100%" height="100%" flexDirection="column">
     <box height={3} border paddingLeft={1}><text><strong>Saturn</strong>  {text(state.project.label, locale)}  [{state.mode}]  {connected ? 'SSE' : 'OFFLINE'}</text></box>
     <box flexGrow={1} flexDirection="row">
@@ -99,6 +110,6 @@ export function TerminalView({ client, session, state, connected, connectionErro
       </box>
     </box>
     <text>{message || buffer?.error || connectionError || `${buffers.size} documents · ${session.documents.dirty ? 'Modified' : 'Saved'} · ${state.revision.slice(0, 12)}`}</text>
-    <text>F2 Source  F3 Topology  F4 Signals  F5 Report  F6 Git  F8 RU/EN  Ctrl+S Save  Ctrl+Q Exit</text>
+    <text>F2 Source  F3 Topology  F4 Signals  F5 Report  F6 Git  F7 Console  F8 RU/EN  Ctrl+S Save  Ctrl+Q Exit</text>
   </box>;
 }

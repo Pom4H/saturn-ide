@@ -46,4 +46,4 @@ export function findResources(catalog: ResourceCatalog, query: string, locale: S
 }
 /** No private-use font required in SSH, CI or plain terminals. */
 export const terminalIcon = (icon: string): string => ({ pump: 'PMP', tank: 'TNK', valve: 'VLV', plc: 'PLC',
-  report: 'RPT', plugin: 'EXT', target: 'ENV', hmi: 'HMI', docs: 'DOC', project: 'PRJ', file: 'TS' }[icon] ?? 'DEV');
+  assistant:'AI',source:'TS',signals:'SIG',ports:'PORT',diagram:'LINK',terminal:'CMD',git:'GIT',bell:'ALM',inspector:'INFO',warning:'WARN',reports:'RPT',targets:'ENV',report: 'RPT', plugin: 'EXT', target: 'ENV', hmi: 'HMI', docs: 'DOC', project: 'PRJ', file: 'TS' }[icon] ?? 'DEV');

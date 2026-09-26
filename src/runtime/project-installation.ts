@@ -1,3 +1,4 @@
+import type { TelemetryRun } from '../core/telemetry-run';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -9,6 +10,7 @@ import type { Runtime } from './engine';
 import type { Installation } from './installation';
 
 interface Session {
+  provenance?:TelemetryRun;
   controller: AbortController;
   closed: boolean;
   active: boolean;
@@ -86,7 +88,7 @@ export class ProjectInstallation implements Installation {
           session.staged[item.signal] = !('value' in item) && previous ? {...previous,quality:item.quality} : item;
         }
         if (Object.keys(session.staged).length > 10000) throw new Error('Driver startup snapshot exceeds limit');
-      } else await this.engine.observe(owned);
+      } else await this.engine.observe(owned,session.provenance);
     };
     const context: AcquisitionContext = {
       project: this.project, snapshot: structuredClone(snapshot), signal: session.controller.signal, observe,
@@ -100,9 +102,10 @@ export class ProjectInstallation implements Installation {
   async activate(): Promise<void> {
     const session = this.session; if (!session || session.closed) throw new Error('Installation is not started');
     // No await before switching model+snapshot: the manager has committed its identity.
+    session.provenance=this.newRun();
     this.engine.apply(this.project); this.engine.snapshot = session.snapshot;
     const staged = session.staged; session.staged = {}; session.active = true;
-    if (Object.keys(staged).length) await this.engine.observe(Object.values(staged));
+    if (Object.keys(staged).length) await this.engine.observe(Object.values(staged),session.provenance);
   }
   command(id: string, value: unknown): Promise<void> {
     const session = this.session;
@@ -128,10 +131,12 @@ export class ProjectInstallation implements Installation {
         this.checkpoint = structuredClone(this.engine.snapshot);
         for (const sample of Object.values(this.engine.snapshot.samples)) { sample.quality = 'stale'; sample.state = qualityState('stale'); }
       });
+      if(session.provenance)await this.engine.store.endRun?.(session.provenance.id,Date.now());
       await session.stop?.();
       this.session = undefined;
     }
   }
+  private newRun():TelemetryRun{return {id:crypto.randomUUID(),build:this.artifact.hash,sourceRevision:this.artifact.provenance.sourceRevision,mode:this.driver?.mode??'offline',startedAt:Date.now()};}
   async adopt(previous: Installation): Promise<void> {
     if (!(previous instanceof ProjectInstallation) || previous.acquisitionKey !== this.acquisitionKey || !previous.session) throw new Error('Incompatible driver adoption');
     this.engine.apply(this.project);
@@ -139,6 +144,8 @@ export class ProjectInstallation implements Installation {
     // reach that same instance after a layout-only edit, not a fresh module object.
     this.driver = previous.driver;
     this.session = previous.session; previous.session = undefined;
+    const ended=this.session.provenance;this.session.provenance=this.newRun();
+    if(ended)await this.engine.serial(async()=>{await this.engine.store.endRun?.(ended.id,this.session!.provenance!.startedAt);});
     this.checkpoint = previous.checkpoint;
   }
 }

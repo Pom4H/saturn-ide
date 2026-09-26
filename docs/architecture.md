@@ -86,7 +86,7 @@ src/
 project/
   package.json             # обычный проект, без собственного manifest-протокола
   project.ts               # сборка единой модели обычными imports
-  server.ts                # выбранный драйвер/симулятор
+  server.ts                # опционально: выбранный драйвер/симулятор
   signals.ts               # выносится только когда нужен
   systems/                 # группы/подсистемы объекта, по мере появления
   equipment/
@@ -108,6 +108,8 @@ project/
   assets/
   tests/
 ```
+
+Новый пустой проект содержит только project.ts, package.json, tsconfig.json, README.md и .gitignore. Полная демонстрационная станция создаётся отдельно через `--template pumping-station`. `server.ts` и `browser.ts` добавляются только при необходимости.
 
 Это соглашения по назначению, не набор обязательных файлов для каждого устройства.
 Для простого насоса достаточно одного файла. ПЛК может владеть каталогом с компилятором и HMI.
@@ -186,7 +188,7 @@ Shell владеет навигацией, открытыми буферами �
 превращается в локальное подтверждение. Инспектор занимает область поверхности над панелью.
 Селектор проекта и его режим находятся в topbar, сайдбар содержит разделы и ресурсы.
 Цвета всех поверхностей определены общими токенами `styles.css`, компоновка — `resources.css`.
-Browser Shell показывает постоянный проводник: папки и файлы строятся из настоящих
+Browser Shell показывает постоянный проводник с режимами Объекты / Значки / Список файлов / Папки. Первые два открывают предметные сущности и сохраняют полный доступ к исходникам в отдельной группе; остальные открывают файлы. Это вычисляемые проекции одного ResourceCatalog. Папки и файлы строятся из настоящих
 `resource.source.path`, объявления устройств/отчётов остаются дочерними узлами своих файлов.
 Несколько объявлений в одном файле не создают выдуманные файлы. Узлы без найденного исходника
 помечаются отдельно. «Представления» — явная группа команд, а не часть файловой системы.
@@ -354,3 +356,54 @@ kit, composed through defineProtocol/acquire. The runtime exposes read-only
 inspection independently of SQL; inspection never generates another measurement.
 No separate authored infrastructure model or plugin registry exists. See
 [infrastructure.md](infrastructure.md) for contracts, UI, accounting and limits.
+
+### Общее ядро команд Shell
+
+`src/shell/model/commands` владеет каталогом команд, разбором/дополнением ввода,
+историей и последовательностью клиентских действий. `CommandBar` (DOM),
+`CommandTerminal` (OpenTUI) и `host/cli` (JSON/batch) используют один движок.
+Добавление команды требует реализации в общем ядре, не отдельного parser в renderer.
+Прежний локальный regex-dispatch из `shell-terminal.tsx` удалён.
+
+Движок получает существующие `ShellSession`/`Documents`, server snapshot и transport
+port. Он не создаёт Project/Signal/Topology, не импортирует compiler/workspace/runtime
+и не становится authority. AST-каталог остаётся производной workspace, TypeScript
+completion запрашивается у Language Service; source insert редактирует общий черновик.
+Runtime команды получают expectedApplied. Сохранение, публикация и применение остаются
+разными операциями; существующая политика simulator preview не меняется.
+
+AI получает ограниченную проекцию выбранного объекта, AST-метаданных и applied
+наблюдений через composing host. Ответ не является командой или проверенным исходником.
+Внешние агенты читают общий каталог и структурированные результаты через CLI.
+Существующие графические поверхности и их контроллеры ещё не полностью перенесены
+на это ядро: завершён общий путь командных оболочек, не заявлена полная parity IDE.
+Синтаксис, границы и варианты запуска описаны в [command-shell.md](command-shell.md).
+
+## Исполняемый IDE и задания (2026-09-25)
+
+`host/application` выбирает GUI/serve/CLI/TUI/worker над существующими модулями.
+`host/payload` распаковывает versioned IDE payload с embedded Bun; `host/standalone` — entry portable Windows-сборки. Авторский проект не
+получает реализацию IDE. Manifest выпуска общий для website downloads и sidebar updates.
+Git сохраняет workspace ownership: structured DAG, fetch/ff-only main и reviewed restore
+новым scoped commit. Это не runtime apply.
+
+`workspace/job-source` готовит exact-commit worktree и загружает обычный authored
+DeploymentPlan. Workflow SDK в SaaS владеет durable DAG; `host/worker` исполняет
+конкретные шаги в Bun Workers. `runtime/jobs` хранит идемпотентные execution receipts,
+не создаёт другой язык workflow. Report jobs читают applied BuildArtifact и архив через
+`runtime/report`, тот же путь агрегации используется интерактивным отчётом.
+
+`ProjectInstallation` присваивает наблюдениям immutable TelemetryRun только от реально
+активированной сборки. Архив хранит build/source commit/run/mode/start; source branch
+показывается как подсказка навигации. A/B сравнивает retained build contracts по semantic
+signal ID, сохраняя пропуски и покрытие. Старые строки не получают выдуманную provenance.
+Подробности и ограничения: [delivery-and-jobs.md](delivery-and-jobs.md).
+
+### Типизированные отчёты и экспорт
+
+`core/reporting` расширяет существующий report() SQL/schema/workbook-вариантом.
+`runtime/report` владеет согласованным снимком истории и durable результатом,
+`runtime/report-query` исполняет SELECT в одноразовом процессе, `runtime/report-xlsx`
+создаёт настоящий OOXML. Shell/CLI и Workflow SDK используют эти результаты через
+host. Скачивание по artifactId не перечитывает историю. Миграция и границы паритета:
+[report-migration.md](report-migration.md).
