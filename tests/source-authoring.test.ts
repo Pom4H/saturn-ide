@@ -34,7 +34,7 @@ test('ordinary comments derive floor ghosts; the immutable runtime artifact excl
     if(!isAttached(edge.from))expect(edge.from.position.z).toBe(0);
     expect(routeConnections(frame.scene).every(route=>route.valid)).toBe(true);
     expect(decodeProject(built.artifact.model).cables).toHaveLength(0);
-    expect(built.artifact.schema).toBe('saturn.build@3');
+    expect(built.artifact.schema).toBe('saturn.build@2');
     expect(frame.files[0]?.source).toBe(source);
     const edits=authoringChanges(frame.files,frame,{kind:'enabled',entity:'cable',id:edge.id,enabled:true});
     expect(edits).toHaveLength(1);for(const edit of edits)f.workspace.save(edit.path,edit.source,edit.version);

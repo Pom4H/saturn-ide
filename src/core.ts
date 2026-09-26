@@ -211,14 +211,15 @@ export function pipe<const F extends string>(id:string, options:{from:FluidSourc
 }
 /** @ru Кабель управления, питания или шины. Не труба и не зависимость вычисляемого сигнала.
  * @en Control, power or bus cable. Not a pipe and not a computed-signal dependency. */
+/** Turn a stored `unplugged`/`looseEnd` pair into one `free()` end. The cable itself stays. */
+export function migrateLegacyConnection<T extends {from:ConnectionEnd;to:ConnectionEnd;unplugged?:'from'|'to';looseEnd?:Point}>(edge:T):Omit<T,'unplugged'|'looseEnd'> {
+  const {unplugged,looseEnd,...rest}=edge;
+  if(unplugged===undefined&&looseEnd===undefined)return rest;
+  if((unplugged!=='from'&&unplugged!=='to')||!looseEnd)throw new Error('Both unplugged and looseEnd are required for legacy cable migration');
+  return {...rest,[unplugged]:free(rest[unplugged],looseEnd)};
+}
 export function cable<const M extends Exclude<Medium,'fluid'>, const F extends string>(id:string, options:{from:ConnectionEnd<M,F,'source'|'passive'>;to:ConnectionEnd<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:Signal;via?:Connection['via'];unplugged?:'from'|'to';looseEnd?:Point}):Cable {
-  // Input-only migration for authored v2 projects. The canonical model never retains split end state.
-  const {unplugged,looseEnd,...ends}=options;
-  if(unplugged!==undefined||looseEnd!==undefined){
-    if(!unplugged||!looseEnd)throw new Error('Both unplugged and looseEnd are required for legacy cable migration');
-    return {...ends,[unplugged]:free(ends[unplugged],looseEnd),id,kind:'cable'};
-  }
-  return {...ends,id,kind:'cable'};
+  return {...migrateLegacyConnection(options),id,kind:'cable'};
 }
 export interface Alarm { id:string; label:Text; signal:Signal<number>; above:number; hysteresis?:number }
 /** @ru Пороговая тревога с гистерезисом и квитированием. @en High-limit alarm with hysteresis and acknowledgement. */
@@ -317,6 +318,12 @@ export function validateProject(p:Project):void {
   }
   const degree=new Map<string,number>();
   for(const edge of [...p.pipes,...p.cables??[]]) {
+    const legacy=edge as Connection&{unplugged?:'from'|'to';looseEnd?:Point};
+    if(legacy.unplugged!==undefined||legacy.looseEnd!==undefined){
+      const migrated=migrateLegacyConnection(legacy);
+      if(legacy.unplugged==='from'||legacy.unplugged==='to')legacy[legacy.unplugged]=migrated[legacy.unplugged];
+      delete legacy.unplugged;delete legacy.looseEnd;
+    }
     const resolve=(end:ConnectionEnd)=>{
       if(!isAttached(end)){
         requireThat(end.kind==='free'&&end.position&&[end.position.x,end.position.y,end.position.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000)&&end.position.z>=0&&end.terminal,'CONNECTION_FREE_END',`Invalid free end ${edge.id}`,`Неверный свободный конец ${edge.id}`);
@@ -325,7 +332,7 @@ export function validateProject(p:Project):void {
       }
       const d=devices.get(end.device);const t=d && (d.ports as Record<string,Endpoint>)[end.port];requireThat(t,'PORT_UNKNOWN',`Unknown port ${end.device}.${end.port}`,`Неизвестный порт ${end.device}.${end.port}`);return t.terminal;};
     const a=resolve(edge.from),b=resolve(edge.to);
-    requireThat(!('unplugged' in edge)&&!('looseEnd' in edge),'CONNECTION_LEGACY','Use free() connection ends; rebuild the legacy project','Используйте концы free(); пересоберите старый проект');
+    requireThat(!('unplugged' in edge)&&!('looseEnd' in edge),'CONNECTION_LEGACY',`Legacy connection ends remain on ${edge.id}`,`На ${edge.id} остались старые концы соединения`);
     requireThat(!isAttached(edge.from)||!isAttached(edge.to)||edge.from.device!==edge.to.device,'CONNECTION_SELF','Cannot connect a device to itself','Нельзя соединять устройство само с собой');
     requireThat(a.medium===b.medium&&a.family===b.family&&(edge.kind==='pipe'?a.medium==='fluid':a.medium!=='fluid'),'PORT_MEDIUM',`Incompatible ports ${edge.id}`,`Несовместимые порты ${edge.id}`);
     requireThat((!a.valueType||!b.valueType||a.valueType===b.valueType)&&(!a.unit||!b.unit||a.unit===b.unit),'PORT_QUANTITY',`Incompatible quantities ${edge.id}`,`Несовместимые величины ${edge.id}`);

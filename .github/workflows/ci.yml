@@ -1,7 +1,7 @@
 name: IDE architecture and integration checks
 on:
   push:
-    branches: [main, fix/foundation-shared-authoring]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -33,7 +33,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Pom4H/saturn-examples
-          ref: 7d7419f05c7e09cfeeaa109c9799b2f7f49b3b4e
           path: saturn-examples
           ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
       - uses: actions/checkout@v4

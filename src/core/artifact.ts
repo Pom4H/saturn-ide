@@ -10,7 +10,7 @@ export interface Provenance {
   bunVersion: string;
 }
 export interface BuildArtifact {
-  schema: 'saturn.build@3';
+  schema: 'saturn.build@2';
   hash: string;
   model: string;
   driver: { hash: string; code: string } | null;
@@ -55,7 +55,7 @@ export function canonical(value: unknown): string {
 }
 export async function createArtifact(model: unknown, driverCode: string | null, provenance: Provenance): Promise<BuildArtifact> {
   const payload = {
-    schema: 'saturn.build@3' as const,
+    schema: 'saturn.build@2' as const,
     model: canonical(model),
     driver: driverCode === null ? null : { hash: await digest(driverCode), code: driverCode },
     provenance: { ...provenance },
@@ -66,7 +66,7 @@ export async function createArtifact(model: unknown, driverCode: string | null, 
 export async function verifyArtifact(input: unknown): Promise<BuildArtifact> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid build artifact');
   const a = input as Partial<BuildArtifact>;
-  if (a.schema !== 'saturn.build@3' || typeof a.hash !== 'string' || !HASH.test(a.hash) || typeof a.model !== 'string' || a.model.length > 4_000_000) throw new Error('Invalid build identity/model');
+  if (a.schema !== 'saturn.build@2' || typeof a.hash !== 'string' || !HASH.test(a.hash) || typeof a.model !== 'string' || a.model.length > 4_000_000) throw new Error('Invalid build identity/model');
   if (canonical(JSON.parse(a.model)) !== a.model) throw new Error('Noncanonical build model');
   const p = a.provenance;
   if (!p || !HASH.test(p.sourceDigest) || !HASH.test(p.coreHash) || (p.lockHash !== null && !HASH.test(p.lockHash)) || (p.sourceRevision !== null && !/^[a-f0-9]{40,64}$/.test(p.sourceRevision)) || typeof p.bunVersion !== 'string' || p.bunVersion.length > 80) throw new Error('Invalid build provenance');

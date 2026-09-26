@@ -1,5 +1,7 @@
 import { free } from '../src/core';
 import { isAttached, type ConnectionEnd } from '../src/core';
+import { canonical } from '../src/core/artifact';
+import { decodeProject } from '../src/runtime/decode-project';
 const attachedPort = (end:ConnectionEnd|undefined) => end && isAttached(end) ? end.port : undefined;
 const attachedDevice = (end:ConnectionEnd|undefined) => end && isAttached(end) ? end.device : undefined;
 const isFree = (end:ConnectionEnd|undefined) => !!end && !isAttached(end);
@@ -20,12 +22,31 @@ test('one inferred engineering model, explicit ports and report relationships',(
 });
 test('unplugging a cable removes its signal from the detached equipment context',()=>{
   const controller=demo.equipment.find(e=>e.id==='PLC-01')!;
-  const disconnected={...demo,cables:demo.cables!.map(edge=>edge.id==='run-command'?{...edge,from:free(edge.from,{x:80,y:80,z:0})}:edge)};
-  validateProject(disconnected);
-  expect(related(demo,controller).signals.some(signal=>signal.id==='P-01.run')).toBe(true);
+  const source=demo.cables!.find(edge=>edge.id==='run-command')!;
+  const from=isAttached(source.from)?source.from:{device:'PLC-01',port:'DO1',terminal:source.from.terminal};
+  const to=isAttached(source.to)?source.to:{device:'P-01',port:'run',terminal:source.to.terminal};
+  const connected={...demo,cables:demo.cables!.map(edge=>edge.id==='run-command'?{id:edge.id,kind:'cable' as const,from,to,signal:edge.signal}:edge)};
+  const disconnected={...connected,cables:connected.cables.map(edge=>edge.id==='run-command'?{...edge,from:free(from,{x:80,y:80,z:0})}:edge)};
+  validateProject(connected);validateProject(disconnected);
+  expect(related(connected,controller).signals.some(signal=>signal.id==='P-01.run')).toBe(true);
   expect(related(disconnected,controller).signals.some(signal=>signal.id==='P-01.run')).toBe(false);
-  expect(semanticDiff(demo,disconnected).some(change=>change.semanticId==='connection:run-command'&&change.type==='changed')).toBe(true);
+  expect(semanticDiff(connected,disconnected).some(change=>change.semanticId==='connection:run-command'&&change.type==='changed')).toBe(true);
   expect(projectDocumentation(disconnected,{locale:'en'})).toContain('run-command`: free(80, 80, 0) → P-01.run (cable · free end)');
+});
+test('saturn.build@2 decode keeps a legacy loose cable instead of dropping it',()=>{
+  const source=demo.cables?.find(item=>item.id==='run-command');
+  if(!source)throw new Error('missing run-command');
+  const attached=isAttached(source.to)?source.to:{device:'P-01',port:'run',terminal:source.to.terminal};
+  const position={x:155,y:546,z:85};
+  const legacy={...demo,cables:demo.cables!.map(item=>item.id==='run-command'?{id:item.id,kind:item.kind,from:item.from,to:attached,signal:item.signal,unplugged:'to' as const,looseEnd:position}:item)};
+  const decoded=decodeProject(canonical(legacy));
+  expect(decoded.equipment.map(item=>item.id)).toEqual(demo.equipment.map(item=>item.id));
+  expect(decoded.cables?.map(item=>item.id)).toEqual(demo.cables?.map(item=>item.id));
+  const restored=decoded.cables?.find(item=>item.id==='run-command');
+  expect(restored&&!isAttached(restored.to)&&restored.to.position).toEqual(position);
+  expect(restored&&!isAttached(restored.to)&&restored.to.terminal.family).toBe(attached.terminal.family);
+  expect(decoded.pipes).toHaveLength(demo.pipes.length);
+  expect(decoded.signals['P-01.run']?.id).toBe('P-01.run');
 });
 test('invalid values and duplicate IDs fail at the model boundary',()=>{
   expect(()=>validateValue(signal('x',{initial:2,min:0,max:5}),7)).toThrow();

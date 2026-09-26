@@ -34,7 +34,9 @@ test('cable plug edit rewrites one authored endpoint and checks port compatibili
     expect(isFree(app.state().project.cables?.find(item=>item.id==='run-command')?.from)).toBe(true);
     const reconnect={id:'run-command',end:'from',device:'PLC-01',port:'DO1'};
     const attached=await (await post(reconnect)).json() as {path:string;version:string;source:string};
-    expect(attached.source).not.toContain('looseEnd');
+    const run=attached.source.slice(attached.source.indexOf("cable('run-command'"),attached.source.indexOf("cable('valve-command'"));
+    expect(run).toContain('from: controller.ports.DO1');
+    expect(run).not.toContain('__saturnFree');
     expect((await post({...reconnect,version:attached.version,apply:true})).status).toBe(200);
     expect(isFree(app.state().project.cables?.find(item=>item.id==='run-command')?.from)).toBe(false);
     expect((await post({id:'run-command',end:'from',device:'PLC-01',port:'ETH'})).status).toBe(400);
