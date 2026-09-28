@@ -34,14 +34,14 @@ export function ScadaImport({importers,locale,onImported}:{importers:readonly Sc
   const blockers=preview?.plan.diagnostics.filter(item=>item.severity==='blocker').length??0;
   return <section className="scada-import">
     <div className="scada-import-heading"><div><strong>{ru?'Миграция SCADA':'SCADA migration'}</strong><small>{importers.length?importers.map(item=>item.label[locale]).join(' · '):(ru?'Нет подключённых importer-плагинов':'No importer plugins connected')}</small></div><input ref={file} type="file" accept={accepts||'.zip'} hidden onChange={event=>{const selected=event.target.files?.[0];if(selected)void prepare(selected);event.target.value='';}}/><button type="button" disabled={busy||!importers.length} onClick={()=>file.current?.click()}>{busy?'…':ru?'Открыть проект':'Open project'}</button></div>
-    {preview&&<details className="assistant-inventory" open><summary>{preview.importer.label[locale]+' · '+preview.plan.files.length+' '+(ru?'файлов Saturn':'Saturn files')+' · '+(blockers?blockers+' blockers':(ru?'готово к применению':'ready to apply'))}</summary>
+    {preview&&<details className="import-inventory" open><summary>{preview.importer.label[locale]+' · '+preview.plan.files.length+' '+(ru?'файлов Saturn':'Saturn files')+' · '+(blockers?blockers+' blockers':(ru?'готово к применению':'ready to apply'))}</summary>
       {preview.plan.summary&&<p>{preview.plan.summary[locale]}</p>}
-      {!!preview.plan.stats&&<div className="assistant-suggestions">{Object.entries(preview.plan.stats).map(([key,count])=><span key={key}>{key}: {count}</span>)}</div>}
-      <div className="assistant-file-list">{preview.plan.diagnostics.slice(0,80).map((item,index)=><div key={index} data-severity={item.severity}><code>{item.code}</code><small>{item.message[locale]}{item.path?' · '+item.path:''}</small></div>)}</div>
+      {!!preview.plan.stats&&<div className="import-stats">{Object.entries(preview.plan.stats).map(([key,count])=><span key={key}>{key}: {count}</span>)}</div>}
+      <div className="import-file-list">{preview.plan.diagnostics.slice(0,80).map((item,index)=><div key={index} data-severity={item.severity}><code>{item.code}</code><small>{item.message[locale]}{item.path?' · '+item.path:''}</small></div>)}</div>
       {preview.plan.diagnostics.length>80&&<small>{ru?'Показаны первые 80 замечаний':'Showing first 80 diagnostics'}</small>}
       <p>{ru?'Импорт меняет только authored source. Runtime/applied версия не меняется до явной публикации и apply.':'Import changes authored source only. Runtime/applied revision is unchanged until explicit publish/apply.'}</p>
       <button type="button" className="primary" disabled={busy||blockers>0} onClick={()=>void apply()}>{ru?'Применить миграцию':'Apply migration'}</button> <button type="button" disabled={busy} onClick={()=>setPreview(undefined)}>{ru?'Отмена':'Cancel'}</button>
     </details>}
-    {error&&<p className="assistant-error" role="alert">{error}</p>}{done&&<p className="assistant-hint" role="status">{done}</p>}
+    {error&&<p className="import-error" role="alert">{error}</p>}{done&&<p className="import-hint" role="status">{done}</p>}
   </section>;
 }

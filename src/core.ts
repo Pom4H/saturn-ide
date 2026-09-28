@@ -429,6 +429,7 @@ function resolveAutoHmi(definition:ProjectDefinition,intent:AutoHmi):Hmi {
 export interface FirmwareContext {outDir:string;run:(argv:string[])=>Promise<void>}
 export interface FirmwareTarget<L extends string=string> {readonly id:string;readonly languages:readonly L[];build(context:FirmwareContext):Promise<void>}
 
+
 export { deployment, type DeploymentPlan, type DeploymentStep } from './core/deployment';
 export { defineProtocol } from './core/acquisition';
 export type { Observation, Observe, ProtocolDefinition, ProtocolSession, ProtocolChannel, ProtocolEndpoint, ProtocolSource } from './core/acquisition';

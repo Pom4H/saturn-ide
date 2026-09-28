@@ -1,9 +1,9 @@
 /** One command catalog for browser, TTY and machine clients. These are workspace paths, not OS commands. */
-export const commandAreas = ['project', 'runtime', 'source', 'reports', 'git', 'ai'] as const;
+export const commandAreas = ['project', 'runtime', 'source', 'reports', 'git'] as const;
 export type CommandArea = typeof commandAreas[number];
 export type ArgumentKind = 'resource'|'endpoint'|'device'|'signal'|'writable'|'value'|'alarm'|'file'|'offset'|'code'|'editor'|'report'|'hours'|'text'|'area';
 export interface CommandArgument { name:string; kind:ArgumentKind; optional?:boolean; rest?:boolean }
-export interface CommandSpec { path:string; description:string; icon:string; effect:'read'|'navigate'|'draft'|'save'|'control'|'ai'; args:readonly CommandArgument[] }
+export interface CommandSpec { path:string; description:string; icon:string; effect:'read'|'navigate'|'draft'|'save'|'control'; args:readonly CommandArgument[] }
 const arg = (name:string,kind:ArgumentKind,optional=false,rest=false):CommandArgument => ({name,kind,optional,rest});
 export const commandCatalog = [
   {path:'help',description:'Справка и полный контракт команд',icon:'docs',effect:'read',args:[]},
@@ -11,6 +11,7 @@ export const commandCatalog = [
   {path:'pwd',description:'Текущий раздел',icon:'project',effect:'read',args:[]},
   {path:'clear',description:'Очистить журнал терминала',icon:'terminal',effect:'navigate',args:[]},
   {path:'project list',description:'Ресурсы и реальные пути исходников',icon:'project',effect:'read',args:[arg('поиск','text',true,true)]},
+  {path:'project context',description:'Сводка выбранного устройства, топологии и свежих данных',icon:'inspector',effect:'read',args:[]},
   {path:'project inspect',description:'Объект, AST-диапазон и связанные ресурсы',icon:'inspector',effect:'read',args:[arg('объект','resource')]},
   {path:'project open',description:'Открыть объект в общей ShellSession',icon:'source',effect:'navigate',args:[arg('объект','resource'),arg('вид','editor',true)]},
   {path:'project topology',description:'Физические соединения выбранного устройства',icon:'diagram',effect:'read',args:[arg('устройство','device',true)]},
@@ -33,9 +34,6 @@ export const commandCatalog = [
   {path:'reports run',description:'Отчёт по архиву с покрытием данных',icon:'reports',effect:'read',args:[arg('отчёт','report'),arg('часы','hours',true)]},
   {path:'git status',description:'Состояние Git рабочего проекта',icon:'git',effect:'read',args:[]},
   {path:'git diff',description:'Изменения рабочих файлов',icon:'git',effect:'read',args:[]},
-  {path:'ai status',description:'Доступность подключённого AI',icon:'assistant',effect:'read',args:[]},
-  {path:'ai context',description:'Показать контекст, который получит AI',icon:'assistant',effect:'read',args:[]},
-  {path:'ai ask',description:'Задать вопрос AI с контекстом объекта и топологии',icon:'assistant',effect:'ai',args:[arg('запрос','text',false,true)]},
 ] as const satisfies readonly CommandSpec[];
 export type CommandPath = typeof commandCatalog[number]['path'];
 export const commandAliases:Readonly<Record<string,CommandPath>> = {set:'runtime set',signals:'runtime signals'};

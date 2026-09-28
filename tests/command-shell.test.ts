@@ -76,19 +76,17 @@ test('late language completion cannot replace a newer line; completion errors ar
   await failing.shell.setInput('/source insert equipment/P-01.device.ts end pump.');
   expect(failing.shell.getSnapshot().completionError).toBe('Language service unavailable');
 });
-test('history returns the in-progress input; AI receives bounded topology metadata, never source secrets or execution',async()=>{
-  const {shell,calls}=setup(async<T>(path:string)=> (path==='assistant'?{available:true,detail:'test',notes:false,recipients:[]}:{text:'set P-01.run false',source:'ai',at:Date.now()}) as T);
+test('history returns the in-progress input; project context exposes bounded engineering metadata without source secrets',async()=>{
+  const {shell}=setup();
   await shell.execute('pwd');await shell.execute('/project inspect P-01');
   await shell.setInput('unfinished');await shell.history(-1);expect(shell.getSnapshot().input).toBe('/project inspect P-01');await shell.history(1);expect(shell.getSnapshot().input).toBe('unfinished');
-  expect((await shell.execute('/ai ask Объясни насос')).text).toBe('set P-01.run false');
-  const payload=JSON.stringify(calls.at(-1)?.body);
-  expect(payload).toContain('checked-draft');expect(payload).toContain('current-applied');expect(payload).toContain('topology');expect(shell.context().resources[0]?.source?.from).toBe(10);
+  const result=await shell.execute('/project context'),payload=JSON.stringify(result.data);
+  expect(result.ok).toBe(true);expect(payload).toContain('checked-draft');expect(payload).toContain('current-applied');expect(payload).toContain('topology');expect(shell.context().resources[0]?.source?.from).toBe(10);
   expect(payload).not.toContain('do-not-leak-key');expect(payload).not.toContain('const pump');
-  expect(calls.some(c=>c.path==='command')).toBe(false);
 });
-test('unavailable AI and transport failures are real errors, not successful placeholder responses',async()=>{
-  const {shell,calls}=setup(async<T>()=>({available:false,detail:'AI is not configured'}) as T);
-  const result=await shell.execute('/ai ask explain');expect(result.ok).toBe(false);expect(result.text).toBe('AI is not configured');expect(calls).toHaveLength(1);
+test('retired built-in AI commands fail as unknown instead of claiming an unavailable provider',async()=>{
+  const {shell,calls}=setup();
+  const result=await shell.execute('/ai ask explain');expect(result.ok).toBe(false);expect(result.text).toContain('Неизвестная команда');expect(calls).toHaveLength(0);
 });
 
 test('raw code tail retains newlines and quotes, and absolute clear clears the shared journal',async()=>{

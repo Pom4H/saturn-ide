@@ -203,22 +203,34 @@ See [SCADA importers](docs/importers.md).
 
 ## AI-native engineering
 
-Because the engineering model is typed source code, coding agents can reason about the same
+Because the engineering model is typed source code, external coding agents can reason about the same
 representation as the engineer: equipment, topology, signals, protocol bindings, HMI, alarms,
 reports and deployment.
 
-The useful property is not generated UI. It is that engineering relationships are explicit,
-typed and inspectable instead of hidden in a proprietary project database.
+Saturn does not implement its own agent harness. Agent runtime, authentication, model selection,
+threads and native tools belong to external agents. IDE integration targets the open Agent Client
+Protocol (ACP); Saturn-specific engineering context and safe operations are exposed through standard
+integration boundaries such as MCP and the existing typed workspace/runtime APIs.
 
-The Assistant is deliberately outside runtime authority. Chat does not become a checked build,
-and code changes still pass through the normal source, review and apply lifecycle.
+An agent proposal is still ordinary authored source: it must pass the same check, Git, publish and
+apply lifecycle. Opening an agent session never grants runtime command or deployment authority.
+
+Start any ACP-compatible agent in the current Saturn project:
+
+```sh
+bun agent -- npx -y @agentclientprotocol/codex-acp
+```
+
+The agent edits the same TypeScript files as the engineer. Saturn's existing watcher and build
+pipeline refresh the derived projections; there is no agent-specific workspace or project model.
+Permission requests are shown in the terminal and require an explicit choice.
 
 ## Shell
 
 Saturn provides browser and terminal hosts over the same workspace contracts.
 
 The browser Shell includes the project explorer, source editor, diagram, 3D, signals, HMI,
-reports, Performance, deployment, Git, terminal and Assistant surfaces.
+reports, Performance, deployment, Git and terminal surfaces.
 
 The terminal host reuses project navigation, source buffers and server APIs where a graphical
 projection is not required.

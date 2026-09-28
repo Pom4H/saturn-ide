@@ -37,7 +37,7 @@ const page=await browser.newPage({viewport:{width:1280,height:900}}),errors:stri
 page.on('pageerror',error=>errors.push(error.message));
 try{
   await page.goto(app.server.url.toString());
-  await page.getByRole('tab',{name:'Ассистент',exact:true}).click();
+  await page.getByRole('treeitem',{name:'Зависимости',exact:true}).click();
   const archive=zipSync({'SYSTEM.JSON':strToU8(JSON.stringify({name:'Imported system',address:'temperature'}))});
   await page.locator('.scada-import input[type=file]').setInputFiles({name:'system.zip',mimeType:'application/zip',buffer:Buffer.from(archive)});
   await page.getByText(/Пример формата · 1 файлов Saturn/).waitFor({timeout:15000});

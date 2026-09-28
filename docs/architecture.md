@@ -304,28 +304,26 @@ Operator notes can be recorded as issues without generating source. Capability c
 GitHub repository authority apply independently; lack of GitHub push permission cannot be
 worked around by using another user's OAuth credential.
 
-## Ассистент shell
+## AI agents: external harness, Saturn context
 
-Ассистент — вкладка существующей ShellPanel. Диалог и локальный разбор загруженного
-архива не создают второго проекта или authority. Переключение инженер/оператор —
-представление; права SaaS проверяет сервер. `AssistantService` передаётся в local host
-композицией; IDE не зависит от SaaS, GitHub/OAuth или AI Gateway. Без адаптера показывается
-явное отсутствие AI, а разбор файлов работает. Общий React-компонент экспортирован для SaaS.
+Saturn IDE does not own an LLM agent runtime, model gateway, authentication flow, conversation
+history or agent-specific tool loop. Those concerns belong to Codex, Claude Code and other external
+agents.
 
-История диалога хранится в sessionStorage на проект и identity; это история вкладки
-браузера, не долговременный многопользовательский журнал. Архив не сохраняется там.
-ZIP разбирается локально с лимитами 32 МБ входа, 64 МБ распаковки, 8 МБ на файл,
-1000 записей и проверкой путей. Это ограниченный локальный разбор вложения, не доказательство успешной миграции. Содержимое
-формат-специфических проектов обрабатывается только подключённым importer; core не знает их
-секций, скриптов, адресов или других соглашений.
+The IDE integration boundary is stable ACP v1 through the official TypeScript SDK. An external
+agent is a child process rooted at the current project, with its own auth/model/config. Ordinary
+file edits need no Saturn-specific protocol: the existing workspace watcher, build and projection
+pipeline observes the same TypeScript files. Saturn must not add an agent-specific workspace,
+AST, file store or conversation database.
 
-SaaS владеет AI Gateway, авторизацией, адресатами и публикацией заметок. Обычный ответ
-не вызывает внешних записей. Кнопка публикации заметки — отдельное явное действие.
-Модель не получает инструменты runtime-команд, shell, изменения CI, прав, зависимостей
-или прошивки. Предложения DSL проходят отдельную границу workspace/AST, review и CI;
-ответ в чате не является checked artifact. Формат-специфическая миграция и создание PR из ассистента не входят в core; такие возможности
-подключаются через явные importer/integration boundaries.
+Saturn remains responsible only for engineering semantics: typed project source, resource identity,
+inspection/impact, revision lifecycle and runtime authority. MCP is optional and only exposes
+existing derived Saturn semantics when that is more useful than reading source; it is not required
+for normal source editing. Do not implement a private JSON-RPC layer, agent registry or model gateway.
 
+External agents may propose source edits, but check, review, Git, publish and apply remain distinct.
+An agent connection never implies runtime credentials, live commands, flashing or deployment
+authority. Importers remain project-owned extensions and do not depend on an AI surface.
 
 ## Importers as extension boundary
 
