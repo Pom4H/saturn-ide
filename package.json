@@ -18,9 +18,11 @@
     "release:build": "bun scripts/build-release.ts",
     "release:deploy": "bun scripts/deploy-release.ts",
     "standalone:build": "bun scripts/build-standalone.ts",
-    "standalone:video": "bun scripts/standalone-video.ts"
+    "standalone:video": "bun scripts/standalone-video.ts",
+    "agent": "bun src/host/acp.ts"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "1.5.0",
     "@codemirror/autocomplete": "6.20.1",
     "@codemirror/commands": "6.10.3",
     "@codemirror/lang-javascript": "6.2.5",
@@ -38,7 +40,8 @@
     "react-dom": "19.3.0",
     "three": "0.186.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "web-push": "3.6.7"
+    "web-push": "3.6.7",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",
