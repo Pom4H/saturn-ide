@@ -215,6 +215,16 @@ integration boundaries such as MCP and the existing typed workspace/runtime APIs
 An agent proposal is still ordinary authored source: it must pass the same check, Git, publish and
 apply lifecycle. Opening an agent session never grants runtime command or deployment authority.
 
+Start any ACP-compatible agent in the current Saturn project:
+
+```sh
+bun agent -- npx -y @agentclientprotocol/codex-acp
+```
+
+The agent edits the same TypeScript files as the engineer. Saturn's existing watcher and build
+pipeline refresh the derived projections; there is no agent-specific workspace or project model.
+Permission requests are shown in the terminal and require an explicit choice.
+
 ## Shell
 
 Saturn provides browser and terminal hosts over the same workspace contracts.
