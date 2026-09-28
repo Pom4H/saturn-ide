@@ -323,6 +323,13 @@ External agents may propose source edits, but check, review, Git, publish and ap
 An agent connection never implies runtime credentials, live commands, flashing or deployment
 authority. Importers remain project-owned extensions and do not depend on an AI surface.
 
+The local browser host owns one ACP child/session per open project host. The Codex tab in the
+existing ShellPanel is a view of that session; it does not add a Shell project model. Starting
+the child is an explicit action. The child receives a small environment allowlist for Codex
+authentication and process startup, not Saturn runtime/database tokens. ACP permission requests
+are returned through the host and require a browser choice. The session and its in-memory event
+buffer end with the host. This local development host is not a multi-user authorization boundary.
+
 ## Importers as extension boundary
 
 External SCADA formats are not part of the Saturn domain model. Saturn exposes only the

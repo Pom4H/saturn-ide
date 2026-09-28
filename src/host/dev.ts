@@ -28,13 +28,15 @@ import { applyImportPlan } from '../workspace/importers';
 import type { ScadaImportPlan } from '../core/importer';
 import { deviceTemplates, previewDevice, previewHmi } from '../workspace/scaffold';
 import { previewCableDisconnect, previewCableEndpoint } from '../workspace/cable-edit';
+import { BrowserAgent } from './browser-agent';
 
 const defaultAppRoot = resolve(import.meta.dir, '../..');
 const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 'Проект не загружен' }, signals: {}, equipment: [], pipes: [], alarms: [] };
 /** Composition root for local development; runtime modules themselves know no workspace. */
-export async function createApp(options: { appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation' } = {}) {
+export async function createApp(options: { appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation'; agentCommand?:string[] } = {}) {
   const appRoot=options.appRoot??defaultAppRoot;
   const workspace = new Workspace(options.projectDir ?? resolve(Bun.env.SATURN_PROJECT ?? '../saturn-examples/pumping-station'));
+  const browserAgent=new BrowserAgent(workspace.root,options.agentCommand);
   const dataDir = options.dataDir ?? join(appRoot, '.saturn', hash(workspace.root).slice(0, 12));
   mkdirSync(dataDir, { recursive: true });
   const store = new Store(options.databaseUrl ?? Bun.env.DATABASE_URL ?? `sqlite://${join(dataDir, 'history.sqlite')}`);
@@ -129,6 +131,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
           if(path==='/' || path==='/hmi') return new Response(browser.html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
           const asset=browser.assets.get(path); if(asset)return new Response(asset,{headers:{'Cache-Control':'no-cache'}});
           if (path === '/api/state') return json(state());
+          if (path === '/api/agent') return json(browserAgent.snapshot());
           if (path === '/api/diagnostics') return json({ ...runtime.inspect(active()?.driver), phase: manager.phase, applied: manager.applied });
           if (path === '/api/history/range') return historyResponse(store, runtime.project, url);
           if (path === '/api/events') return events.response(request, state());
@@ -158,6 +161,10 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         if (request.method !== 'POST') throw new HttpError(405, 'Method not allowed');
         if (request.headers.get('X-Saturn-Key') !== key || !request.headers.get('content-type')?.includes('application/json')) throw new HttpError(403, 'Missing session key or JSON content type');
         const body: unknown = await request.json(); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected an object'); const b = body as Record<string, unknown>;
+        if(path==='/api/agent/start'){await browserAgent.start();return json(browserAgent.snapshot());}
+        if(path==='/api/agent/prompt'){browserAgent.prompt(field(b,'text'));return json(browserAgent.snapshot());}
+        if(path==='/api/agent/cancel'){await browserAgent.cancel();return json(browserAgent.snapshot());}
+        if(path==='/api/agent/permission'){const choice=b.optionId;if(choice!==null&&typeof choice!=='string')throw new HttpError(400,'Expected option ID or null');browserAgent.permit(field(b,'id'),choice);return json(browserAgent.snapshot());}
         if(path==='/api/deployment/preview'||path==='/api/deployment/create'){
           if(!b.plan||typeof b.plan!=='object')throw new HttpError(400,'Expected deployment plan');
           const plan=b.plan as DeploymentPlan;let workflow:string;try{workflow=deploymentWorkflow(plan);}catch(error){throw new HttpError(400,String(error));}
@@ -264,6 +271,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
   let closed = false;
   const close = async () => {
     if (closed) return; closed = true; watcher.close(); clearTimeout(debounce); clearInterval(staleTimer); clearInterval(retention);
+    browserAgent.stop();
     await server.stop(true); await reloadQueue; await manager.close(); events.close(); builder.close(); await store.close();
   };
   return { server, close, runtime, workspace, state, reload };

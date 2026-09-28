@@ -221,6 +221,13 @@ Start any ACP-compatible agent in the current Saturn project:
 bun agent -- npx -y @agentclientprotocol/codex-acp
 ```
 
+In the local browser IDE, open the **Codex** tab in the bottom panel and choose
+**Connect Codex**. Saturn starts a pinned `codex-acp` child process in the open project,
+then shows its replies, tool activity and permission requests in that panel. The child
+uses your existing local Codex authentication. This is a new ACP session; it does not
+transfer the conversation from the Codex desktop app. The session ends when the IDE
+host closes. The local host does not provide multi-user authorization for agent access.
+
 The agent edits the same TypeScript files as the engineer. Saturn's existing watcher and build
 pipeline refresh the derived projections; there is no agent-specific workspace or project model.
 Permission requests are shown in the terminal and require an explicit choice.

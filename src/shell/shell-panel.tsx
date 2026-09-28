@@ -5,6 +5,7 @@ import type { AlarmEvent } from '../protocol';
 import { related } from '../topology';
 import { MultiTrend } from './multi-trend';
 import { ShellTerminal } from './shell-terminal';
+import { AgentPanel } from './agent-panel';
 import { History } from './history';
 import { useMenu, MenuButton, type MenuItem } from './menu';
 import { ResourceIcon } from './icons';
@@ -36,6 +37,7 @@ export function ShellPanel(props: Props) {
     {id:'equipment',label:ru?'Оборудование':'Equipment',icon:'plc'},
     {id:'graphs',label:ru?'Графики':'Graphs',icon:'signals',count:signalId?1:plotted.length},
     {id:'terminal',label:ru?'Терминал':'Terminal',icon:'terminal'},
+    {id:'agent',label:'Codex',icon:'assistant'},
     {id:'notifications',label:ru?'Уведомления':'Notifications',icon:'bell',count},
   ];
   const changeTab=(event:KeyboardEvent<HTMLButtonElement>,index:number)=>{
@@ -61,6 +63,7 @@ export function ShellPanel(props: Props) {
     <div id="panel-body-equipment" role="tabpanel" aria-labelledby="panel-tab-equipment" className="panel-content" hidden={!panel.open||panel.tab!=='equipment'}>{equipment.length?<div className="panel-equipment-list">{equipment.map(item=><EquipmentCard key={item.id} project={project} equipment={item} snapshot={snapshot} locale={locale} connected={connected} primary={item.id===primaryId} onInspect={props.onInspect}/>)}</div>:<p className="panel-empty">{ru?'Выберите оборудование на схеме или в списке слева.':'Select equipment in the diagram or sidebar.'}</p>}</div>
     <div id="panel-body-graphs" role="tabpanel" aria-labelledby="panel-tab-graphs" className="panel-content" hidden={!panel.open||panel.tab!=='graphs'}>{signalId?<History key={signalId} id={signalId} locale={locale}/>:<MultiTrend signals={signals} snapshot={snapshot} locale={locale}/>}</div>
     <div id="panel-body-terminal" role="tabpanel" aria-labelledby="panel-tab-terminal" className="panel-content" hidden={!panel.open||panel.tab!=='terminal'}><ShellTerminal project={project} signals={signals} snapshot={snapshot} locale={locale} connected={connected} shellError={props.shellError} problems={props.problems} mode={props.mode} events={props.events} historyError={props.historyError} send={props.send}/></div>
+    <div id="panel-body-agent" role="tabpanel" aria-labelledby="panel-tab-agent" className="panel-content" hidden={!panel.open||panel.tab!=='agent'}><AgentPanel locale={locale}/></div>
     <div id="panel-body-notifications" role="tabpanel" aria-labelledby="panel-tab-notifications" className="panel-content" hidden={!panel.open||panel.tab!=='notifications'}><Notifications {...props}/></div>
   </section>;
 }
