@@ -158,7 +158,6 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         if (request.method !== 'POST') throw new HttpError(405, 'Method not allowed');
         if (request.headers.get('X-Saturn-Key') !== key || !request.headers.get('content-type')?.includes('application/json')) throw new HttpError(403, 'Missing session key or JSON content type');
         const body: unknown = await request.json(); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected an object'); const b = body as Record<string, unknown>;
-        if(path==='/api/assistant/send'){if(!options.assistant)throw new HttpError(503,'Сервер ассистента не подключён');return json(await options.assistant.send(b as unknown as AssistantInput,{project:runtime.project,snapshot:runtime.snapshot,applied:manager.applied}));}
         if(path==='/api/deployment/preview'||path==='/api/deployment/create'){
           if(!b.plan||typeof b.plan!=='object')throw new HttpError(400,'Expected deployment plan');
           const plan=b.plan as DeploymentPlan;let workflow:string;try{workflow=deploymentWorkflow(plan);}catch(error){throw new HttpError(400,String(error));}
