@@ -21,6 +21,7 @@
     "standalone:video": "bun scripts/standalone-video.ts",
     "cli": "bun src/host/cli.ts",
     "ide:build": "bun scripts/build-ide.ts",
+    "pages:build": "bun scripts/build-pages.ts",
     "start": "bun src/host/application.ts",
     "agent": "bun src/host/acp.ts"
   },

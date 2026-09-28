@@ -20,6 +20,8 @@ TypeScript project
 The goal is simple: avoid maintaining separate tag databases, HMI projects, runtime configuration
 and engineering metadata when they describe the same system.
 
+[Открыть интерактивный сайт Saturn IDE](https://pom4h.github.io/saturn-ide/)
+
 ![Saturn IDE](docs/screenshots/ide-dark.png)
 
 ## System as code

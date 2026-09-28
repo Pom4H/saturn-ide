@@ -1,5 +1,20 @@
 # Verification
 
+## GitHub Pages engineering showcase — 2026-09-28
+
+Executed on macOS arm64, Bun 1.4.2:
+
+- `bun run check`: TypeScript 7, TypeScript 6 and architecture guard passed (166 modules).
+- `bun test ./tests/pages-demo.test.ts`: 2 passed, 13 assertions. The authored pump/tank/valve
+  model, valid pipe routing, source-to-model values, and model-control-to-source edits were checked.
+- `bun run pages:build`: static bundle built to `dist-pages/`; bundled JavaScript was 1.7 MB.
+- `bun test ./scripts/pages-browser-test.ts`: actual Chromium, WebGL canvas present; 8 assertions
+  passed at 1440×1150 and 390×844, including source edits, range/command controls, no horizontal
+  mobile overflow, and no browser page errors. Screenshots were visually inspected. Preview data
+  is local simulated telemetry only; no runtime server or physical equipment is connected.
+- GitHub Pages workflow is configured to deploy on `main` and manual dispatch. Public deployment
+  is not verified until the workflow completes successfully in GitHub Actions.
+
 This document records verification that belongs to Saturn IDE itself. Hardware profiles,
 format-specific migration evidence, protocol implementation details and cloud-provider checks
 belong with the corresponding project-owned source kit or integration repository.
