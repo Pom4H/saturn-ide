@@ -5,15 +5,13 @@ import type { AlarmEvent } from '../protocol';
 import { related } from '../topology';
 import { MultiTrend } from './multi-trend';
 import { ShellTerminal } from './shell-terminal';
-import { api } from './api';
-import type { ScadaImporter } from '../core/importer';
 import { History } from './history';
 import { useMenu, MenuButton, type MenuItem } from './menu';
 import { ResourceIcon } from './icons';
 import type { PanelAction, PanelState, PanelTab } from './model/panel';
 
 interface Props {
-  operator?:boolean; importers?:readonly ScadaImporter[]; onImported?:()=>Promise<void>;
+  operator?:boolean;
   pluginUpdates?:{name:string;latest?:string}[];openDependencies?:()=>void;
   panel: PanelState; dispatch: Dispatch<PanelAction>;
   project: Project; snapshot: Snapshot; selectedIds: readonly string[]; primaryId: string; signalId?: string;
