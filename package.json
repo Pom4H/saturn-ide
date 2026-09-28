@@ -70,8 +70,6 @@
     "./feedback": "./src/core/feedback.ts",
     "./dsl-proposal": "./src/workspace/dsl-proposal.ts",
     "./runtime-engine": "./src/runtime/engine.ts",
-    "./assistant": "./src/shell/assistant.tsx",
-    "./assistant-contract": "./src/core/assistant.ts",
     "./importer": "./src/core/importer.ts",
     "./operational": "./src/core/operational.ts",
     "./inspection": "./src/core/inspection.ts",
