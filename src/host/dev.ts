@@ -29,12 +29,10 @@ import type { ScadaImportPlan } from '../core/importer';
 import { deviceTemplates, previewDevice, previewHmi } from '../workspace/scaffold';
 import { previewCableDisconnect, previewCableEndpoint } from '../workspace/cable-edit';
 
-import type { AssistantInput, AssistantReply, AssistantStatus } from '../core/assistant';
-export interface AssistantService { status:()=>Promise<AssistantStatus>; send:(input:AssistantInput,context:{project:Project;snapshot:Runtime['snapshot'];applied:string|null})=>Promise<AssistantReply> }
 const defaultAppRoot = resolve(import.meta.dir, '../..');
 const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 'Проект не загружен' }, signals: {}, equipment: [], pipes: [], alarms: [] };
 /** Composition root for local development; runtime modules themselves know no workspace. */
-export async function createApp(options: { assistant?:AssistantService; appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation' } = {}) {
+export async function createApp(options: { appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation' } = {}) {
   const appRoot=options.appRoot??defaultAppRoot;
   const workspace = new Workspace(options.projectDir ?? resolve(Bun.env.SATURN_PROJECT ?? '../saturn-examples/pumping-station'));
   const dataDir = options.dataDir ?? join(appRoot, '.saturn', hash(workspace.root).slice(0, 12));
@@ -130,7 +128,6 @@ export async function createApp(options: { assistant?:AssistantService; appRoot?
         if (request.method === 'GET') {
           if(path==='/' || path==='/hmi') return new Response(browser.html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
           const asset=browser.assets.get(path); if(asset)return new Response(asset,{headers:{'Cache-Control':'no-cache'}});
-          if(path==='/api/assistant')return json(options.assistant?await options.assistant.status():{available:false,notes:false,recipients:[],detail:'Подключите сервер ассистента в настройках host. Импорт внешних проектов доступен через project-owned importer extensions.'});
           if (path === '/api/state') return json(state());
           if (path === '/api/diagnostics') return json({ ...runtime.inspect(active()?.driver), phase: manager.phase, applied: manager.applied });
           if (path === '/api/history/range') return historyResponse(store, runtime.project, url);
