@@ -308,11 +308,16 @@ Saturn IDE does not own an LLM agent runtime, model gateway, authentication flow
 history or agent-specific tool loop. Those concerns belong to Codex, Claude Code and other external
 agents.
 
-The IDE integration boundary is ACP (Agent Client Protocol). Saturn remains responsible only for
-its engineering semantics: typed project source, resource identity, inspection/impact, workspace
-operations, revision lifecycle and runtime authority. Saturn-specific context/tools should be
-published through standard interoperable boundaries (for example MCP) rather than a private
-`AssistantService` or `/api/assistant` protocol.
+The IDE integration boundary is stable ACP v1 through the official TypeScript SDK. An external
+agent is a child process rooted at the current project, with its own auth/model/config. Ordinary
+file edits need no Saturn-specific protocol: the existing workspace watcher, build and projection
+pipeline observes the same TypeScript files. Saturn must not add an agent-specific workspace,
+AST, file store or conversation database.
+
+Saturn remains responsible only for engineering semantics: typed project source, resource identity,
+inspection/impact, revision lifecycle and runtime authority. MCP is optional and only exposes
+existing derived Saturn semantics when that is more useful than reading source; it is not required
+for normal source editing. Do not implement a private JSON-RPC layer, agent registry or model gateway.
 
 External agents may propose source edits, but check, review, Git, publish and apply remain distinct.
 An agent connection never implies runtime credentials, live commands, flashing or deployment
