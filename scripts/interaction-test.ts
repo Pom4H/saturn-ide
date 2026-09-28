@@ -26,7 +26,10 @@ try{
   await command.fill('set P-01.run true');await command.press('Enter');await until(async()=>app.state().snapshot.samples['P-01.run']?.value===true,'CMD start command did not reach the simulator');
   await until(async()=>await command.inputValue()==='','CMD input did not clear after submitting');
   await page.locator('[data-equipment="PLC-01"] .equipment-id').click();
-  await until(async()=>await page.locator('.shell-terminal-signals').getByText('V-01.opening').count()>0,'Related PLC command missing from terminal');
+  await until(async()=>await page.locator('.shell-terminal-signals').getByText('P-01.run').count()>0,'Related PLC command missing from terminal');
+  assert(await page.locator('.shell-terminal-signals').getByText('V-01.opening').count()===0,'The loose valve cable must not appear as a PLC connection');
+  await page.locator('[data-equipment="V-01"] .equipment-id').click();
+  await until(async()=>await page.locator('.shell-terminal-signals').getByText('V-01.opening').count()>0,'Valve command missing from terminal');
   await command.fill('set V-01.opening 0');await command.press('Enter');
   await until(async()=>app.state().snapshot.alarms['high-pressure']?.active===true,'High-pressure alarm did not activate');
   await page.locator('.shell-terminal-row[data-level="warn"]').getByText('Тревога:',{exact:false}).waitFor();
@@ -48,11 +51,14 @@ try{
   const initialX=app.state().project.equipment.find(item=>item.id==='P-01')!.x;
   const selectedPump=await center('[data-equipment="P-01"]');await page.mouse.move(selectedPump.x,selectedPump.y);await page.mouse.down();await page.mouse.move(selectedPump.x+25,selectedPump.y+10,{steps:6});await page.mouse.up();
   assert(app.state().project.equipment.find(item=>item.id==='P-01')!.x===initialX,'Select mode moved equipment');
-  await page.getByRole('button',{name:'Edit',exact:true}).click();await page.locator('[data-cable-plug="run-command.from"]').waitFor();
+  await page.getByRole('button',{name:'Правка',exact:true}).click();await page.locator('[data-cable-plug="run-command.from"]').waitFor();
   const pump=await center('[data-equipment="P-01"]');await page.mouse.move(pump.x,pump.y);await page.mouse.down();await page.mouse.move(pump.x+35,pump.y+15,{steps:8});await page.mouse.up();
   await until(async()=>app.state().project.equipment.find(item=>item.id==='P-01')!.x!==initialX,'2D equipment drag did not save');
   const from=await center('[data-cable-plug="run-command.from"]'),to=await center('[data-equipment="PLC-01"] [data-port="DO2"]');
-  await page.mouse.move(from.x,from.y);await page.mouse.down();await page.mouse.move(to.x,to.y,{steps:10});await page.mouse.up();
+  await page.mouse.move(from.x,from.y);await page.mouse.down();await page.mouse.move(to.x,to.y,{steps:10});
+  assert(await page.locator('[data-compatible-port]').count()===2,'2D drag must show only authored-compatible ports');
+  assert(await page.locator('[data-compatible-port="PLC-01.DO2"][data-snap-target="true"]').count()===1,'2D preview did not snap to compatible DO2');
+  await page.screenshot({path:'artifacts/compatible-ports-2d.png'});await page.mouse.up();
   await until(async()=>attachedPort(app.state().project.cables?.find(item=>item.id==='run-command')?.from)==='DO2','2D plug did not rewire');
   const connected2d=await center('[data-cable-plug="run-command.from"]');await page.mouse.move(connected2d.x,connected2d.y);await page.mouse.down();await page.mouse.move(1350,180,{steps:10});await page.mouse.up();
   await until(async()=>isFree(app.state().project.cables?.find(item=>item.id==='run-command')?.from),'2D unplug did not persist');
@@ -71,8 +77,15 @@ try{
   await page.mouse.dblclick(plc3d.x,plc3d.y);await page.waitForTimeout(650);await page.screenshot({path:'artifacts/select-edit-3d-plc.png'});
   const projected=await page.locator('.scene3d').evaluate(node=>({plugs:JSON.parse((node as HTMLElement).dataset.cablePlugs??'[]') as {id:string;end:string;x:number;y:number}[],ports:JSON.parse((node as HTMLElement).dataset.portScreens??'[]') as {device:string;port:string;x:number;y:number}[]}));
   const plug=projected.plugs.find(item=>item.id==='run-command'&&item.end==='from'),socket=projected.ports.find(item=>item.device==='PLC-01'&&item.port==='DO1');assert(plug&&socket,'Missing projected 3D plug/port');
-  await page.mouse.move(plug.x,plug.y);await page.mouse.down();await page.mouse.move(socket.x,socket.y,{steps:10});await page.mouse.up();
-  await until(async()=>attachedPort(app.state().project.cables?.find(item=>item.id==='run-command')?.from)==='DO1','3D plug did not rewire');
+  await page.mouse.move(plug.x,plug.y);await page.mouse.down();await page.mouse.move(socket.x,socket.y,{steps:10});
+  const targetBeforeRelease=await page.locator('.scene3d').evaluate(node=>({target:(node as HTMLElement).dataset.connectionTarget,drag:(node as HTMLElement).dataset.dragKind,compatible:(node as HTMLElement).dataset.compatibleTargets,context:(node as HTMLElement).dataset.compatibleContext}));
+  console.log('3D DO1 target before release',JSON.stringify(targetBeforeRelease));
+  assert(targetBeforeRelease.target==='PLC-01.DO1','3D preview did not identify selected compatible port');
+  await page.locator('.scene3d-compatible').getByText('PLC-01.DO1',{exact:false}).waitFor();
+  await page.screenshot({path:'artifacts/compatible-ports-3d.png'});
+  await page.mouse.up();
+  try { await until(async()=>attachedPort(app.state().project.cables?.find(item=>item.id==='run-command')?.from)==='DO1','3D plug did not rewire'); }
+  catch(error){await page.screenshot({path:'artifacts/interaction-3d-plug-failure.png'});console.error('3D rewire diagnostics',JSON.stringify({plug,socket,targetBeforeRelease,actual:app.state().project.cables?.find(item=>item.id==='run-command')?.from,scene:await page.locator('.scene3d').boundingBox()}));throw error;}
   await until(async()=>await page.locator('.scene3d').evaluate(node=>{const plugs=JSON.parse((node as HTMLElement).dataset.cablePlugs??'[]') as {id:string;end:string;x:number;y:number}[],ports=JSON.parse((node as HTMLElement).dataset.portScreens??'[]') as {device:string;port:string;x:number;y:number}[];const plug=plugs.find(item=>item.id==='run-command'&&item.end==='from'),port=ports.find(item=>item.device==='PLC-01'&&item.port==='DO1');return !!plug&&!!port&&Math.hypot(plug.x-port.x,plug.y-port.y)<5;}),'3D plug projection did not update after rewire');
   const connected=await page.locator('.scene3d').evaluate(node=>JSON.parse((node as HTMLElement).dataset.cablePlugs??'[]') as {id:string;end:string;x:number;y:number}[]);
   const currentPlug=connected.find(item=>item.id==='run-command'&&item.end==='from');assert(currentPlug,'Connected 3D plug missing');
@@ -83,7 +96,7 @@ try{
   const loosePlug=free.plugs.find(item=>item.id==='run-command'&&item.end==='from'),do2=free.ports.find(item=>item.device==='PLC-01'&&item.port==='DO2');assert(loosePlug&&do2,'Loose 3D plug or DO2 missing');
   await page.mouse.move(loosePlug.x,loosePlug.y);await page.mouse.down();await page.mouse.move(do2.x,do2.y,{steps:14});await page.mouse.up();
   await until(async()=>!isFree(app.state().project.cables?.find(item=>item.id==='run-command')?.from)&&attachedPort(app.state().project.cables?.find(item=>item.id==='run-command')?.from)==='DO2','3D loose plug did not reconnect');
-  await page.getByRole('button',{name:'S · Select'}).click();await page.getByRole('button',{name:'Действия',exact:true}).click();await page.getByRole('menuitem',{name:'Вписать схему',exact:true}).click();
+  await page.getByRole('button',{name:'Выбор',exact:true}).click();await page.getByRole('button',{name:'Действия',exact:true}).click();await page.getByRole('menuitem',{name:'Вписать схему',exact:true}).click();
   await until(async()=>await page.locator('.scene3d').evaluate(node=>{const equipment=JSON.parse((node as HTMLElement).dataset.equipmentScreens??'[]') as {id:string;x:number;y:number}[];return ['P-01','TK-01'].every(id=>{const item=equipment.find(candidate=>candidate.id===id);return !!item&&item.x>235&&item.x<1400&&item.y>100&&item.y<790;});}),'3D fit did not put equipment in view');
   const equipmentScreens=await page.locator('.scene3d').evaluate(node=>JSON.parse((node as HTMLElement).dataset.equipmentScreens??'[]') as {id:string;x:number;y:number}[]);
   const pumpPoint=equipmentScreens.find(item=>item.id==='P-01'),tankPoint=equipmentScreens.find(item=>item.id==='TK-01');assert(pumpPoint&&tankPoint,'3D equipment projections missing');

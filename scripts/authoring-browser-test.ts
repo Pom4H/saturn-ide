@@ -10,7 +10,7 @@ const until=async(fn:()=>Promise<boolean>)=>{for(let i=0;i<100;i++){if(await fn(
 try{
  await page.goto(app.server.url.toString());await page.locator('[data-equipment="P-01"]').waitFor();
  const separator=page.getByRole('separator',{name:'Ширина проводника'});const old=Number(await separator.getAttribute('aria-valuenow'));await separator.focus();await page.keyboard.press('ArrowRight');assert.equal(Number(await separator.getAttribute('aria-valuenow')),old+20);await page.reload();await separator.waitFor();assert.equal(Number(await separator.getAttribute('aria-valuenow')),old+20);
- await page.getByRole('button',{name:'Edit',exact:true}).click();
+ await page.getByRole('button',{name:'Правка',exact:true}).click();
  await page.route('**/api/file',async route=>{if(route.request().method()==='POST')await Bun.sleep(900);await route.continue()});
  const equipment=page.locator('[data-equipment="P-01"]');
  const drag=async(dx:number)=>{const box=await equipment.boundingBox();assert(box);await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+dx,box.y+box.height/2+7,{steps:8});await page.mouse.up()};
@@ -18,6 +18,6 @@ try{
  await page.unroute('**/api/file');
  await page.locator('.unified-sidebar').getByRole('button',{name:/Меню|Действия/}).last().click();await page.getByRole('menuitem',{name:/Новое устройство/}).click();
  const dialog=page.getByRole('dialog',{name:'Новое устройство'});await dialog.getByRole('button',{name:'Предпросмотр',exact:true}).click();await dialog.getByRole('button',{name:'Создать устройство',exact:true}).click();await dialog.waitFor({state:'hidden'});await until(async()=>app.state().project.equipment.some(e=>e.id==='P-02'));
- const nav=page.getByRole('tree',{name:'Структура проекта'});await nav.getByRole('treeitem',{name:'HMI',exact:true}).click();await page.getByRole('button',{name:'Создать HMI',exact:true}).click();const hmi=page.getByRole('dialog',{name:'Создать HMI'});await hmi.getByRole('button',{name:'Предпросмотр',exact:true}).click();await hmi.getByRole('button',{name:'Создать',exact:true}).click();await hmi.waitFor({state:'hidden'});await page.locator('iframe[title="HMI operator"]').waitFor();assert.equal(app.state().project.hmis?.length,1);
+ const nav=page.getByRole('tree',{name:'Структура проекта'});await nav.getByRole('treeitem',{name:'HMI',exact:true}).click();await page.getByRole('button',{name:'Создать HMI',exact:true}).click();const hmi=page.getByRole('dialog',{name:'Создать HMI'});await hmi.getByRole('button',{name:'Показать изменения',exact:true}).click();assert.equal(await hmi.locator('.creation-preview details').count(),2);assert(await hmi.getByText('project.ts',{exact:true}).isVisible());await page.screenshot({path:'artifacts/ux-consistency/hmi-preview.png'});await hmi.getByRole('button',{name:'Создать HMI в проекте',exact:true}).click();await hmi.waitFor({state:'hidden'});await page.locator('iframe[title="HMI operator"]').waitFor();assert.equal(app.state().project.hmis?.length,1);
  await page.screenshot({path:'artifacts/authoring-hmi.png'});assert.deepEqual(errors,[]);console.log('PASS persisted sidebar resize, two rapid drags during delayed save, latest pose stable, source device creation, named HMI creation; no page errors');
 }finally{await browser.close();await app.close();f.clean();}

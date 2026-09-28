@@ -20,8 +20,22 @@ export function scaffold(kind: string, name: string, projectRoot = resolve(Bun.e
 export {createProject as create} from '../src/workspace/project-template';
 import {createProject} from '../src/workspace/project-template';
 if (import.meta.main) {
-  const [kind, name, flag, template] = Bun.argv.slice(2); if (!kind || !name) throw new Error('Usage: bun run scaffold <plc|plugin|project> <name>');
-  if(flag&&(flag!=='--template'||!['empty','pumping-station'].includes(template??'')))throw new Error('Use --template empty|pumping-station');
-  console.log(kind === 'project' ? createProject(name,{template:template as 'empty'|'pumping-station'|undefined}) : scaffold(kind, name));
-  console.log('Import generated definitions normally; nothing is registered globally.');
+  try{
+    const [kind,name,...options]=Bun.argv.slice(2);
+    const usage='Usage: bun run scaffold project <directory> [--template empty|pumping-station] | <plc|plugin> <name> [--project <directory>]';
+    if(kind==='--help')console.log(usage);
+    else{
+      if(!kind||!name)throw new Error(usage);
+      let created:string;
+      if(kind==='project'){
+        if(options.length&&!(options.length===2&&options[0]==='--template'&&['empty','pumping-station'].includes(options[1]!)))throw new Error('Use --template empty|pumping-station for a project');
+        created=createProject(name,{template:options[1] as 'empty'|'pumping-station'|undefined});
+      }else{
+        if(options.length&&!(options.length===2&&options[0]==='--project'&&!!options[1]))throw new Error('Use --project <directory> for a PLC or plugin');
+        created=scaffold(kind,name,options[1]);
+      }
+      console.log(created);
+      console.log('Import generated definitions normally; nothing is registered globally.');
+    }
+  }catch(error){console.error(error instanceof Error?error.message:String(error));process.exitCode=1;}
 }

@@ -13,6 +13,7 @@ import type { WorkerProject, WorkerTask } from './job-task';
 import { Store } from '../runtime/store';
 import { RevisionStore } from '../runtime/revisions';
 import { decodeProject } from '../runtime/decode-project';
+import { prepareScenarioJob } from './scenario-job';
 export interface WorkerOptions {directory:string;token:string;projects:Record<string,WorkerProject>;port?:number;hostname?:string;concurrency?:number}
 export const jobIdentity=(input:JobInput)=>`${input.run}.${input.kind==='deployment'?'deployment.'+input.step:input.kind}`;
 export async function createWorkerHost(options:WorkerOptions){
@@ -38,7 +39,7 @@ export async function createWorkerHost(options:WorkerOptions){
     const worker=new Worker(new URL('./job-worker.ts',import.meta.url).href);active.set(next.id,worker);
     let done=false;let resolveDone:()=>void=()=>{};const completion=new Promise<void>(resolve=>{resolveDone=resolve;});completions.add(completion);
     const finish=async(state:'succeeded'|'failed'|'interrupted',result:unknown,error='')=>{if(done)return;done=true;try{await jobs.finish(next.id,state,result,error);}finally{worker.terminate();active.delete(next.id);completions.delete(completion);resolveDone();void pump();}};
-    worker.onmessage=(event:MessageEvent<{ok:boolean;result?:unknown;error?:string}>)=>void finish(event.data.ok?'succeeded':'failed',event.data.result??null,event.data.error??'');
+    worker.onmessage=(event:MessageEvent<{ok:boolean;result?:unknown;error?:string;interrupted?:boolean}>)=>void finish(event.data.ok?'succeeded':event.data.interrupted?'interrupted':'failed',event.data.result??null,event.data.error??'');
     worker.onerror=event=>{event.preventDefault();void finish('interrupted',null,event.message);};
     worker.addEventListener('close',()=>void finish('interrupted',null,'Worker closed before confirming the result'));
     worker.postMessage(item);
@@ -48,6 +49,7 @@ export async function createWorkerHost(options:WorkerOptions){
     if(typeof i.project!=='string'||!Object.hasOwn(options.projects,i.project)||typeof i.run!=='string'||!/^[a-zA-Z0-9_-]{1,180}$/.test(i.run))throw new Error('Invalid project/run identity');
     if(i.kind==='prepare'&&/^[a-f0-9]{40,64}$/.test(i.revision))return {kind:i.kind,project:i.project,run:i.run,revision:i.revision};
     if(i.kind==='deployment'&&/^[a-z][a-z0-9-]{0,99}$/.test(i.step))return {kind:i.kind,project:i.project,run:i.run,step:i.step};
+    if(i.kind==='scenario'&&typeof i.build==='string'&&HASH.test(i.build)&&typeof i.scenario==='string'&&/^[a-zA-Z0-9_.-]{1,128}$/.test(i.scenario)&&typeof i.expectedRun==='string'&&/^[a-zA-Z0-9_-]{1,180}$/.test(i.expectedRun))return {kind:i.kind,project:i.project,run:i.run,build:i.build,scenario:i.scenario,expectedRun:i.expectedRun};
     if(i.kind==='report'&&(i.actor===undefined||typeof i.actor==='string'&&i.actor.length<=200)&&HASH.test(i.build)&&typeof i.report==='string'&&i.report.length<128&&Number.isSafeInteger(i.from)&&Number.isSafeInteger(i.to)&&i.from<i.to&&i.to<=Date.now()+1000&&i.to-i.from<=31*86400000)return {kind:i.kind,project:i.project,run:i.run,build:i.build,report:i.report,from:i.from,to:i.to,...(i.actor===undefined?{}:{actor:i.actor}),...(i.inputs===undefined?{}:{inputs:i.inputs})};
     throw new Error('Invalid job specification');
   };
@@ -55,7 +57,7 @@ export async function createWorkerHost(options:WorkerOptions){
     const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{'cache-control':'no-store'}});
     try{if(request.headers.has('origin'))return json({error:'Use the authenticated gateway'},403);const token=request.headers.get('authorization')?.replace(/^Bearer /,'')??'';if(!/^[A-Za-z0-9_-]+$/.test(token)||token.length!==options.token.length||!timingSafeEqual(Buffer.from(token),Buffer.from(options.token)))return json({error:'Worker authorization required'},401);
       const url=new URL(request.url);if(request.method==='GET'){
-        if(url.pathname==='/api/jobs'){const project=url.searchParams.get('project')??'';if(!Object.hasOwn(options.projects,project))throw new Error('Unknown project');return json(await jobs.list(project));}
+        if(url.pathname==='/api/jobs'){const project=url.searchParams.get('project')??'';if(!Object.hasOwn(options.projects,project))throw new Error('Unknown project');return json(await jobs.list(project,url.searchParams.get('summary')==='1'));}
         if(url.pathname==='/api/job'){const job=await jobs.get(url.searchParams.get('id')??'');return job?json(job):json({error:'Unknown job'},404);}
         if(url.pathname==='/api/schedules'){
           const slot=Math.floor(Date.now()/60000)*60000,inputs:JobInput[]=[];
@@ -71,9 +73,31 @@ export async function createWorkerHost(options:WorkerOptions){
           try{const revisions=new RevisionStore(store.sql),state=await revisions.state();if(!state.applied)return json({build:null,reports:[]});const artifact=await revisions.get(state.applied);return json({build:artifact.hash,reports:decodeProject(artifact.model).reports??[]});}finally{await store.close();}
         }
       }
+      if(url.pathname==='/api/job/cancel'&&request.method==='POST'){
+        if(!request.headers.get('content-type')?.startsWith('application/json'))throw new Error('JSON required');
+        const body:unknown=await request.json();
+        if(!body||typeof body!=='object'||!('id'in body)||typeof body.id!=='string')throw new Error('Expected job identity');
+        const job=await jobs.get(body.id);if(!job||job.kind!=='scenario')throw new Error('Unknown scenario job');
+        await jobs.cancelQueuedScenario(job.id);active.get(job.id)?.postMessage({cancel:true});
+        return json(await jobs.get(job.id),202);
+      }
       if(url.pathname==='/api/jobs'&&request.method==='POST'){
         if(closing)return json({error:'Worker is closing'},503);if(!request.headers.get('content-type')?.startsWith('application/json'))throw new Error('JSON required');
-        const input=valid(await request.json());await task(input);const receipt=await jobs.submit(jobIdentity(input),input);void pump();return json(receipt,202);
+        const input=valid(await request.json()),id=jobIdentity(input);
+        // An accepted job owns its original input even after a later apply. Check it
+        // before validating current state so idempotent retries never retarget work.
+        if(await jobs.get(id)){const receipt=await jobs.submit(id,input);void pump();return json(receipt,202);}
+        await task(input);
+        if(input.kind==='scenario')await prepareScenarioJob(input,options.projects[input.project]!,AbortSignal.timeout(10000));
+        if(input.kind==='report'){
+          const database=options.projects[input.project]?.database;
+          if(!database)throw new Error('No runtime history database configured');
+          const store=new Store(database);
+          try{
+            if((await new RevisionStore(store.sql).state()).applied!==input.build)throw new Error('Report build is not currently applied');
+          }finally{await store.close();}
+        }
+        const receipt=await jobs.submit(id,input);void pump();return json(receipt,202);
       }
       return json({error:'Not found'},404);
     }catch(e){return json({error:e instanceof Error?e.message:String(e)},409);}

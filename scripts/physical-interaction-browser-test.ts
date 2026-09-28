@@ -27,7 +27,7 @@ type XY={x:number;y:number};
 try{
   await page.goto(app.server.url.toString());await page.bringToFront();
   await page.locator('[data-equipment="P-01"]').waitFor({timeout:30000});
-  await page.getByRole('button',{name:'Edit',exact:true}).click();
+  await page.getByRole('button',{name:'Правка',exact:true}).click();
   await page.getByRole('button',{name:'3D',exact:true}).click();
   await scene.waitFor({timeout:45000});
   await until(async()=>Number(await data('frames'))>=1&&!!await data('equipment-screens'),'3D did not render its first interactive frame');

@@ -10,12 +10,14 @@ Pom4H/saturn `90da21a1885a72022b7a2d1b45cb36993bee1597`. Наличие реал
 | Конкретные сигналы/outputs (`plant/dsl.ts`) | core | Сохранены ID, value types, writability и project inference | Новый тип агрегата добавляется без редактирования core; имена/типы выходов выводятся |
 | Вычисляемые выражения и размерности (`plant/dsl.ts`, `plant/types.ts`) | core + runtime | **Не перенесено полностью** | Отвергать несовместимые размерности; вычисление и качество derived-сигналов; ошибки RU/EN |
 | Копируемые расширения (ADR-0008, ModelCatalog) | project/equipment, project/plugins | Драйверы — да, оборудование — **частично** | Скопировать второй тип оборудования, его виды/тесты и target без изменения приложения |
-| Физические порты/топология (`plant/ports.ts`, `plant/routing.ts`) | core/topology + equipment | Трубы/кабели и XYZ routing есть, не все extension-defined профили перенесены | Совместимость среды/семейства/направления; ветвления, занятость, bus reachability; все старые сценарии |
+| Физические порты/топология (`plant/ports.ts`, `plant/routing.ts`, `src/geometry.ts`, `src/view.ts`, `src/view3d.ts`) | core/topology + equipment + shell scenes | Трубы/кабели и XYZ routing есть; drag-коридор, старые визуальные слои трубы и rounded bends проверены. Project-owned приборы имеют общие формы и mount к существующей трубе в 2D/3D. **Полная parity не доказана**: старый API `tap(line, instrument)`, модели приборов и часть extension-defined профилей перенесены не полностью | Совместимость среды/семейства/направления; ветвления, занятость, bus reachability; приборы на трубе, все старые сценарии и визуальные кадры/состояния |
+| Иерархия систем (`plant/dsl.ts`, `plant/group-layout.ts`, `src/view.ts`, `src/view3d.ts`) | core/system-layout + shell/scene/sidebar | `system()` и принадлежность оборудования перенесены; вложенные 2D/3D-подложки, дерево и фокус проверены; **полная parity больших проектов открыта** | Реальный многоуровневый проект, границы подложек после drag, фокус при большом числе устройств и оценка читаемости подписей в 3D |
 | Исходные SVG (`src/equipment-svg.ts`) | shell/scene, equipment views | Текущий renderer сохранён побайтно при перемещении | Реальные эталонные кадры и состояния good/stale/stopped; согласование человеком |
 | 3D (`src/elements/models3d.ts`, `plant/visual3d.ts`) | shell/scene3d, equipment views | Новый renderer есть; **визуальная parity не подтверждена** | Тот же граф/порты, телеметрия без rebuild, фаза без скачков, GPU lifecycle и реальные видеозаписи |
 | Two-way editing | workspace/files + source-edits + shell/editor/scene | Сохранена реализация | Drag до drop, cancel/undo одним жестом, форматирование, computed positions, конфликт внешнего изменения |
 | Единое Presentation/HMI (ADR-0008, plant/presentation) | core presentation + target renderer | Браузерный SVG HMI; **canonical Presentation и физический target не завершены** | Один authored экран → web/operator и реальный целевой дисплей; никаких отдельных HMI-сигналов |
-| История/воспроизведение (`plant/service.ts`, kernel/store) | runtime | История есть, **replay/checkpoint parity нет** | Restart, source/build/run provenance; воспроизведение изолировано от live commands |
+| История/воспроизведение (`plant/service.ts`, kernel/store) | runtime | История, per-signal плотность/TTL есть, **replay/checkpoint parity нет**; raw ML export отсутствует | Restart, source/build/run provenance; воспроизведение изолировано от live commands; разные профили архива не фабрикуют coverage |
+| Сценарии симуляции из TS-проекта | core declarations + runtime authority + существующий worker host | Проверенные command/wait/advance/expect/expect-range выполняются через standalone и dev runtime API тем же Bun Worker pool, что отчёты; Shell запускает через gateway; **нет reset/checkpoint replay**; физические модели и их приёмка принадлежат проектам в `saturn-examples` | Проверка типов/ссылок, actual observations, build/run/clock fencing, отмена, failed/interrupted receipts, отсутствие повторной команды при retry; физическая достоверность конкретной модели проверяется отдельно |
 | Отчёты (`plant/reporting.ts`, dsl, Service.runJobs) | core report plan + runtime jobs + shell reports | Агрегации + typed SQL schemas, настоящий XLSX/CSV/HTML/печать, durable snapshots, Bun worker jobs и cron через Workflow SDK есть; **произвольный старый Presentation/view и report notification/outbox остаются открытыми** | Почасовой расход, пропуски, часовые пояса, типы сортировок/колонок, повторный запуск задания без дубля |
 | Immutable BuildArtifact (`plant/artifact.ts`) | core/artifact + workspace/build | Новый v2 hash/driver/provenance/verify | Transport round trip, tamper, проверенная миграция v1 без потери сущностей; source ≠ build |
 | Управляемое apply (`plant/service.ts`, store) | runtime/installation + revisions | В dev подключены CAS/restore/fencing и rollback автомата | Bun+SQLite+Postgres fault tests, реальный драйвер, outage/restart; не выдавать physical rollback за конфигурационный |
@@ -34,3 +36,12 @@ Pom4H/saturn `90da21a1885a72022b7a2d1b45cb36993bee1597`. Наличие реал
 Порядок завершения основы: runtime isolation и live/draft UX → project-owned equipment и единые
 определения сигналов/размерностей → общий Presentation/targets → отчёты/jobs/replay → остальные hosts.
 Визуальные и two-way regression tests сопровождают каждый этап, а не откладываются на конец.
+
+### 2026-09-28: расчётные модели и многоканальный HMI
+
+Общий previous-frame исполнитель доступен через `@saturn/core/calculations`.
+Внешний пример проверяет точное совпадение 18 выходов шести вспомогательных
+компонентов старого Kernel на 1000 тактах. Это не закрывает полный перенос
+физической симуляции, PLC и checkpoint. HMI теперь предоставляет все writable
+сигналы выбранного оборудования и сохраняет авторский порядок экрана. Полный
+энергоблок, размерные балансы и project-owned геометрия/анимации остаются открытыми.

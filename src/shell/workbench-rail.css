@@ -1,0 +1,16 @@
+/* Navigation stays in Shell. The adjacent sidebar only projects existing resources. */
+.workbench-rail{width:56px;flex:0 0 56px;min-height:0;display:flex;flex-direction:column;align-items:center;gap:var(--ui-space-2);padding:var(--ui-space-3) 5px;background:var(--bg);border-right:0}
+.workbench-rail .rail-destination{width:var(--ui-rail-hit);height:var(--ui-rail-hit);flex:0 0 var(--ui-rail-hit);display:grid;place-items:center;padding:0;border:0;border-radius:var(--ui-radius-card);background:transparent;color:var(--muted)}
+.workbench-rail .rail-destination:hover{background:var(--ui-nav-hover);color:var(--ui-nav-ink)}
+.workbench-rail .rail-destination[aria-current=page]{background:var(--ui-nav-selected);color:var(--ui-nav-ink)}
+.workbench-rail .rail-destination:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.workbench-rail .rail-destination .resource-icon{width:20px;height:20px}
+.workbench-rail .rail-runtime{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--muted);font:600 9px/1.1 var(--ui);letter-spacing:.04em;text-align:center}
+.workbench-rail .rail-runtime i{width:7px;height:7px;border-radius:50%;background:var(--warn)}
+.workbench-rail .rail-runtime.connected i{background:var(--good)}
+.workbench-rail .rail-runtime.faulted{color:var(--bad)}
+.workbench-rail .rail-runtime.faulted i{background:var(--bad)}
+.unified-sidebar .context-heading{display:flex;align-items:center;gap:7px}
+.unified-sidebar .context-heading .resource-icon{color:var(--muted)}
+@media(max-width:760px){.workbench-rail{width:46px;flex-basis:46px;padding:7px 3px;gap:3px}.workbench-rail .rail-destination{width:38px;height:42px;flex-basis:42px}.workbench-rail .rail-destination .resource-icon{width:18px;height:18px}}
+@media print{.workbench-rail{display:none!important}}

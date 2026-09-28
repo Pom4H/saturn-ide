@@ -1,6 +1,9 @@
 import {validateQueryReport,type QueryReport,type ReportSchema,type SchemaRow} from './core/reporting';
 export * from './core/reporting';
 import {validateSchedule,type ReportSchedule} from './core/cron';
+import {validateScenarios,type Scenario} from './core/scenarios';
+export type {SimulationClock,SimulationClockState} from './core/simulation';
+export {scenario,wait,set,expectValue,expectRange,advance,validateScenarios,type Scenario,type ScenarioStep,type ScenarioWaitStep,type ScenarioCommandStep,type ScenarioExpectStep,type ScenarioAdvanceStep,type ScenarioExpectRangeStep} from './core/scenarios';
 export type Locale = 'en' | 'ru';
 export type Text = string | Readonly<Record<Locale, string>>;
 export const text = (value: Text, locale: Locale): string => typeof value === 'string' ? value : value[locale];
@@ -31,10 +34,17 @@ export const qualityState = (quality:Quality):QualityState => quality==='good'
   : quality==='offline' ? {validity:'bad',connection:'offline',freshness:'stale'}
   : {validity:'bad',connection:'online',freshness:'fresh'};
 export interface SignalOwner { readonly kind:'equipment'|'project'|'connection'; readonly id:string; readonly field:string }
+/** Poll cadence for read-capable protocol sources. The source's pollMs is the fastest allowed cadence. */
+export interface SignalExchangePolicy { readonly pollMs:number }
+/** Archive selection never changes the live snapshot, alarms or commands. All is the legacy default. */
+export type SignalStoragePolicy =
+  | { readonly mode:'all'; readonly retentionMs?:number; readonly deadband?:never; readonly maxIntervalMs?:never }
+  | { readonly mode:'on-change'; readonly retentionMs?:number; readonly deadband?:number; readonly maxIntervalMs:number };
 export interface Signal<T extends Value = Value, ID extends string = string, W extends boolean = boolean> {
   readonly id: ID; readonly initial: T; readonly writable?: W; readonly unit?: string;
   readonly label?:Text; readonly description?:Text; readonly dimension?:string; readonly origin?:SignalOrigin; readonly binding?:SignalBinding;
   readonly owner?:SignalOwner; readonly semanticId?:string;
+  readonly exchange?:SignalExchangePolicy; readonly storage?:SignalStoragePolicy;
   readonly staleAfter?: number; readonly min?: T extends number ? number : never; readonly max?: T extends number ? number : never;
 }
 export type SignalSpec<T extends Value = Value, W extends boolean = boolean> =
@@ -92,6 +102,8 @@ export interface Position {
   /** @ru Высота основания, в единицах схемы. @en Base elevation in diagram units. */
   z?: number;
   label: Text;
+  /** Authored installation system; grouping never creates runtime equipment. */
+  system?:string;
   /** @ru Стабильная семантическая identity физической сущности; tag/имя можно менять независимо.
    * @en Stable semantic identity of the physical entity; its tag/name may change independently. */
   semanticId?:string;
@@ -138,22 +150,35 @@ export interface Scene3DCapability {
   readonly terminals:readonly {readonly id:string;readonly x:number;readonly y:number;readonly width:number;readonly count:number;readonly color:number;readonly socket?:boolean}[];
 }
 export interface HmiCapability {readonly target:string;readonly width:number;readonly height:number;readonly auto?:'topology'}
+/** One project-owned measurement device, rendered consistently in diagram and 3D. */
+export interface InstrumentCapability {
+  readonly form:'dial'|'digital'|'inline';
+  /** Field on the same Equipment whose numeric Signal supplies the readout. */
+  readonly field:string;
+  /** A dial or digital sensor may be installed on an authored pipe. Its tap follows the routed pipe. */
+  readonly mount?:{readonly pipe:string};
+  readonly min?:number;readonly max?:number;readonly precision?:number;
+}
 export interface FirmwareCapability {readonly target:string;readonly languages:readonly string[];readonly sourceDir?:string}
 export interface EmulatorCapability {readonly runtime:string;readonly abi?:string}
-export interface DeviceCapabilities {readonly diagram?:DiagramCapability;readonly scene3d?:Scene3DCapability;readonly hmi?:HmiCapability;readonly firmware?:FirmwareCapability;readonly emulator?:EmulatorCapability}
+export interface DeviceCapabilities {readonly diagram?:DiagramCapability;readonly instrument?:InstrumentCapability;readonly scene3d?:Scene3DCapability;readonly hmi?:HmiCapability;readonly firmware?:FirmwareCapability;readonly emulator?:EmulatorCapability}
 export interface EngineeringConstraint {readonly id:string;readonly severity:'info'|'warning'|'error';readonly label:Text;readonly description?:Text}
 export interface DeviceKnowledge {readonly summary?:Text;readonly commissioning?:readonly Text[];readonly constraints?:readonly EngineeringConstraint[]}
 export interface DeviceAlarmTemplate<S extends Readonly<Record<string,SignalSpec>>> {readonly label:Text;readonly signal:Extract<keyof S,string>;readonly above:number;readonly hysteresis?:number}
 type DeviceAlarmTemplates<S extends Readonly<Record<string,SignalSpec>>> = Readonly<Record<string,DeviceAlarmTemplate<S>>>;
 type DevicePorts<P extends Readonly<Record<string,Terminal>>,I extends string> = { readonly [K in keyof P]:Endpoint<P[K]['medium'],P[K]['family'],P[K]['role'],I>&{readonly port:Extract<K,string>;readonly terminal:P[K]} };
 type Merge<A,B> = Omit<A,keyof B>&B;
-type DeviceSignalOptions<S extends Readonly<Record<string,SignalSpec>>> = { readonly [K in keyof S]?: S[K] extends SignalSpec<infer T> ? Signal<T,string,boolean>|SignalSpec<T,boolean> : never };
+// A generated string index does not identify concrete fields: it must neither
+// constrain Position's label/x/y to signals nor pretend every output key exists.
+type DeviceSignalOptions<S extends Readonly<Record<string,SignalSpec>>> = string extends keyof S ? Record<never,never> : { readonly [K in keyof S]?: S[K] extends SignalSpec<infer T> ? Signal<T,string,boolean>|SignalSpec<T,boolean> : never };
+type DeviceAuthored<S,O> = string extends keyof S ? O : Merge<S,O>;
+type DynamicDeviceFields<S> = string extends keyof S ? Readonly<Record<string,unknown>> : unknown;
 export type Equipment<K extends string=string,I extends string=string,O extends Position=Position,P extends Readonly<Record<string,Terminal>>=Readonly<Record<string,Terminal>>> = Materialized<O,I>&Position&{readonly id:I;readonly kind:K;readonly icon:string;readonly ports:DevicePorts<P,I>;readonly capabilities:DeviceCapabilities;readonly knowledge:DeviceKnowledge;readonly alarms:readonly Alarm[]};
 export interface DeviceDefinition<K extends string,P extends Readonly<Record<string,Terminal>>,S extends Readonly<Record<string,SignalSpec>>=Record<never,never>> {readonly id:K;readonly icon:string;readonly ports:P;readonly signals?:S;readonly capabilities?:DeviceCapabilities;readonly knowledge?:DeviceKnowledge;readonly alarms?:DeviceAlarmTemplates<S>}
 /** @ru Единственный конструктор класса оборудования. Встроенные и проектные определения используют один путь.
  * @en The only equipment-class constructor. Built-in and project-owned equipment use the same path. */
 export function device<const K extends string,const P extends Readonly<Record<string,Terminal>>,const S extends Readonly<Record<string,SignalSpec>>=Record<never,never>>(definition:DeviceDefinition<K,P,S>) {
-  return function<const I extends string,const O extends Position&DeviceSignalOptions<S>>(id:I,options:O):Equipment<K,I,Merge<S,O>,P> {
+  return function<const I extends string,const O extends Position&DeviceSignalOptions<S>>(id:I,options:O):Equipment<K,I,DeviceAuthored<S,O>,P>&DynamicDeviceFields<S> {
     const ports=Object.fromEntries(Object.entries(definition.ports).map(([port,terminal])=>[port,{device:id,port,terminal}])) as DevicePorts<P,I>;
     const authored={...(definition.signals??{}),...options} as Merge<S,O>,materialized=ownSignals(id,authored);
     const alarms=Object.entries(definition.alarms??{}).map(([name,template])=>{
@@ -161,7 +186,7 @@ export function device<const K extends string,const P extends Readonly<Record<st
       if(!signalLike(candidate)||!('id' in candidate)||typeof candidate.id!=='string'||typeof candidate.initial!=='number')throw new ProjectError('EQUIPMENT_ALARM_SIGNAL',{en:`Alarm ${name} requires numeric signal ${template.signal}`,ru:`Тревоге ${name} нужен числовой сигнал ${template.signal}`});
       return {id:`${id}.${name}`,label:template.label,signal:candidate as Signal<number>,above:template.above,hysteresis:template.hysteresis};
     });
-    return {...materialized,id,kind:definition.id,icon:definition.icon,ports,capabilities:definition.capabilities??{},knowledge:definition.knowledge??{},alarms} as Equipment<K,I,Merge<S,O>,P>;
+    return {...materialized,id,kind:definition.id,icon:definition.icon,ports,capabilities:definition.capabilities??{},knowledge:definition.knowledge??{},alarms} as Equipment<K,I,DeviceAuthored<S,O>,P>&DynamicDeviceFields<S>;
   };
 }
 export function equipmentSignal<T extends Value>(equipment:Equipment,field:string,type:'number'|'boolean'|'string'):Signal<T>|undefined {
@@ -243,9 +268,27 @@ export const reportSignals=(r:Report):readonly Signal[]=>'sql' in r?r.signals:Ob
 export function report<const C extends Record<string,Column>>(id:string,options:Omit<AggregateReport<C>,'id'>):AggregateReport<C>;
 export function report<const S extends ReportSchema>(id:string,options:Omit<QueryReport<S>,'id'|'columns'>&{columns:readonly import('./core/reporting').ReportColumn<keyof NoInfer<S> & string>[]}):QueryReport<S>;
 export function report(id:string,options:Omit<AggregateReport,'id'>|Omit<QueryReport,'id'>):Report{return {...options,id};}
+/** @ru Декларативное условие мониторинга над уже объявленным числовым сигналом.
+ * @en Declarative monitoring condition over an existing numeric signal. */
+export interface MonitorLimits { readonly below?:number; readonly above?:number }
+export interface MonitoringMetric {
+  readonly id:string; readonly signal:Signal<number>; readonly label?:Text;
+  readonly warning?:MonitorLimits; readonly critical?:MonitorLimits;
+  /** A monitor may require a fresher reading than the signal's own staleAfter. */
+  readonly maxAgeMs?:number;
+}
+export interface MonitoringGroup { readonly id:string; readonly label:Text; readonly description?:Text; readonly metrics:readonly MonitoringMetric[] }
+/** Physical installation hierarchy, independent of monitoring dashboards. */
+export interface System { readonly id:string; readonly label:Text; readonly parent?:string }
+export function system(id:string,label:Text,parent?:string):System {return {id,label,...(parent?{parent}:{})};}
+/** Project-owned kits export these plain declarations and the project imports them explicitly. */
+export function monitorMetric<const S extends Signal<number>>(id:string,source:S,options:Omit<MonitoringMetric,'id'|'signal'>={}):MonitoringMetric & {signal:S} {
+  return {id,signal:source,...options};
+}
+export function monitor(id:string,options:Omit<MonitoringGroup,'id'>):MonitoringGroup {return {id,...options};}
 export interface Project {
   id:string; label:Text; signals:Record<string,Signal>; equipment:Equipment[]; pipes:Pipe[]; cables?:Cable[];
-  alarms:Alarm[]; hmi?:Hmi; hmis?:HmiInterface[]; reports?:Report[];
+  alarms:Alarm[]; hmi?:Hmi; hmis?:HmiInterface[]; reports?:Report[]; monitoring?:readonly MonitoringGroup[]; systems?:readonly System[]; scenarios?:readonly Scenario[];
 }
 export type ProjectDefinition = Omit<Project,'signals'|'hmi'|'hmis'|'alarms'> & {signals?:Record<string,Signal>;hmi?:Hmi|AutoHmi;hmis?:HmiIntent[];alarms?:Alarm[]};
 /** @ru Производный индекс всех сигналов. Он не является вторым authored-файлом и не требует ручных строковых путей.
@@ -263,6 +306,8 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
   for(const edge of [...definition.pipes,...definition.cables??[]])add(edge.kind==='pipe'?edge.flow:edge.signal);
   for(const alarm of definition.alarms??[])add(alarm.signal);
   for(const report of definition.reports??[])for(const signal of reportSignals(report))add(signal);
+  for(const group of definition.monitoring??[])for(const metric of group.metrics)add(metric.signal);
+  for(const scenario of definition.scenarios??[])for(const step of scenario.steps)if('signal' in step)add(step.signal);
   for(const screen of [definition.hmi,...definition.hmis??[]])if(screen&&'elements' in screen)for(const element of screen.elements??[])if(element.signal)add(element.signal);
   return Object.fromEntries(found);
 }
@@ -298,17 +343,41 @@ function validateTerminal(t:Terminal,label:string):void {
 }
 export function validateProject(p:Project):void {
   requireThat(p && typeof p.id==='string' && p.signals && Array.isArray(p.equipment)&&Array.isArray(p.pipes)&&Array.isArray(p.alarms),'PROJECT_SHAPE','Invalid project export','Неверный экспорт проекта');
-  requireThat(p.equipment.length<=128 && p.pipes.length+(p.cables?.length??0)<=512,'PROJECT_LIMIT','MVP routing limit: 128 devices, 512 connections','Лимит MVP: 128 устройств, 512 соединений');
+  validateScenarios(p);
+  requireThat(p.monitoring===undefined||Array.isArray(p.monitoring)&&p.monitoring.length<=32&&p.monitoring.every(group=>group&&typeof group==='object'&&typeof group.id==='string'&&Array.isArray(group.metrics)&&group.metrics.length>0&&group.metrics.length<=32),'MONITOR_LIMIT','Invalid monitoring group size','Неверный размер группы мониторинга');
+  requireThat(p.systems===undefined||Array.isArray(p.systems),'SYSTEM_SHAPE','Invalid installation systems','Неверные системы установки');
+  const systems=new Map<string,System>();
+  const named=(value:unknown):value is Text=>typeof value==='string'&&!!value.trim()||!!value&&typeof value==='object'&&!Array.isArray(value)&&['en','ru'].every(locale=>typeof (value as Record<string,unknown>)[locale]==='string'&&!!String((value as Record<string,unknown>)[locale]).trim());
+  for(const group of p.systems??[]){
+    requireThat(!!group&&typeof group.id==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(group.id)&&!systems.has(group.id)&&named(group.label)&&(group.parent===undefined||typeof group.parent==='string'),'SYSTEM_SHAPE',`Invalid/duplicate system ${group?.id}`,`Неверная/повторяющаяся система ${group?.id}`);
+    systems.set(group.id,group);
+  }
+  for(const group of systems.values()){
+    const seen=new Set([group.id]);let parent=group.parent;
+    while(parent!==undefined){requireThat(systems.has(parent)&&!seen.has(parent),'SYSTEM_HIERARCHY',`Missing/cyclic system parent ${group.id}`,`Отсутствует/зациклен родитель системы ${group.id}`);seen.add(parent);parent=systems.get(parent)!.parent;}
+  }
   const all=new Set<string>();
-  for(const item of [...Object.values(p.signals),...p.equipment,...p.pipes,...p.cables??[],...p.alarms,...p.reports??[]]) {
+  for(const item of [...Object.values(p.signals),...p.equipment,...p.pipes,...p.cables??[],...p.alarms,...p.reports??[],...p.monitoring??[],...p.scenarios??[]]) {
     requireThat(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(item.id)&&!all.has(item.id)&&!(item.id in Object.prototype),'DUPLICATE_ID',`Invalid/duplicate ID ${item.id}`,`Неверный/повторяющийся ID ${item.id}`);all.add(item.id);
   }
   const signals=new Map(Object.values(p.signals).map(s=>[s.id,s]));
   const ref=(s:Signal,type?:string)=>requireThat(s && signals.get(s.id)===s&&(!type||typeof s.initial===type),'SIGNAL_REF',`Unknown/incompatible signal ${s?.id}`,`Неизвестный/несовместимый сигнал ${s?.id}`);
-  for(const s of signals.values()){validateValue(s,s.initial);requireThat(s.staleAfter===undefined||Number.isFinite(s.staleAfter)&&s.staleAfter>0,'STALE_TIMEOUT','staleAfter must be positive','staleAfter должен быть положительным');}
+  for(const s of signals.values()){
+    validateValue(s,s.initial);
+    requireThat(s.staleAfter===undefined||Number.isFinite(s.staleAfter)&&s.staleAfter>0,'STALE_TIMEOUT','staleAfter must be positive','staleAfter должен быть положительным');
+    if(s.exchange!==undefined)requireThat(!!s.exchange&&Number.isSafeInteger(s.exchange.pollMs)&&s.exchange.pollMs>=1&&s.exchange.pollMs<=86400_000&&!!s.binding&&s.binding.pollMs===s.exchange.pollMs,'SIGNAL_EXCHANGE',`Invalid polling policy ${s.id}`,`Неверные требования обмена ${s.id}`);
+    if(s.storage!==undefined){
+      const storage=s.storage;
+      requireThat(!!storage&&(storage.mode==='all'||storage.mode==='on-change'),'SIGNAL_STORAGE',`Invalid storage policy ${s.id}`,`Неверные требования хранения ${s.id}`);
+      requireThat(storage.retentionMs===undefined||Number.isSafeInteger(storage.retentionMs)&&storage.retentionMs>=3600_000&&storage.retentionMs<=365*86400_000,'SIGNAL_RETENTION',`Invalid retention ${s.id}`,`Неверный срок хранения ${s.id}`);
+      if(storage.mode==='on-change')requireThat(Number.isSafeInteger(storage.maxIntervalMs)&&storage.maxIntervalMs>=1&&storage.maxIntervalMs<=86400_000&&(storage.deadband===undefined||typeof s.initial==='number'&&Number.isFinite(storage.deadband)&&storage.deadband>=0),'SIGNAL_STORAGE',`Invalid storage policy ${s.id}`,`Неверные требования хранения ${s.id}`);
+      else requireThat(storage.deadband===undefined&&storage.maxIntervalMs===undefined,'SIGNAL_STORAGE',`Invalid storage policy ${s.id}`,`Неверные требования хранения ${s.id}`);
+    }
+  }
   const devices=new Map(p.equipment.map(e=>[e.id,e]));
   for(const e of p.equipment){
     requireThat([e.x,e.y,e.z??0].every(v=>Number.isFinite(v)&&Math.abs(v)<=15000),'POSITION',`Invalid position ${e.id}`,`Неверная позиция ${e.id}`);
+    requireThat(e.system===undefined||systems.has(e.system),'SYSTEM_MEMBERSHIP',`Unknown system for ${e.id}`,`Неизвестная система для ${e.id}`);
     requireThat(/^[-a-zA-Z0-9_.]+$/.test(e.kind),'EQUIPMENT_CLASS',`Invalid equipment class ${e.kind}`,`Неверный класс оборудования ${e.kind}`);
     requireThat(typeof e.icon==='string'&&e.icon.length>0,'EQUIPMENT_ICON','Invalid equipment icon','Неверная иконка оборудования');
     for(const port of Object.values(e.ports)){
@@ -316,6 +385,13 @@ export function validateProject(p:Project):void {
     }
     for(const value of Object.values(e))if(signalLike(value)&&'id' in value)ref(value as Signal);
     const diagram=e.capabilities.diagram;if(diagram)requireThat(Number.isFinite(diagram.width)&&diagram.width>0&&Number.isFinite(diagram.height)&&diagram.height>0,'EQUIPMENT_VIEW','Invalid equipment diagram bounds','Неверные размеры схемы оборудования');
+    if(e.capabilities.instrument){
+      const instrument=e.capabilities.instrument,reading=equipmentSignal<number>(e,instrument.field,'number');
+      const min=instrument.min??reading?.min??0,max=instrument.max??reading?.max??100;
+      const inlinePorts=Object.values(e.ports).filter(port=>port.terminal.medium==='fluid');
+      requireThat(!!diagram&&!diagram.svg&&!e.capabilities.scene3d&&diagram.width>=(instrument.form==='inline'?110:90)&&diagram.height>=100&&['dial','digital','inline'].includes(instrument.form)&&!!reading&&Number.isFinite(min)&&Number.isFinite(max)&&max>min&&(instrument.precision===undefined||Number.isInteger(instrument.precision)&&instrument.precision>=0&&instrument.precision<=3)&&(instrument.form!=='inline'||inlinePorts.some(port=>port.terminal.role==='sink')&&inlinePorts.some(port=>port.terminal.role==='source')),'EQUIPMENT_INSTRUMENT',`Invalid instrument ${e.id}`,`Неверный прибор ${e.id}`);
+      if(instrument.mount)requireThat(instrument.form!=='inline'&&typeof instrument.mount.pipe==='string'&&p.pipes.some(pipe=>pipe.id===instrument.mount!.pipe),'EQUIPMENT_INSTRUMENT_MOUNT',`Invalid pipe mount for ${e.id}`,`Неверное крепление прибора ${e.id}`);
+    }
     if(e.capabilities.scene3d){
       const view=e.capabilities.scene3d;
       const within=(x:number,y:number,w:number,h:number)=>!!diagram&&[x,y,w,h].every(Number.isFinite)&&x>=0&&y>=0&&w>0&&h>0&&x+w<=diagram.width&&y+h<=diagram.height;
@@ -353,6 +429,18 @@ export function validateProject(p:Project):void {
     }
   }
   for(const a of p.alarms){ref(a.signal,'number');requireThat(Number.isFinite(a.above)&&(a.hysteresis===undefined||Number.isFinite(a.hysteresis)&&a.hysteresis>=0),'ALARM_LIMIT','Invalid alarm threshold','Неверный порог тревоги');}
+  for(const group of p.monitoring??[]){
+    const metricIds=new Set<string>();
+    for(const metric of group.metrics){
+      requireThat(metric&&typeof metric==='object'&&typeof metric.id==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(metric.id)&&!metricIds.has(metric.id),'MONITOR_ID',`Invalid/duplicate monitoring metric ${group.id}`,`Неверная/повторяющаяся метрика мониторинга ${group.id}`);
+      metricIds.add(metric.id);ref(metric.signal,'number');
+      requireThat(metric.maxAgeMs===undefined||Number.isInteger(metric.maxAgeMs)&&metric.maxAgeMs>0&&metric.maxAgeMs<=86400000,'MONITOR_AGE',`Invalid freshness window ${group.id}.${metric.id}`,`Неверное окно свежести ${group.id}.${metric.id}`);
+      const limits=[metric.warning,metric.critical];
+      requireThat(limits.every(bounds=>bounds===undefined||!!bounds&&typeof bounds==='object'&&!Array.isArray(bounds)&&Object.keys(bounds).length>0&&Object.keys(bounds).every(key=>key==='above'||key==='below')&&[bounds.above,bounds.below].every(value=>value===undefined||Number.isFinite(value))&&(bounds.above===undefined||bounds.below===undefined||bounds.below<bounds.above)),'MONITOR_LIMITS',`Invalid limits ${group.id}.${metric.id}`,`Неверные пределы ${group.id}.${metric.id}`);
+      requireThat(metric.warning?.above===undefined||metric.critical?.above===undefined||metric.critical.above>metric.warning.above,'MONITOR_ORDER',`Critical upper limit must exceed warning ${group.id}.${metric.id}`,`Критический верхний предел должен превышать предупредительный ${group.id}.${metric.id}`);
+      requireThat(metric.warning?.below===undefined||metric.critical?.below===undefined||metric.critical.below<metric.warning.below,'MONITOR_ORDER',`Critical lower limit must be below warning ${group.id}.${metric.id}`,`Критический нижний предел должен быть ниже предупредительного ${group.id}.${metric.id}`);
+    }
+  }
   for(const r of p.reports??[]){
     if(r.schedule){if(!Array.isArray(r.schedule)||r.schedule.length>20)throw new Error('Too many report schedules');for(const schedule of r.schedule){validateSchedule(schedule);if(!('sql' in r)&&Math.ceil(schedule.periodMs/r.bucketMs)>1000)throw new Error('Scheduled report exceeds 1000 buckets');}}
     if('sql' in r){validateQueryReport(r);for(const signal of r.signals)ref(signal);continue;}
@@ -395,6 +483,7 @@ export interface DriverContext {
 }
 export interface Driver {
   mode:'simulation'|'live';
+  simulation?:import('./core/simulation').SimulationClock;
   start(context:DriverContext):Promise<()=>void|Promise<void>>;
   write?:(signal:string,value:Value)=>Promise<void>;
   status?:()=>readonly import('./core/diagnostics').SourceStatus[];

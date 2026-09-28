@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ResourceIcon } from './icons';
 import './menu.css';
 
-export interface MenuItem { id:string; label:string; icon?:string; shortcut?:string; checked?:boolean; disabled?:boolean; divider?:boolean; run:()=>void|Promise<unknown> }
+export interface MenuItem { id:string; label:string; description?:string; icon?:string; shortcut?:string; checked?:boolean; disabled?:boolean; divider?:boolean; run:()=>void|Promise<unknown> }
 interface OpenMenu { title:string; items:MenuItem[]; x:number; y:number; above:number; trigger:HTMLElement; dropdown:boolean }
 interface MenuController {
   current:HTMLElement|null;
@@ -60,8 +60,8 @@ function MenuPopup({menu,close,fail}:{menu:OpenMenu;close:(restore?:boolean)=>vo
   };
   return <div ref={root} role="menu" aria-label={menu.title} className="shell-menu" style={{visibility:'hidden'}} onKeyDown={key} onContextMenu={event=>event.preventDefault()}>
     <div className="shell-menu-title">{menu.title}</div>
-    {menu.items.map(item=><div key={item.id}>{item.divider&&<div role="separator" className="shell-menu-divider"/>}<button type="button" role={item.checked===undefined?'menuitem':'menuitemcheckbox'} aria-checked={item.checked} disabled={item.disabled} tabIndex={-1} data-label={item.label} onPointerMove={event=>{if(!item.disabled)event.currentTarget.focus({preventScroll:true});}} onClick={()=>{close();try{void Promise.resolve(item.run()).catch(fail);}catch(error){fail(error);}}}>
-      <span className="menu-mark">{item.checked===true?'✓':item.icon?<ResourceIcon icon={item.icon} size={15}/>:null}</span><span className="menu-label">{item.label}</span>{item.shortcut&&<kbd>{item.shortcut}</kbd>}
+    {menu.items.map(item=><div key={item.id}>{item.divider&&<div role="separator" className="shell-menu-divider"/>}<button type="button" role={item.checked===undefined?'menuitem':'menuitemcheckbox'} aria-label={item.label} aria-checked={item.checked} disabled={item.disabled} tabIndex={-1} data-label={item.label} onPointerMove={event=>{if(!item.disabled)event.currentTarget.focus({preventScroll:true});}} onClick={()=>{close();try{void Promise.resolve(item.run()).catch(fail);}catch(error){fail(error);}}}>
+      <span className="menu-mark" aria-hidden="true">{item.checked===true?'✓':item.description?null:item.icon?<ResourceIcon icon={item.icon} size={15}/>:null}</span><span className="menu-label">{item.label}{item.description&&<small>{item.description}</small>}</span>{item.shortcut&&<kbd>{item.shortcut}</kbd>}
     </button></div>)}
   </div>;
 }

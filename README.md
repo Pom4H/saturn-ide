@@ -237,22 +237,33 @@ projection is not required.
 
 ![Source](docs/screenshots/source.png)
 
-## Run
+## Quick start
 
-Requires Bun 1.4.2 or newer and Git.
+Requires Bun 1.4.2 or newer and Git. From this IDE checkout:
 
 ```sh
-gh repo clone Pom4H/saturn-examples ../saturn-examples
 bun install
-
-SATURN_PROJECT=../saturn-examples/pumping-station bun dev
+bun start init ../my-plant
+bun start gui --project ../my-plant
 ```
 
-Open:
+The new project contains five files. The IDE opens it in the browser and creates a
+**Checked** build without a project-local install. Add equipment from the diagram or import
+project-owned TypeScript. A new empty project has no driver, measurements or Applied build.
+Saving source does not apply it to equipment; automatic development preview is limited to a
+declared simulator. Use `--manual` to disable that preview.
 
-```text
-http://localhost:3000
-```
+The installed executable uses the same commands: `saturn init ../my-plant` and
+`saturn gui --project ../my-plant`. `saturn serve --project ../my-plant` starts the same
+workspace host without opening a browser. See [First project](docs/quickstart.md) for the
+checked/source/runtime steps and standalone TypeScript setup.
+
+For the complete pumping-station example, clone `Pom4H/saturn-examples` next to this checkout,
+install that project's dependencies (GitHub SSH access or an HTTPS credential helper is needed
+for its pinned core dependency), and run
+`bun start gui --project ../saturn-examples/pumping-station`. You can also copy that
+example explicitly with `bun start init ../station-demo --template pumping-station` and install
+dependencies in the copy.
 
 SQLite works without configuration. PostgreSQL can be selected with `DATABASE_URL`.
 

@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { free, type Equipment, type Pipe, type Cable, type Point, type Project } from '../src/core';
+import demo from '@saturn/example';
+import { canonical } from '../src/core/artifact';
+import { decodeProject } from '../src/runtime/decode-project';
 import { connectionTip, routeConnections, type PhysicalRoute } from '../src/topology';
 import { geometryRevision } from '../src/shell/model/geometry-revision';
 
@@ -60,8 +63,50 @@ test('an obstacle entering the retained corridor forces real replanning',()=>{
 });
 test('retargeting preserves ordered authored routing waypoints',()=>{
   const project=fixture(),via=[{x:300,y:-100},{x:600,y:-100}];project.pipes[0]={...project.pipes[0]!,via};
-  const routes=routeConnections(project),next={...project,equipment:project.equipment.map(e=>e.id==='A'?{...e,y:e.y+1}:e)},moved=routeConnections(next,{project,routes});
-  assert.equal(moved[0]!.valid,true);for(const point of via)assert.equal(hasPoint(moved[0]!,point),true);
+  let previous={project,routes:routeConnections(project)};
+  for(let frame=1;frame<=40;frame++){
+    const next={...project,equipment:project.equipment.map(e=>e.id==='A'?{...e,x:e.x+frame*2,y:e.y-Math.round(frame*1.5)}:e)},moved=routeConnections(next,previous);
+    assert.equal(moved[0]!.valid,true,`frame ${frame}`);
+    for(const point of via)assert.equal(hasPoint(moved[0]!,point),true,`waypoint ${point.x} at frame ${frame}`);
+    assert(moved[0]!.points.length<=16,`waypoint route grew at frame ${frame}`);
+    previous={project:next,routes:moved};
+  }
+  const blockedProject={...project,equipment:project.equipment.map(e=>e.id==='A'?{...e,x:e.x+88,y:e.y-66}:e)};
+  assert.equal(routeConnections(blockedProject,previous)[0]!.valid,false);
+});
+test('a legacy cache with many bends is replanned within the normal route budget',()=>{
+  const project=fixture(),via=[{x:300,y:-100},{x:600,y:-100}];project.pipes[0]={...project.pipes[0]!,via};
+  const original=routeConnections(project)[0]!;
+  const noisy={...original,points:[original.points[0]!,...Array.from({length:100},()=>original.points[1]!),...original.points.slice(1)]};
+  const next={...project,equipment:project.equipment.map(e=>e.id==='A'?{...e,y:e.y+1}:e)};
+  const repaired=routeConnections(next,{project,routes:[noisy]})[0]!;
+  assert.equal(repaired.valid,true);
+  assert(repaired.points.length<20);
+  for(const point of via)assert.equal(hasPoint(repaired,point),true);
+});
+test('station pipe stays compact through a diagonal drag and after the saved drop',()=>{
+  const initial=decodeProject(canonical(demo));
+  const pump=initial.equipment.find(e=>e.id==='P-01')!;
+  let previous={project:initial,routes:routeConnections(initial)};
+  const corridorY=yAt(previous.routes.find(item=>item.id==='suction')!,-200);
+  for(let frame=1;frame<=100;frame++){
+    const project={...initial,equipment:initial.equipment.map(e=>e.id===pump.id?{...e,x:pump.x+2*frame,y:pump.y-Math.round(frame*1.5)}:e)};
+    const routes=routeConnections(project,previous),pipe=project.pipes.find(edge=>edge.id==='suction')!,route=routes.find(item=>item.id===pipe.id)!;
+    assert.equal(route.valid,true,`frame ${frame}`);
+    assert(route.points.length<=12,`frame ${frame} grew to ${route.points.length} bends`);
+    assert.deepEqual(route.points[0],connectionTip(project,pipe,'from'));
+    assert.deepEqual(route.points.at(-1),connectionTip(project,pipe,'to'));
+    assert.equal(noRetracing(route.points),true);
+    assert.equal(yAt(route,-200),corridorY,`clear source corridor shifted at frame ${frame}`);
+    assert(route.points.slice(1).every((point,index)=>{
+      const last=route.points[index]!;
+      return Number(point.x!==last.x)+Number(point.y!==last.y)+Number(point.z!==last.z)===1;
+    }),`frame ${frame} is not orthogonal`);
+    previous={project,routes};
+  }
+  const saved=decodeProject(canonical(previous.project));
+  const afterDrop=routeConnections(saved,previous).find(item=>item.id==='suction')!;
+  assert.deepEqual(afterDrop.points,previous.routes.find(item=>item.id==='suction')!.points);
 });
 test('a translated and elevated device exposes a world-space connection tip',()=>{
   const project=fixture('cable');project.equipment[0]={...project.equipment[0]!,x:1000,y:200,z:300};
@@ -76,6 +121,14 @@ test('a loose cable end keeps its authored world-space height and placement',()=
 test('a loose end placed inside equipment is not reported as a valid straight cable',()=>{
   const project=fixture('cable');project.cables![0]={...project.cables![0]!,to:free(project.cables![0]!.to,{x:450,y:100,z:0})};
   assert.equal(routeConnections(project)[0]!.valid,false);
+});
+test('moving the station pump onto a fixed free cable end reports its clearance collision',()=>{
+  const initial=decodeProject(canonical(demo)),at=(dx:number)=>({...initial,equipment:initial.equipment.map(e=>e.id==='P-01'?{...e,x:e.x+dx}:e)});
+  const clear=routeConnections(at(28)).find(route=>route.id==='run-command')!;
+  const blocked=routeConnections(at(29)).find(route=>route.id==='run-command')!;
+  assert.equal(clear.valid,true);
+  assert.equal(blocked.valid,false);
+  assert.equal(blocked.error,'Free end overlaps equipment clearance');
 });
 test('3D geometry identity ignores placement, but retains definition and port changes',()=>{
   const project=fixture(),revision=geometryRevision(project,'edit');

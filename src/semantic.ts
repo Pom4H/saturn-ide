@@ -1,7 +1,7 @@
 import { isAttached, type ConnectionEnd, equipmentSignals, text, type Hmi, type Locale, type Project, type Signal, type Text } from './core';
 import { canonical } from './core/artifact';
 
-export type SemanticKind='project'|'equipment'|'signal'|'connection'|'alarm'|'report'|'hmi';
+export type SemanticKind='project'|'system'|'equipment'|'signal'|'connection'|'alarm'|'report'|'monitor'|'hmi';
 export interface SemanticNode {
   semanticId:string; kind:SemanticKind; id:string; label:Text; signature:string;
   owner?:string; uses:readonly string[]; usedBy:readonly string[];
@@ -22,14 +22,19 @@ export function semanticGraph(project:Project):SemanticGraph {
   drafts.push({semanticId:`project:${project.id}`,kind:'project',id:project.id,label:project.label,signature:sig({hmis:project.hmis?.map(hmi=>({id:hmi.id,label:hmi.label,width:hmi.width,height:hmi.height,equipment:hmi.equipment.map(e=>e.semanticId??`equipment:${e.id}`)}))??[],hmi:project.hmi?{width:project.hmi.width,height:project.hmi.height,source:project.hmi.source,controller:project.hmi.controller,equipment:project.hmi.equipment.map(e=>e.semanticId??`equipment:${e.id}`)}:null}),uses:[]});
   const equipmentIds=new Map(project.equipment.map(e=>[e.id,equipmentIdentity(e)]));
   const signalIds=new Map(Object.values(project.signals).map(s=>[s.id,signalIdentity(s)]));
+  for(const group of project.systems??[])drafts.push({semanticId:`system:${group.id}`,kind:'system',id:group.id,label:group.label,
+    signature:sig({parent:group.parent??null}),uses:[
+      ...(project.systems??[]).filter(child=>child.parent===group.id).map(child=>`system:${child.id}`),
+      ...project.equipment.filter(e=>e.system===group.id).map(equipmentIdentity),
+    ]});
   for(const equipment of project.equipment){
     const owned=equipmentSignals(equipment).map(signalIdentity).sort();
-    drafts.push({semanticId:equipmentIdentity(equipment),kind:'equipment',id:equipment.id,label:equipment.label,signature:sig({kind:equipment.kind,icon:equipment.icon,x:equipment.x,y:equipment.y,z:equipment.z??0,description:equipment.description??null,ports:equipment.ports,capabilities:equipment.capabilities,knowledge:equipment.knowledge,alarms:equipment.alarms.map(alarm=>({id:alarm.id,signal:signalIdentity(alarm.signal),above:alarm.above,hysteresis:alarm.hysteresis??null,label:alarm.label}))}),uses:owned});
+    drafts.push({semanticId:equipmentIdentity(equipment),kind:'equipment',id:equipment.id,label:equipment.label,signature:sig({kind:equipment.kind,icon:equipment.icon,x:equipment.x,y:equipment.y,z:equipment.z??0,system:equipment.system??null,description:equipment.description??null,ports:equipment.ports,capabilities:equipment.capabilities,knowledge:equipment.knowledge,alarms:equipment.alarms.map(alarm=>({id:alarm.id,signal:signalIdentity(alarm.signal),above:alarm.above,hysteresis:alarm.hysteresis??null,label:alarm.label}))}),uses:owned});
   }
   for(const signal of Object.values(project.signals)){
     const owner=signal.owner?.kind==='equipment'?equipmentIds.get(signal.owner.id):undefined;
     const dependencies=signal.origin&&(signal.origin.kind==='derived'||signal.origin.kind==='aggregate')?signal.origin.dependencies.map(id=>signalIds.get(id)??`signal:${id}`):[];
-    drafts.push({semanticId:signalIdentity(signal),kind:'signal',id:signal.id,label:signal.label??signal.id,signature:sig({type:typeof signal.initial,writable:signal.writable??false,unit:signal.unit??null,dimension:signal.dimension??null,min:signal.min??null,max:signal.max??null,staleAfter:signal.staleAfter??null,origin:signal.origin??null,binding:signal.binding??null,description:signal.description??null}),owner,uses:dependencies});
+    drafts.push({semanticId:signalIdentity(signal),kind:'signal',id:signal.id,label:signal.label??signal.id,signature:sig({type:typeof signal.initial,writable:signal.writable??false,unit:signal.unit??null,dimension:signal.dimension??null,min:signal.min??null,max:signal.max??null,staleAfter:signal.staleAfter??null,exchange:signal.exchange??null,storage:signal.storage??null,origin:signal.origin??null,binding:signal.binding??null,description:signal.description??null}),owner,uses:dependencies});
   }
   for(const edge of [...project.pipes,...project.cables??[]]){
     const signal=edge.kind==='pipe'?edge.flow:edge.signal;
@@ -41,6 +46,9 @@ export function semanticGraph(project:Project):SemanticGraph {
   }
   for(const alarm of project.alarms)drafts.push({semanticId:`alarm:${alarm.id}`,kind:'alarm',id:alarm.id,label:alarm.label,signature:sig({above:alarm.above,hysteresis:alarm.hysteresis??null}),uses:[signalIds.get(alarm.signal.id)??signalIdentity(alarm.signal)]});
   for(const report of project.reports??[])drafts.push({semanticId:`report:${report.id}`,kind:'report',id:report.id,label:report.label,signature:'sql' in report?sig(report):sig({bucketMs:report.bucketMs,columns:Object.entries(report.columns).sort(([a],[b])=>a.localeCompare(b)).map(([key,column])=>({key,aggregate:column.aggregate,unit:column.unit??null,label:column.label}))}),uses:('sql' in report?report.signals:Object.values(report.columns).map(c=>c.signal)).map(signal=>signalIds.get(signal.id)??signalIdentity(signal)).sort()});
+  for(const group of project.monitoring??[])drafts.push({semanticId:`monitor:${group.id}`,kind:'monitor',id:group.id,label:group.label,
+    signature:sig({description:group.description??null,metrics:group.metrics.map(({signal,...metric})=>({...metric,signal:signalIds.get(signal.id)??signalIdentity(signal)}))}),
+    uses:group.metrics.map(metric=>signalIds.get(metric.signal.id)??signalIdentity(metric.signal)).sort()});
   const screen=(id:string,value:Hmi,label:Text)=>drafts.push({semanticId:`hmi:${id}`,kind:'hmi',id,label,
     signature:sig({...value,equipment:value.equipment.map(e=>equipmentIds.get(e.id)??equipmentIdentity(e)),elements:value.elements?.map(element=>({...element,signal:element.signal?signalIds.get(element.signal.id)??signalIdentity(element.signal):undefined}))}),
     uses:[...value.equipment.map(e=>equipmentIds.get(e.id)??equipmentIdentity(e)),...(value.elements??[]).flatMap(element=>element.signal?[signalIds.get(element.signal.id)??signalIdentity(element.signal)]:[])]});

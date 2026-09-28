@@ -1,0 +1,8 @@
+.report-control-field{white-space:nowrap;color:var(--muted);font-size:11px}
+.report-control-field select{color:var(--text)}
+.report-feedback{max-width:720px;margin:24px auto;padding:16px 20px;border:1px solid var(--bad);border-radius:8px;background:color-mix(in srgb,var(--bad) 5%,var(--panel));font-size:12px;line-height:1.5}
+.report-feedback strong{display:block;font-size:14px}.report-feedback p{margin:8px 0 0}.report-feedback details{margin-top:8px}.report-feedback code{display:block;margin-top:6px;overflow-wrap:anywhere;white-space:normal}
+.report-loading{border-style:dashed}.report-loading h2{margin:12px 0 8px}
+.report-pending{border-color:var(--border);background:var(--panel)}
+.report-empty-result{padding:10px 12px;border:1px dashed var(--border);border-radius:6px;color:var(--muted);font-size:12px}
+@media(max-width:760px){.report-control-field{width:100%;justify-content:space-between}.report-control-field select{max-width:72%;min-width:0}.report-feedback{margin:14px 10px}}

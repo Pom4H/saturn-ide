@@ -5,7 +5,7 @@ import { advancePhase, flowOf, rpmOf } from '../motion';
 export function useSvgMotion(root: RefObject<SVGSVGElement | null>, project: Project, snapshot: Snapshot, focus?: string) {
   const latest = useRef({ project, snapshot }); latest.current = { project, snapshot };
   const phases = useRef(new Map<string, number>());
-  const nodes = useRef<{ rotors: { equipment: Equipment; node: SVGGElement }[]; pipes: { pipe: Pipe; node: SVGPathElement }[] }>({ rotors: [], pipes: [] });
+  const nodes = useRef<{ rotors: { equipment: Equipment; node: SVGGElement }[]; pipes: { pipe: Pipe; node: SVGPathElement; fluid: SVGPathElement | null }[] }>({ rotors: [], pipes: [] });
   const paint = useRef<(dt: number) => void>(() => {});
   useLayoutEffect(() => {
     const svg = root.current;
@@ -18,7 +18,7 @@ export function useSvgMotion(root: RefObject<SVGSVGElement | null>, project: Pro
       }),
       pipes: project.pipes.flatMap(pipe => {
         const node = svg.querySelector<SVGPathElement>(`[data-pipe="${pipe.id}"] .flow`);
-        return node ? [{ pipe, node }] : [];
+        return node ? [{ pipe, node, fluid:svg.querySelector<SVGPathElement>(`[data-pipe="${pipe.id}"] .pipe-fluid`) }] : [];
       }),
     };
     const alive = new Set([...project.equipment, ...project.pipes].map(e => e.id));
@@ -37,11 +37,12 @@ export function useSvgMotion(root: RefObject<SVGSVGElement | null>, project: Pro
         phases.current.set(equipment.id, phase); node.style.animation = 'none';
         node.style.transform = `rotate(${phase * 360}deg)`; node.dataset.phase = String(phase);
       }
-      for (const { pipe, node } of nodes.current.pipes) {
+      for (const { pipe, node, fluid } of nodes.current.pipes) {
         const flow = flowOf(pipe, p, s), rate = reduced.matches || flow === null ? 0 : Math.sign(flow) * Math.min(2, Math.abs(flow) / 18);
         const phase = advancePhase(phases.current.get(pipe.id) ?? 0, rate, dt);
         phases.current.set(pipe.id, phase); node.style.animation = 'none';
-        node.style.strokeDashoffset = String(-phase * 46); node.style.opacity = flow === null || flow === 0 ? '0' : '.8';
+        node.style.strokeDashoffset = String(-phase * 48); node.style.opacity = flow === null || flow === 0 ? '0' : '.8';
+        if(fluid)fluid.style.stroke=flow===null?'var(--pipe-stale)':'var(--pipe-fill)';
       }
     };
     const tick = (now: number) => {

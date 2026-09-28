@@ -66,7 +66,7 @@ export class ShellSession {
     });
   }
   setSurface(editor: EditorId) {
-    if (this.host === 'terminal' && (editor === 'hmi' || editor === 'performance')) throw new Error('This host has no graphical HMI renderer');
+    if (this.host === 'terminal' && (editor === 'hmi' || editor === 'performance' || editor === 'scenarios')) throw new Error('This host has no renderer for this surface');
     const source = this.catalog.resources.find(item => item.source?.path === this.navigation.source && availableEditors(item,this.host).includes('source'));
     const current = this.catalog.resources.find(item => item.uri === this.navigation.active?.uri);
     const root = this.catalog.resources.find(item => item.uri === this.catalog.project);

@@ -20,7 +20,9 @@ export function reportCapsule(signals:readonly Signal[],series:ReadonlyMap<strin
 let activeQueries=0;
 async function query(task:QueryTask):Promise<ReportOutput>{
   if(activeQueries>=4)throw new ReportError(429,'Too many running reports');
-  const child=Bun.spawn([process.execPath,fileURLToPath(new URL('./report-query.ts',import.meta.url))],{stdin:new Blob([JSON.stringify(task)]),stdout:'pipe',stderr:'pipe',env:{...process.env,BUN_BE_BUN:'1',TZ:'UTC'}});
+  // The authored host runs TypeScript, while a portable release ships only bundled JavaScript.
+  const queryFile=new URL(import.meta.url.endsWith('.mjs')?'./report-query.mjs':'./report-query.ts',import.meta.url);
+  const child=Bun.spawn([process.execPath,fileURLToPath(queryFile)],{stdin:new Blob([JSON.stringify(task)]),stdout:'pipe',stderr:'pipe',env:{...process.env,BUN_BE_BUN:'1',TZ:'UTC'}});
   activeQueries++;let timedOut=false;const timer=setTimeout(()=>{timedOut=true;child.kill('SIGKILL');},5000);
   try{const [out,error,code]=await Promise.all([new Response(child.stdout).text(),new Response(child.stderr).text(),child.exited]);if(timedOut)throw new ReportError(408,'Report SQL exceeded 5 seconds');if(code!==0)throw new ReportError(422,error.slice(0,2000)||'Report process failed');return JSON.parse(out) as ReportOutput;}finally{activeQueries--;clearTimeout(timer);}
 }

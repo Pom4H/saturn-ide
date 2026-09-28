@@ -26,7 +26,7 @@ export function CommandTerminal({commands}:{commands:CommandShell}) {
   return <box flexGrow={1} flexDirection="column" backgroundColor="#181c23" padding={1}>
     <text fg="#8cafd9">/project   /runtime   /source   /reports   /git   /ai</text>
     <scrollbox flexGrow={1}>
-      {!state.entries.length&&<text fg="#aab4c5">Saturn command shell · Tab открывает команды и контекст проекта.{ '\n' }/ai context — контекст для AI · /source insert — TypeScript в общий черновик.</text>}
+      {!state.entries.length&&<text fg="#aab4c5">Saturn command shell · Tab открывает команды и контекст проекта.{ '\n' }/project context — сводка объекта · /source insert — TypeScript в общий черновик.</text>}
       {state.entries.map(entry=><box key={entry.id} flexDirection="column" marginBottom={1}><text fg="#8cafd9">{entry.command}</text><text fg={entry.ok?'#d9e0ea':'#f0979d'}>{entry.text}</text></box>)}
     </scrollbox>
     {!!suggestions.length&&<box height={suggestions.length+2} flexShrink={0} flexDirection="column" border borderColor="#4b5d77" title={`Подсказки ${state.selected+1}/${state.suggestions.length} · Tab`}>

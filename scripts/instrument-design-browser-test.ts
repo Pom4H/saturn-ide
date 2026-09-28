@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import {mkdirSync,mkdtempSync,rmSync,writeFileSync} from 'node:fs';
+import {join,resolve} from 'node:path';
+import {chromium,expect} from 'playwright/test';
+import {createApp} from '../src/host/dev';
+
+const root=resolve(import.meta.dir,'..'),output=join(root,'artifacts/instrument-design');mkdirSync(output,{recursive:true});
+const temporary=mkdtempSync(join(root,'.saturn/instrument-design-')),projectDir=join(temporary,'project');mkdirSync(projectDir);
+writeFileSync(join(projectDir,'project.ts'),`import {device,pipe,project,pump,signal,tank,terminal,valve} from '@saturn/core';
+const gauge=device({id:'pressure-gauge',icon:'sensor',ports:{},signals:{value:signal({initial:0,unit:'bar',min:0,max:16})},capabilities:{diagram:{width:100,height:110},instrument:{form:'dial',field:'value',min:0,max:16,precision:1,mount:{pipe:'discharge'}}}});
+const thermometer=device({id:'temperature-indicator',icon:'sensor',ports:{},signals:{value:signal({initial:0,unit:'°C'})},capabilities:{diagram:{width:100,height:110},instrument:{form:'digital',field:'value',precision:0,mount:{pipe:'delivery'}}}});
+const meter=device({id:'inline-flowmeter',icon:'sensor',ports:{inlet:terminal({x:0,y:55,z:46,side:'left',medium:'fluid',family:'water',role:'sink'}),outlet:terminal({x:120,y:55,z:46,side:'right',medium:'fluid',family:'water',role:'source'})},signals:{value:signal({initial:0,unit:'m³/h'})},capabilities:{diagram:{width:120,height:110},instrument:{form:'inline',field:'value',precision:1}}});
+const reservoir=tank('TK-01',{label:'Резервуар',x:0,y:250,level:signal({initial:64,unit:'%'})});
+const booster=pump('P-01',{label:'Насос',x:260,y:300});
+const flowmeter=meter('FT-01',{label:'Расходомер',x:570,y:315});
+const outlet=valve('V-01',{label:'Клапан',x:850,y:260});
+const pressure=gauge('PT-01',{label:'Давление',x:400,y:55});
+const temperature=thermometer('TT-01',{label:'Температура',x:690,y:200});
+export default project({id:'instrument-design',label:'Приборы на станции',equipment:[reservoir,booster,flowmeter,outlet,pressure,temperature],pipes:[pipe('suction',{from:reservoir.ports.outlet,to:booster.ports.inlet,flow:flowmeter.value}),pipe('discharge',{from:booster.ports.outlet,to:flowmeter.ports.inlet,flow:flowmeter.value}),pipe('delivery',{from:flowmeter.ports.outlet,to:outlet.ports.inlet,flow:flowmeter.value})]});`);
+writeFileSync(join(projectDir,'server.ts'),`import type {Driver,Value} from '@saturn/core';
+import project from './project';
+const driver:Driver={mode:'simulation',async start({publish}){
+  const initial=Object.fromEntries(Object.values(project.signals).map(signal=>[signal.id,signal.initial])) as Record<string,Value>;
+  const tick=()=>publish({...initial,'TK-01.level':64,'P-01.rpm':1450,'P-01.run':true,'V-01.opening':78,'PT-01.value':6.2,'TT-01.value':72,'FT-01.value':18.4});
+  await tick();const timer=setInterval(()=>void tick(),1000);return()=>clearInterval(timer);
+}};
+export default driver;`);
+const app=await createApp({projectDir,dataDir:join(temporary,'data'),port:0,preview:'simulation'});
+const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']}),context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage(),errors:string[]=[];
+page.on('pageerror',error=>errors.push(error.message));await page.addInitScript(()=>localStorage.setItem('saturn.locale','ru'));
+try{
+  assert.deepEqual(app.state().problems,[]);
+  assert.equal(app.state().project.equipment.filter(e=>e.capabilities.instrument).length,3);
+  await page.goto(String(app.server.url));
+  const instruments=page.locator('.scene [data-anatomy="saturn-instrument"]');await expect(instruments).toHaveCount(3);
+  await expect.poll(async()=>await page.locator('.scene [data-anatomy="saturn-instrument"][data-reading="good"]').count(),{timeout:10000}).toBe(3);
+  for(const form of ['dial','digital','inline'])await expect(page.locator(`.scene [data-anatomy="saturn-instrument"][data-form="${form}"]`)).toHaveCount(1);
+  await expect(page.locator('.scene [data-instrument-mount]')).toHaveCount(2);
+  await expect(instruments.nth(0)).toContainText('18.4');
+  await page.screenshot({path:join(output,'diagram-2d.png'),fullPage:true});
+  await page.getByRole('button',{name:'3D',exact:true}).click();
+  const spatial=page.locator('.scene3d');await expect(spatial).toBeVisible({timeout:20000});await expect(spatial).toHaveAttribute('data-instrument-count','3',{timeout:20000});
+  await expect(spatial).toHaveAttribute('data-instrument-mount-count','2',{timeout:20000});
+  await page.waitForFunction(()=>Number(document.querySelector<HTMLElement>('.scene3d')?.dataset.frames)>8);
+  assert(await spatial.locator('.scene3d-equipment-label:visible').count()>=3,'3D instrument labels are missing');
+  await page.screenshot({path:join(output,'scene-3d.png'),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:join(output,'scene-3d-mobile.png'),fullPage:true});
+  const width=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth}));
+  assert(width.document<=width.viewport+1,`Instrument scene overflow: ${JSON.stringify(width)}`);
+  assert.deepEqual(errors,[]);
+  console.log(`PASS: project-owned dial, digital and inline instruments show measured readings in 2D, use the same style in 3D, retain labels and fit mobile; no page errors. Frames: ${output}`);
+}finally{await context.close();await browser.close();await app.close();rmSync(temporary,{recursive:true,force:true});}

@@ -4,7 +4,7 @@ interface Box {id:string;x:number;y:number;right:number;bottom:number}
 export const connections=(project:Project)=>([...project.pipes,...project.cables??[]]);
 const size=(e:Equipment)=>({width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150});
 const boxesFor=(project:Project,clearance:number):Box[]=>project.equipment.map(e=>{const g=size(e);return{id:e.id,x:e.x-clearance,y:e.y-clearance-28,right:e.x+g.width+clearance,bottom:e.y+g.height+clearance};});
-const blocked=(boxes:readonly Box[],a:Point,b:Point,ignore='')=>boxes.some(r=>r.id!==ignore&&(a.x===b.x?a.x>r.x+.01&&a.x<r.right-.01&&Math.max(a.y,b.y)>r.y+.01&&Math.min(a.y,b.y)<r.bottom-.01:a.y===b.y?a.y>r.y+.01&&a.y<r.bottom-.01&&Math.max(a.x,b.x)>r.x+.01&&Math.min(a.x,b.x)<r.right-.01:true));
+const blocked=(boxes:readonly Box[],a:Point,b:Point,ignore='')=>a.x===b.x&&a.y===b.y&&a.z===b.z?false:boxes.some(r=>r.id!==ignore&&(a.x===b.x?a.x>r.x+.01&&a.x<r.right-.01&&Math.max(a.y,b.y)>r.y+.01&&Math.min(a.y,b.y)<r.bottom-.01:a.y===b.y?a.y>r.y+.01&&a.y<r.bottom-.01&&Math.max(a.x,b.x)>r.x+.01&&Math.min(a.x,b.x)<r.right-.01:true));
 const owner=(end:ConnectionEnd)=>isAttached(end)?end.device:'';
 const routeClear=(route:PhysicalRoute,boxes:readonly Box[],edge:Pipe|Cable)=>route.points.length>1&&route.points.slice(1).every((point,index)=>
   !blocked(boxes,route.points[index]!,point,index===0?owner(edge.from):index===route.points.length-2?owner(edge.to):''));
@@ -73,24 +73,35 @@ function retargetRoute(project:Project,edge:Pipe|Cable,old:PhysicalRoute,boxes:r
   const interior=old.points.slice(1,-1);
   // A straight two-point route has no corridor to retain.
   if(!interior.length)return;
-  // Try the least trimmed corridor first; bound work independently of routing-grid size.
-  const trims:{left:number;right:number}[]=[];
-  for(let left=0;left<Math.min(4,interior.length);left++)for(let right=0;right<Math.min(4,interior.length-left);right++)trims.push({left,right});
-  trims.sort((a,b)=>a.left+a.right-b.left-b.right);
-  for(const {left,right} of trims){
+  // The former repair could accumulate hundreds of tiny bends. Replanning one
+  // such legacy cache entry is cheaper than searching its every possible trim.
+  if(interior.length>32)return;
+  // A sequence of small diagonal drags can leave one new bend per frame. Search all
+  // trims at the moving end, then prefer the simplest clear repair. The stationary
+  // end keeps its corridor. If both ends move, cap the Cartesian search and let a
+  // fresh route handle an already pathological cached path.
+  const movedFrom=!samePoint(old.points[0]!,start),movedTo=!samePoint(old.points.at(-1)!,end);
+  const extent=movedFrom&&movedTo?Math.min(8,interior.length-1):interior.length-1;
+  const leftLimit=movedFrom?extent:0,rightLimit=movedTo?extent:0;
+  let best:PhysicalRoute|undefined,bestScore=Infinity,bestTrim=Infinity;
+  for(let left=0;left<=leftLimit;left++)for(let right=0;right<=Math.min(rightLimit,interior.length-left-1);right++){
     const kept=interior.slice(left,interior.length-right),first=kept[0]!,last=kept.at(-1)!;
-    let best:PhysicalRoute|undefined,cost=Infinity;
+    // A small preference for an established long corridor avoids shifting the
+    // entire pipe for each pixel of drag. Its cap keeps a detour from winning.
+    const retained=Math.min(pathLength(kept),600)*0.02;
     for(const prefix of bridges(from,first))for(const suffix of bridges(last,to)){
-      // Keep terminal stubs explicit: routeClear may ignore only the owning equipment there.
+      // Start with terminal stubs: routeClear may ignore the owning equipment
+      // only on those outward segments.
       const middle=compactPoints([...prefix,...kept,...suffix]);
-      const points=[start,...middle,end].filter((p,i,all)=>i===0||!samePoint(p,all[i-1]!));
+      const points=compactPoints([start,...middle,end]);
       const candidate={...old,points};
-      const length=pathLength(points)+points.length*4;
-      if(length>=cost||retraces(points)||!routeClear(candidate,boxes,edge)||!keepsWaypoints(points,edge.via))continue;
-      best=candidate;cost=length;
+      const score=pathLength(points)+points.length*4-retained,trim=left+right;
+      const worse=score>bestScore+1e-7||(Math.abs(score-bestScore)<=1e-7&&trim>=bestTrim);
+      if(worse||retraces(points)||!routeClear(candidate,boxes,edge)||!keepsWaypoints(points,edge.via))continue;
+      best=candidate;bestScore=score;bestTrim=trim;
     }
-    if(best)return best;
   }
+  return best;
 }
 // Port-aligned, bounded A* visibility-grid router. Adapted from Saturn plant/routing.ts.
 // A crossing is not a connection. Shared logical nodes are declared equipment/ports only.
@@ -100,6 +111,9 @@ function routeConnectionWithBoxes(project:Project,edge:Pipe|Cable,boxes:readonly
   const empty=(p:Point)=>!boxes.some(b=>p.x>b.x+.01&&p.x<b.right-.01&&p.y>b.y+.01&&p.y<b.bottom-.01);
   const result:PhysicalRoute={id:edge.id,kind:edge.kind,points:[],valid:true};
   const fail=(error:string):PhysicalRoute=>({...result,valid:false,error,points:[start,s,t,end]});
+  // A disconnected end is an authored world-space point. When a device moves
+  // onto it, report that collision directly instead of blaming a port stub.
+  if((!isAttached(edge.from)&&!empty(start))||(!isAttached(edge.to)&&!empty(end)))return fail('Free end overlaps equipment clearance');
   if(blocked(boxes,start,s,owner(edge.from))||blocked(boxes,t,end,owner(edge.to)))return fail('Terminal stub intersects equipment');
   const via=[{...s,z:high},...(edge.via??[]).map(p=>({...p,z:high})),{...t,z:high}],points:Point[]=[start,s,{...s,z:high}];
   let budget=40000;
@@ -130,10 +144,11 @@ export function routeConnection(project:Project,edge:Pipe|Cable):PhysicalRoute {
   return preferred.valid&&routeClear(preferred,boxes,edge)?preferred:routeConnectionWithBoxes(project,edge,boxes);
 }
 /** Keep a valid physical path when an unrelated device moves without touching it. */
-export function routeConnections(project:Project,previous?:{project:Project;routes:readonly PhysicalRoute[]}):PhysicalRoute[] {
+/** Route only the requested view projection. Omitted edges stay authored and can be routed by another page. */
+export function routeConnections(project:Project,previous?:{project:Project;routes:readonly PhysicalRoute[]},edgeIds?:ReadonlySet<string>):PhysicalRoute[] {
   const priorEdges=new Map(previous?connections(previous.project).map(edge=>[edge.id,edge]):[]);
   const priorRoutes=new Map(previous?.routes.map(route=>[route.id,route])??[]);
-  return connections(project).map(edge=>{
+  return connections(project).filter(edge=>!edgeIds||edgeIds.has(edge.id)).map(edge=>{
     const oldEdge=priorEdges.get(edge.id),oldRoute=priorRoutes.get(edge.id);
     if(!previous||!oldEdge||!oldRoute||!oldRoute.valid||edge.kind!==oldEdge.kind||
       JSON.stringify(edge.from)!==JSON.stringify(oldEdge.from)||JSON.stringify(edge.to)!==JSON.stringify(oldEdge.to)||

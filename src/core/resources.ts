@@ -1,6 +1,6 @@
 /** File-like views of the existing project. This index is derived, never persisted as a second project. */
 export type ResourceKind = 'project' | 'device' | 'report' | 'plugin' | 'target' | 'hmi' | 'file';
-export type EditorId = 'diagram' | 'source' | 'signals' | 'reports' | 'hmi' | 'docs' | 'targets' | 'git' | 'dependencies' | 'performance';
+export type EditorId = 'diagram' | 'source' | 'signals' | 'reports' | 'hmi' | 'docs' | 'targets' | 'git' | 'dependencies' | 'performance' | 'scenarios';
 export type ShellHost = 'browser' | 'terminal';
 export interface SourceLocation { path: string; from?: number; to?: number }
 export interface ProjectResource {
@@ -29,15 +29,16 @@ export type ShellLocale = keyof ProjectResource['name'];
 export const editorNames: Record<EditorId, { en: string; ru: string }> = {
   diagram: { en: 'Diagram', ru: 'Схема' }, source: { en: 'Show in code', ru: 'Показать в коде' },
   signals: { en: 'Signals', ru: 'Сигналы' }, reports: { en: 'Reports', ru: 'Отчёты' },
-  performance: {en:'Performance',ru:'Производительность'},
+  performance: {en:'Asset status',ru:'Состояние объекта'},
+  scenarios: {en:'Scenarios',ru:'Сценарии'},
   dependencies:{en:'Dependencies',ru:'Зависимости'},
-  hmi: { en: 'HMI', ru: 'HMI' }, docs: { en: 'Documentation', ru: 'Документация' }, targets: { en: 'Deployment', ru: 'Развёртывание' }, git: { en: 'Git', ru: 'Git' },
+  hmi: { en: 'HMI', ru: 'HMI' }, docs: { en: 'Documentation', ru: 'Документация' }, targets: { en: 'Runtime environment', ru: 'Среда исполнения' }, git: { en: 'Git', ru: 'Git' },
 };
 export const resourceUri = (project: string, kind: ResourceKind, id: string): string =>
   `saturn://${encodeURIComponent(project)}/${kind}/${encodeURIComponent(id)}`;
 /** Every UI delegates capability decisions here; lack of a renderer must not become a fake view. */
 export function availableEditors(resource: ProjectResource, host: ShellHost): EditorId[] {
-  return resource.editors.filter(editor => !(host === 'terminal' && (editor === 'hmi' || editor === 'performance')) && (editor !== 'source' || !!resource.source));
+  return resource.editors.filter(editor => !(host === 'terminal' && (editor === 'hmi' || editor === 'performance' || editor === 'scenarios')) && (editor !== 'source' || !!resource.source));
 }
 export function findResources(catalog: ResourceCatalog, query: string, locale: ShellLocale): ProjectResource[] {
   const words = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);

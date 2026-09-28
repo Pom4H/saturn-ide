@@ -11,6 +11,10 @@ function validatePlan(plan: ScadaImportPlan): void {
   if (!plan || !/^[a-z][a-z0-9-]{0,63}$/.test(plan.importer)) throw new HttpError(400, 'Invalid importer plan');
   if (!/^[a-f0-9]{64}$/.test(plan.sourceFingerprint)) throw new HttpError(400, 'Invalid source fingerprint');
   if (!Array.isArray(plan.files) || plan.files.length > 500) throw new HttpError(413, 'Importer generated too many files');
+  if (!Array.isArray(plan.diagnostics) || plan.diagnostics.some(item => !item || !['info', 'warning', 'blocker'].includes(item.severity))) {
+    throw new HttpError(400, 'Invalid importer diagnostics');
+  }
+  if (plan.diagnostics.some(item => item.severity === 'blocker')) throw new HttpError(409, 'Importer plan has blocking diagnostics');
   const prefix = `imports/${plan.importer}/`;
   const paths = new Set<string>();
   let bytes = Buffer.byteLength(plan.projectSource);

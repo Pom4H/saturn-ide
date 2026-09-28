@@ -1,5 +1,6 @@
 import { useId, type ReactNode } from "react";
 import { equipmentSignal, type Equipment, type Locale, type Snapshot } from "../core";
+import {instrumentReading,instrumentStyle} from './instrument-style';
 
 // Anatomy and native coordinates ported from Pom4H/saturn, src/equipment-svg.ts
 // at 90da21a1885a72022b7a2d1b45cb36993bee1597. No per-symbol scaling or connector adapters.
@@ -9,9 +10,45 @@ function Rect({ x, y, w, h, r = 2, fill = metal }: { x: number; y: number; w: nu
 }
 function Bolt({ x, y, r = 2 }: { x: number; y: number; r?: number }) { return <circle cx={x} cy={y} r={r} fill="#78949f" stroke="#eff6f7" strokeWidth={.8} />; }
 function Label({ x, y, children, size = 12 }: { x: number; y: number; children: ReactNode; size?: number }) { return <text x={x} y={y} textAnchor="middle" fontSize={size} fontFamily="ui-monospace, monospace" fontWeight={600} fill="#17485c">{children}</text>; }
+function InstrumentSymbol({equipment,snapshot}:{equipment:Equipment;snapshot:Snapshot}){
+  const reading=instrumentReading(equipment,snapshot)!,form=reading.form;
+  const canonical=form==='inline'?{width:120,height:90}:{width:100,height:110};
+  const width=equipment.capabilities.diagram?.width??canonical.width,height=equipment.capabilities.diagram?.height??canonical.height;
+  const value=`${reading.display}${reading.unit&&reading.value!==null?` ${reading.unit}`:''}`;
+  const s=instrumentStyle;
+  return <g data-anatomy="saturn-instrument" data-form={form} data-reading={reading.value===null?'stale':'good'} transform={`scale(${width/canonical.width} ${height/canonical.height})`}>
+    {form==='dial'?<>
+      <ellipse cx={50} cy={107} rx={39} ry={3} fill={s.ink} opacity={.12}/>
+      <rect x={46} y={80} width={8} height={27} rx={2} fill={s.metal} stroke={s.rim} strokeWidth={1.5}/>
+      <circle cx={50} cy={47} r={43} fill={s.metal} stroke={s.rim} strokeWidth={2.5}/>
+      <circle cx={50} cy={47} r={35} fill={s.face} stroke="#a8c0ca" strokeWidth={1.5}/>
+      {Array.from({length:9},(_,index)=>{const angle=(135+index*270/8)*Math.PI/180;return <line key={index} x1={50+26*Math.cos(angle)} y1={47+26*Math.sin(angle)} x2={50+31*Math.cos(angle)} y2={47+31*Math.sin(angle)} stroke={s.rim} strokeWidth={index%2===0?2:1.2}/>;})}
+      {reading.fraction!==null&&(()=>{const angle=(135+reading.fraction*270)*Math.PI/180;return <line data-part="needle" x1={50} y1={47} x2={50+25*Math.cos(angle)} y2={47+25*Math.sin(angle)} stroke={s.needle} strokeWidth={3.4} strokeLinecap="round"/>;})()}
+      <circle cx={50} cy={47} r={4} fill={s.rim}/>
+      <rect x={9} y={85} width={82} height={23} rx={5} fill={s.face} stroke="#9db8c2"/>
+      <text x={50} y={101} textAnchor="middle" fontFamily="ui-monospace, monospace" fontSize={12} fontWeight={700} fill={reading.value===null?s.stale:s.ink}>{value}</text>
+    </>:form==='digital'?<>
+      <ellipse cx={50} cy={108} rx={38} ry={3} fill={s.ink} opacity={.12}/>
+      <rect x={45} y={82} width={10} height={26} rx={2} fill={s.metal} stroke={s.rim} strokeWidth={1.5}/>
+      <rect x={5} y={7} width={90} height={80} rx={11} fill={s.metal} stroke={s.rim} strokeWidth={2.5}/>
+      <rect x={13} y={18} width={74} height={55} rx={5} fill={s.screen} stroke="#8bb0bd" strokeWidth={1.5}/>
+      <text x={50} y={52} textAnchor="middle" fontFamily="ui-monospace, monospace" fontSize={23} fontWeight={700} fill={reading.value===null?s.stale:s.light}>{reading.display}</text>
+      <text x={50} y={66} textAnchor="middle" fontFamily="ui-monospace, monospace" fontSize={10} fill={s.light}>{reading.unit}</text>
+      <circle cx={82} cy={80} r={2.5} fill={reading.value===null?s.stale:s.fluid}/>
+    </>:<>
+      <rect x={0} y={39} width={120} height={16} rx={3} fill={s.metal} stroke={s.rim} strokeWidth={2}/>
+      {[5,103].map(x=><g key={x}><rect x={x} y={31} width={12} height={32} rx={2} fill={s.metal} stroke={s.rim} strokeWidth={1.5}/><circle cx={x+6} cy={35} r={1.8} fill={s.face}/><circle cx={x+6} cy={59} r={1.8} fill={s.face}/></g>)}
+      <rect x={29} y={3} width={62} height={48} rx={9} fill={s.metal} stroke={s.rim} strokeWidth={2.5}/>
+      <rect x={36} y={10} width={48} height={31} rx={4} fill={s.screen}/>
+      <text x={60} y={31} textAnchor="middle" fontFamily="ui-monospace, monospace" fontSize={14} fontWeight={700} fill={reading.value===null?s.stale:s.light}>{reading.display}</text>
+      <text x={60} y={74} textAnchor="middle" fontFamily="ui-monospace, monospace" fontSize={10} fill={s.ink}>{reading.unit}</text>
+    </>}
+  </g>;
+}
 export function Symbol({ equipment: e, snapshot, locale }: { equipment: Equipment; snapshot: Snapshot; locale: Locale }) {
   const clip = useId().replace(/:/g, "");
   const number = (id: string) => { const s = snapshot.samples[id]; return s?.quality === "good" && typeof s.value === "number" ? s.value : null; };
+  if(e.capabilities.instrument)return <InstrumentSymbol equipment={e} snapshot={snapshot}/>;
   if (e.kind === "tank") {
     const levelSignal=equipmentSignal<number>(e,"level","number"), level=levelSignal?number(levelSignal.id):null, y = 195 - Math.max(0, Math.min(100, level ?? 0)) * 1.44;
     return <g data-anatomy="saturn-tank">

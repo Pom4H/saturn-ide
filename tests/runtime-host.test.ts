@@ -16,7 +16,7 @@ test('portable release runs outside authoring, isolates credentials, CAS applies
   const root = mkdtempSync(join(tmpdir(), 'saturn-runtime-host-')), source = join(root, 'project'), output = join(root, 'release');
   mkdirSync(source); symlinkSync(resolve('node_modules'), join(root, 'node_modules'));
   cpSync('package.json', join(source, 'package.json')); cpSync('bun.lock', join(source, 'bun.lock'));
-  writeFileSync(join(source, 'project.ts'), `import {project,signal} from '@saturn/core';export default project({id:'test-runtime',label:'Test',equipment:[],pipes:[],alarms:[],signals:{n:signal('n',{initial:0,writable:true})}});`);
+  writeFileSync(join(source, 'project.ts'), `import {project,signal,report,reportSchema,numberField,reportColumn} from '@saturn/core';const n=signal('n',{initial:0,writable:true});const schema=reportSchema({value:numberField()});export default project({id:'test-runtime',label:'Test',equipment:[],pipes:[],alarms:[],signals:{n},reports:[report('sql',{label:'SQL',signals:[n],schema,columns:[reportColumn('Value',schema.value)],window:60000,sql:'SELECT COUNT(*) AS value FROM samples'})]});`);
   writeFileSync(join(source, 'server.ts'), `import type {Driver} from '@saturn/core';let n=0;export default {mode:'simulation',async start({publish}){const timer=setInterval(()=>void publish({n:++n}),30);return ()=>clearInterval(timer);},async write(id,value){n=Number(value);}} satisfies Driver;`);
   let child: ReturnType<typeof Bun.spawn> | undefined, blocker: ReturnType<typeof Bun.spawn> | undefined;
   const start = async () => {
@@ -37,6 +37,7 @@ test('portable release runs outside authoring, isolates credentials, CAS applies
     const artifact = await buildRelease(source, output);
     const bundle = readFileSync(join(output, 'runtime.mjs'), 'utf8');
     expect(bundle).not.toContain('typescript'); expect(bundle).not.toContain('workspace/files'); expect(bundle).not.toContain('Bun.build');
+    expect(existsSync(join(output, 'report-query.mjs'))).toBe(true);
     expect(existsSync(join(output, '.compiler'))).toBe(false);
     rmSync(source, { recursive: true }); // The runtime cannot recover by rereading authored source.
     let url = await start();
@@ -55,6 +56,11 @@ test('portable release runs outside authoring, isolates credentials, CAS applies
     await deployRelease({ artifactFile: join(output, 'artifact.json'), url, token: tokens.deploy, expectedPublished: null, expectedApplied: null });
     const reading = async () => (await (await call('/api/state')).json()).snapshot.samples.n.value as number;
     const before = await until(reading, n => n > 2);
+    const reportTo=Date.now(),reportFrom=reportTo-10_000;
+    const reportResponse=await call(`/api/report?id=sql&from=${reportFrom}&to=${reportTo}`);
+    expect(reportResponse.status).toBe(200);
+    const report=await reportResponse.json() as {revision:string;rows:{value:number}[]};
+    expect(report.revision).toBe(artifact.hash);expect(report.rows[0]?.value).toBeGreaterThan(0);
     const diagnostics = await (await call('/api/diagnostics')).json();
     expect(diagnostics.projectId).toBe('test-runtime');
     expect(diagnostics.process.pid).not.toBe(process.pid);

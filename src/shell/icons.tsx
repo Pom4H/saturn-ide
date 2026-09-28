@@ -4,6 +4,7 @@ type IconDef=()=>ReactNode;
 const p={fill:'none',stroke:'currentColor',strokeWidth:1.75,strokeLinecap:'round' as const,strokeLinejoin:'round' as const};
 
 const icons:Readonly<Record<string,IconDef>>={
+  scenarios:()=> <><path {...p} d="m4 3 7 5-7 5zM15 6h6M15 10h6M4 18h17M8 15v6"/></>,
   performance:()=> <><path {...p} d="M3 3v18h18M6 16l4-7 4 4 6-9"/></>,
   server:()=> <><rect {...p} x="4" y="3" width="16" height="7" rx="1"/><rect {...p} x="4" y="14" width="16" height="7" rx="1"/><path {...p} d="M7 6.5h.1M11 6.5h6M7 17.5h.1M11 17.5h6"/></>,
   pause:()=> <><path {...p} d="M8 5v14M16 5v14"/></>,

@@ -1,0 +1,32 @@
+.hmi-overview{background:var(--panel)}
+.hmi-overview-body{flex:1;min-height:0;overflow:auto;padding:clamp(16px,3vw,36px);}
+.hmi-overview-heading{max-width:1500px;margin:0 auto 20px;display:flex;align-items:flex-end;justify-content:space-between;gap:16px}
+.hmi-overview-heading h1{margin:0;font-size:clamp(20px,2vw,28px);font-weight:600;letter-spacing:-.025em}
+.hmi-overview-heading p{margin:7px 0 0;color:var(--muted);font-size:13px}
+.hmi-overview-heading>span{flex-shrink:0;color:var(--muted);font:12px var(--mono)}
+.hmi-device-grid{max-width:1500px;margin:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(310px,100%),1fr));gap:12px;align-content:start}
+.hmi-device-card{min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:15px;text-align:left;color:var(--text);background:var(--editor);border:1px solid var(--border);border-radius:var(--ui-radius-card);cursor:pointer;transition:border-color .12s,background .12s,transform .12s}
+.hmi-device-card:hover{border-color:var(--accent);background:var(--raised);transform:translateY(-1px)}
+.hmi-device-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hmi-device-id{color:var(--muted);font:11px var(--mono)}
+.hmi-device-card>strong{font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+.hmi-device-kind{color:var(--muted);font-size:11px}
+.hmi-instrument-preview{display:block;align-self:center;width:min(120px,100%);height:100px;margin:3px 0 0;overflow:visible}
+.hmi-device-card dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 14px;margin:10px 0 0;padding-top:10px;border-top:1px solid var(--border)}
+.hmi-device-card dl>div{min-width:0}
+.hmi-device-card dt{overflow:hidden;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.hmi-device-card dd{margin:3px 0 0;font:13px var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.hmi-device-card dd.good{color:var(--good)}
+.hmi-device-card dd.unavailable{color:var(--muted)}
+.hmi-device-card dd small{font:11px var(--sans)}
+.hmi-device-empty{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
+.hmi-device-action{align-self:flex-end;margin-top:8px;color:var(--accent);font-size:11px}
+.hmi-overview footer{min-height:43px}
+@media(max-width:600px){
+  .hmi-overview-body{padding:14px}
+  .hmi-overview-heading{align-items:flex-start;margin-bottom:14px}
+  .hmi-overview-heading p{max-width:30ch;line-height:1.4}
+  .hmi-device-grid{grid-template-columns:1fr;gap:9px}
+  .hmi-device-card{padding:12px}
+  .hmi-device-card dl{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

@@ -29,6 +29,38 @@ test('report schedules respect timezone and missing data is retained in version 
  const result=await compareRuns(store,revisions,'a','b',s.semanticId!,3000,1000);expect(result.rows[0]?.delta).toBe(3);expect(result.rows[0]?.coverageA).toBe(1);expect(result.rows[1]?.delta).toBeNull();expect(result.rows[1]?.coverageB).toBe(0);expect((await store.history(s.semanticId!))[0]?.provenance?.build).toBe(a.hash);await store.endRun('a',start+500);const ended=await compareRuns(store,revisions,'a','b',s.semanticId!,3000,1000);expect(ended.rows[0]?.coverageA).toBe(.5);
  }finally{await store.close();}
 });
+test('report worker accepts only the applied build and keeps a queued job pinned after apply',async()=>{
+ const root=temp(),database=`sqlite://${join(root,'history.sqlite')}`,store=new Store(database);let host:Awaited<ReturnType<typeof createWorkerHost>>|undefined;
+ try{
+  await store.init();const revisions=new RevisionStore(store.sql);await revisions.init();
+  const flow=signal('flow',{initial:0,staleAfter:5000}),definition=report('flow-report',{label:'Flow',bucketMs:1000,columns:{value:column(flow,'mean','Flow')}}),model=project({id:'worker',label:'A',signals:{flow},equipment:[],pipes:[],alarms:[],reports:[definition]});
+  const provenance={sourceRevision:null,sourceDigest:'sha256:'+'1'.repeat(64),coreHash:'sha256:'+'2'.repeat(64),lockHash:null,bunVersion:Bun.version};
+  const a=await createArtifact(model,null,provenance),b=await createArtifact({...model,label:'B'},null,{...provenance,sourceDigest:'sha256:'+'3'.repeat(64)});
+  await revisions.put(a);await revisions.put(b);await revisions.publish(a.hash,null);await revisions.apply(a.hash,null);
+  const from=Date.now()-3000,to=from+1000;await store.append([{signal:flow.id,at:from,value:7,quality:'good'}]);
+  const options:WorkerOptions={directory:join(root,'worker'),port:0,concurrency:0,token:'report-applied-'+crypto.randomUUID(),projects:{'test/project':{root,database}}};
+  host=await createWorkerHost(options);
+  const submit=(input:unknown)=>fetch(new URL('/api/jobs',host!.server.url),{method:'POST',headers:{authorization:'Bearer '+options.token,'content-type':'application/json'},body:JSON.stringify(input)});
+  const accepted={kind:'report',project:'test/project',run:'pinned',build:a.hash,report:definition.id,from,to};
+  expect((await submit({...accepted,run:'retained',build:b.hash})).status).toBe(409);
+  expect(await host.jobs.list('test/project')).toHaveLength(0);
+  expect((await submit(accepted)).status).toBe(202);
+  expect((await host.jobs.get('pinned.report'))?.state).toBe('queued');
+  const pinned=await host.jobs.input('pinned.report');expect(pinned.kind).toBe('report');if(pinned.kind!=='report')throw new Error('Report input missing');expect(pinned.build).toBe(a.hash);
+  await revisions.publish(b.hash,a.hash);await revisions.apply(b.hash,a.hash);
+  expect((await submit(accepted)).status).toBe(202);
+  expect((await submit({...accepted,run:'new-after-apply'})).status).toBe(409);
+  await host.close();host=await createWorkerHost({...options,concurrency:1});
+  let receipt=await host.jobs.get('pinned.report');for(let i=0;i<100&&(receipt?.state==='queued'||receipt?.state==='running');i++){await Bun.sleep(50);receipt=await host.jobs.get('pinned.report');}
+  expect(receipt?.state).toBe('succeeded');expect((receipt?.result as {report:{revision:string;rows:{values:{value:number}}[]}}).report.revision).toBe(a.hash);
+  expect((receipt?.result as {report:{rows:{values:{value:number}}[]}}).report.rows[0]?.values.value).toBe(7);
+  const summary=await host.jobs.list('test/project',true);expect(summary).toHaveLength(1);expect(summary[0]?.result).toBeNull();
+  const summaryResponse=await fetch(new URL('/api/jobs?project=test%2Fproject&summary=1',host.server.url),{headers:{authorization:'Bearer '+options.token}});expect(summaryResponse.status).toBe(200);expect((await summaryResponse.json())[0].result).toBeNull();
+  const detailResponse=await fetch(new URL('/api/job?id=pinned.report',host.server.url),{headers:{authorization:'Bearer '+options.token}});expect(detailResponse.status).toBe(200);expect((await detailResponse.json()).result.report.revision).toBe(a.hash);
+  expect((await submit(accepted)).status).toBe(202);expect(await host.jobs.list('test/project')).toHaveLength(1);
+  const artifacts:{n:number}[]=await store.sql`SELECT COUNT(*) AS n FROM report_artifacts`;expect(Number(artifacts[0]?.n)).toBe(1);
+ }finally{await host?.close();await store.close();rmSync(root,{recursive:true,force:true});}
+},30000);
 test('Bun worker executes authored dependencies, isolates failure and does not repeat completed steps',async()=>{
  const root=temp(),data=temp();let host:Awaited<ReturnType<typeof createWorkerHost>>|undefined;try{
  mkdirSync(join(root,'targets'));writeFileSync(join(root,'package.json'),'{"name":"worker-fixture","type":"module","dependencies":{"fflate":"0.8.3"}}');await execute([process.execPath,'install'],root);writeFileSync(join(root,'targets/deployment.ts'),`export default {id:'release',steps:[{id:'check',label:'Check',target:'check',needs:[],command:['bun','-e','console.log("checked")']},{id:'scada',label:'Operator',target:'scada',environment:'test',needs:['check'],command:['bun','-e','console.log("operator")']},{id:'plc',label:'PLC fixture failure',target:'plc',environment:'test',needs:['check'],command:['bun','-e','throw new Error("target unavailable")']}]}`);

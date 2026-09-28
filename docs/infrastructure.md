@@ -5,6 +5,11 @@ uses the same Signal, Sample, signalHealth and historian as process equipment.
 No infrastructure project format, metric registry, automatic plugin activation,
 OS command channel or replacement time-series database was added.
 
+Project-owned monitoring rules can now group existing numeric signals and declare
+engineering warning/critical limits and a stricter freshness window. They remain
+read-only conditions over the applied project's actual observations, not runtime
+alarms or new signal sources. See [Project-owned monitoring rules](monitoring-plugins.md).
+
 ## Try the real example
 
 Check out matching `saturn-ide`, `saturn-plugins` and `saturn-examples` revisions

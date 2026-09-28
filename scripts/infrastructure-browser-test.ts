@@ -31,7 +31,7 @@ try {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => { localStorage.setItem('saturn.locale', 'ru'); localStorage.setItem('saturn.theme', 'system'); });
   await page.goto(base.toString());
-  await page.getByRole('treeitem', { name: 'Производительность', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'Состояние объекта', exact: true }).click();
   await page.locator('section.performance').waitFor();
   // Collapse the shared bottom panel with its existing keyboard action; never create a duplicate panel.
   await page.keyboard.press('Control+j');

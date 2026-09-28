@@ -5,7 +5,7 @@ import { counterRate, historyRange } from '../src/core/history';
 import { Store } from '../src/runtime/store';
 import { Runtime } from '../src/runtime/engine';
 import { acquire } from '../src/runtime/acquisition';
-import { chartBounds, chartPath, performanceSignals, rememberSamples } from '../src/shell/model/performance';
+import { chartBounds, chartPath, performanceSignals, rememberSamples, valueBounds } from '../src/shell/model/performance';
 import { historyResponse } from '../src/host/history-api';
 
 test('range API reduces more than latest-N, retains peaks and null gaps without inventing samples', async () => {
@@ -77,6 +77,11 @@ test('counter and history bounds reject resets, backwards time and oversized ran
 });
 
 test('performance projection keeps source identity, filters owners, bounds previews, and splits chart outages', () => {
+  const autoBounds = valueBounds(signal('flow', { initial: 0 }), [11, 11.6]);
+  expect(autoBounds[0]).toBeLessThan(11);
+  expect(autoBounds[1]).toBeGreaterThan(11.6);
+  expect((11.3 - autoBounds[0]) / (autoBounds[1] - autoBounds[0])).toBeGreaterThan(.2);
+  expect((11.3 - autoBounds[0]) / (autoBounds[1] - autoBounds[0])).toBeLessThan(.8);
   const server = device({ id: 'server', icon: 'server', ports: {} })('EDGE', { x: 0, y: 0, label: 'Edge server', cpu: signal({ initial: 0, label: 'CPU' }), name: signal({ initial: '' }) });
   const p = project({ id: 'p', label: 'P', equipment: [server], pipes: [], alarms: [] });
   expect(performanceSignals(p, 'edge cpu', 'en').map(s => s.id)).toEqual(['EDGE.cpu']);

@@ -5,7 +5,10 @@ import { RevisionStore } from '../runtime/revisions';
 import { decodeProject } from '../runtime/decode-project';
 import { runReport } from '../runtime/report';
 import { outputCsv } from '../core/report-output';
+import { prepareScenarioJob } from './scenario-job';
+import { runScenario, ScenarioFailure } from '../runtime/scenario';
 let child:ReturnType<typeof Bun.spawn>|undefined,aborted=false;
+const cancellation=new AbortController();
 async function command(argv:readonly string[],cwd:string,env:Record<string,string>={},timeout=15*60000){
   if(aborted)throw new Error('Worker stopped');
   const base:Record<string,string>={};for(const key of ['PATH','HOME','USERPROFILE','TMPDIR','TEMP','TMP','SystemRoot','COMSPEC','PATHEXT','BUN_BE_BUN'])if(process.env[key])base[key]=process.env[key]!;
@@ -25,6 +28,10 @@ export async function executeTask(task:WorkerTask){
     const log=await command(argv,checkout,env);
     return {step:step.id,target:step.target,environment:step.environment??null,log};
   }
+  if(input.kind==='scenario'){
+    const prepared=await prepareScenarioJob(input,project,cancellation.signal);
+    return {...await runScenario(prepared.scenario,prepared.target,prepared.binding,cancellation.signal),sourceRevision:prepared.sourceRevision};
+  }
   if(!project.database)throw new Error('No runtime history database configured');
   const store=new Store(project.database);
   try{const revisions=new RevisionStore(store.sql),artifact=await revisions.get(input.build),model=decodeProject(artifact.model);
@@ -33,5 +40,5 @@ export async function executeTask(task:WorkerTask){
   }finally{await store.close();}
 }
 if(typeof self!=='undefined'&&'postMessage' in self){
-  self.onmessage=async(event:MessageEvent<WorkerTask|{cancel:true}>)=>{if('cancel'in event.data){aborted=true;child?.kill();return;}try{self.postMessage({ok:true,result:await executeTask(event.data)});}catch(error){self.postMessage({ok:false,error:error instanceof Error?error.message:String(error)});}};
+  self.onmessage=async(event:MessageEvent<WorkerTask|{cancel:true}>)=>{if('cancel'in event.data){aborted=true;cancellation.abort(new Error('Worker stopped'));child?.kill();return;}try{self.postMessage({ok:true,result:await executeTask(event.data)});}catch(error){self.postMessage({ok:false,error:error instanceof Error?error.message:String(error),...(error instanceof ScenarioFailure?{result:error.result,interrupted:error.interrupted}:{interrupted:aborted})});}};
 }

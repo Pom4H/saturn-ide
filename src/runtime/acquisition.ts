@@ -88,17 +88,31 @@ async function run(worker: Worker, observe: Observe, stop: AbortSignal, context:
       session = await limited(opening, controller, settings.timeoutMs);
       controller.signal.throwIfAborted();
       if (!!session.read === !!session.subscribe) throw acquisitionError('PROTOCOL_MODE', 'Provide read OR subscribe', 'Нужен read ИЛИ subscribe');
+      if (plan.signals.some(signal=>signal.exchange)&&!session.read)
+        throw acquisitionError('PROTOCOL_POLL_POLICY', 'Per-signal polling requires channel reads', 'Выборочный опрос требует чтения отдельных каналов');
       const generation: Generation = { controller, session, tail: Promise.resolve(), pendingWrites: 0 };
       worker.current = generation; status.phase = 'online'; delete status.error;
       if (session.read) {
+        const nextDue = new Map(plan.signals.map(signal => [signal.id, 0]));
         while (!controller.signal.aborted) {
+          const now = performance.now(), due = plan.signals.filter(signal => nextDue.get(signal.id)! <= now);
+          if (!due.length) {
+            await delay(Math.max(1, Math.min(...nextDue.values()) - now), controller.signal);
+            continue;
+          }
           const batch = await enqueue(worker, generation, false, async () => {
             const started = performance.now();
-            try { return await session!.read!(controller.signal); }
+            try { return plan.channelRead
+              ? await session!.read!(due, controller.signal)
+              : await (session!.read! as unknown as (abort:AbortSignal)=>Promise<readonly Observation[]>)(controller.signal); }
             finally { status.readDurationMs = performance.now() - started; }
           });
+          const requested = new Set(due.map(signal => signal.id));
+          if (batch.some(item => !requested.has(item.signal)))
+            throw acquisitionError('PROTOCOL_POLL_RESPONSE', 'Read returned an unrequested channel', 'Опрос вернул незапрошенный канал');
           await emit(batch); backoff = settings.reconnectMs;
-          await delay(settings.pollMs, controller.signal);
+          const completed = performance.now();
+          for (const signal of due) nextDue.set(signal.id, completed + (signal.exchange?.pollMs ?? settings.pollMs));
         }
         controller.signal.throwIfAborted();
       } else {

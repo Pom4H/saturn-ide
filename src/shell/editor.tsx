@@ -6,7 +6,7 @@ import { autocompletion } from '@codemirror/autocomplete';
 import { javascript, typescriptLanguage } from '@codemirror/lang-javascript';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags, highlightCode } from '@lezer/highlight';
-import { linter } from '@codemirror/lint';
+import { forceLinting, linter } from '@codemirror/lint';
 import { indentWithTab, isolateHistory } from '@codemirror/commands';
 import type { Locale, Problem, Signal, Snapshot } from '../core';
 import { signalHealth } from '../core/operational';
@@ -46,7 +46,7 @@ const liveValues=StateField.define<DecorationSet>({
   provide:field=>EditorView.decorations.from(field),
 });
 export interface LanguageRequest { <T>(operation:string,path:string,source:string,position:number,locale:Locale):Promise<T> }
-export interface EditorProps {language?:LanguageRequest;readOnly?:boolean;path:string;source:string;locale:Locale;change:(source:string)=>void;save:()=>void;dragging:boolean;snapshot:Snapshot;signals:Record<string,Signal>;now:number}
+export interface EditorProps {language?:LanguageRequest;readOnly?:boolean;path:string;source:string;savedSource?:string;problems?:readonly Problem[];locale:Locale;change:(source:string)=>void;save:()=>void;dragging:boolean;snapshot:Snapshot;signals:Record<string,Signal>;now:number}
 function decorateHints(hints: readonly SignalHint[], props: EditorProps): LiveDecoration[] {
   return hints.flatMap(hint => {
     const definition = props.signals[hint.signal]; if (!definition) return [];
@@ -75,7 +75,21 @@ export function Editor(props:EditorProps){
         const doc=view.state.doc,info=await request<{from:number;to:number;signature:string;documentation:string}|null>('hover',doc.toString(),position);if(!info||doc!==view.state.doc)return null;
         return {pos:info.from,end:info.to,above:true,create:()=>{const dom=document.createElement('div'),signature=document.createElement('pre'),documentation=document.createElement('p');dom.className='jsdoc';highlightCode(info.signature,typescriptLanguage.parser.parse(info.signature),syntaxColors,(text,classes)=>{const span=document.createElement('span');span.textContent=text;if(classes)span.className=classes;signature.append(span);},()=>signature.append(document.createTextNode('\n')));documentation.textContent=info.documentation;dom.append(signature,documentation);return {dom};}};
       }catch{return null;}},{hoverTime:300}),
-      linter(async view=>{try{const doc=view.state.doc,problems=await request<Problem[]>('diagnostics',doc.toString());if(doc!==view.state.doc)return [];return problems.map(p=>({from:Math.min(p.from??0,doc.length),to:Math.min(p.to??0,doc.length),severity:'error' as const,message:`${p.code}: ${p.message[current.current.locale]}`}));}catch{return [];}},{delay:650}),
+      linter(async view=>{
+        const doc=view.state.doc,source=doc.toString();
+        let typescript:Problem[]=[];
+        try{typescript=await request<Problem[]>('diagnostics',source);}catch{/* Keep checked domain problems when the language service is unavailable. */}
+        if(doc!==view.state.doc)return [];
+        const props=current.current;
+        const checked=props.savedSource===source?props.problems?.filter(problem=>problem.path===props.path&&problem.from!==undefined&&problem.to!==undefined)??[]:[];
+        const unique=new Map<string,{from:number;to:number;severity:'error';message:string}>();
+        for(const problem of [...typescript,...checked]){
+          const from=Math.max(0,Math.min(problem.from??0,doc.length)),to=Math.max(from,Math.min(problem.to??from,doc.length));
+          const message=`${problem.code}: ${problem.message[props.locale]}`;
+          unique.set(`${from}:${to}:${message}`,{from,to,severity:'error',message});
+        }
+        return [...unique.values()];
+      },{delay:650}),
       EditorView.theme({'&':{height:'100%',fontSize:'13px',backgroundColor:'var(--editor)',color:'var(--text)'},'.cm-scroller':{fontFamily:'var(--mono)'},'.cm-gutters':{backgroundColor:'var(--editor)',color:'var(--muted)',borderRight:'0'},'.cm-activeLine, .cm-activeLineGutter':{backgroundColor:'var(--hover)'},'.cm-tooltip':{backgroundColor:'var(--raised)',borderColor:'var(--border)',color:'var(--text)'},'.cm-content':{caretColor:'var(--text)'},'&.cm-focused .cm-cursor':{borderLeftColor:'var(--text)'},'.cm-live-value':{marginLeft:'1.5ch',fontStyle:'italic',color:'var(--muted)',opacity:'.82',pointerEvents:'none'},'.cm-live-value.good':{color:'var(--good)'},'.cm-live-value.stale':{color:'var(--warn)'},'.cm-live-value.bad':{color:'var(--bad)'}}),
     ]})});editor.current=view;dragSource.current=null;hints.current=[];
     return()=>{view.destroy();editor.current=null;};
@@ -95,6 +109,8 @@ export function Editor(props:EditorProps){
       const original=dragSource.current;dragSource.current=null;replace(original,false);replace(props.source,true);
     }else replace(props.source,!props.dragging);
   },[props.source,props.dragging]);
+  const checkedKey=props.source===props.savedSource?JSON.stringify(props.problems?.filter(problem=>problem.path===props.path)??[]):'draft';
+  useEffect(()=>{if(editor.current)forceLinting(editor.current);},[checkedKey,props.locale]);
   useEffect(()=>{
     const view=editor.current;if(!view)return;const source=props.source;let cancelled=false;
     if(!props.language)return;

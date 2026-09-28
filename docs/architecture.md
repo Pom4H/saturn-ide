@@ -27,6 +27,7 @@ Shell связывает работу с ними, а не дублирует и
 src/
   core.ts                 # публичный DSL и контракты; стабильный @saturn/core
   core/artifact.ts        # проверяемый неизменяемый результат сборки
+  core/project-codec.ts   # восстановление ссылок Signal после JSON-транспорта
   topology.ts             # физические связи и общая маршрутизация
   motion.ts               # состояние визуального движения по наблюдениям
   reports.ts              # вычисление отчётов, независимое от UI/SQL
@@ -43,7 +44,7 @@ src/
     events.ts             # доставка снимков/событий
     push.ts               # Web Push
     revisions.ts          # retained builds, published/applied, CAS
-    decode-project.ts     # проверка модели после транспорта
+    decode-project.ts     # совместимый импорт общего core decoder
     installation.ts       # автомат применения и восстановления
     project-installation.ts # владение драйвером, fencing устаревших callbacks
   host/
@@ -72,6 +73,9 @@ src/
 - Runtime импортирует чистые модули и свои адаптеры; не читает рабочую копию, не импортирует
   Shell, Git или TypeScript Language Service и не вызывает Bun.build.
 - Shell импортирует контракты и компоненты поверхностей, общается с runtime через API.
+- Shell восстанавливает ссылочную идентичность `Signal` в транспортной копии через
+  `core/project-codec.ts` перед полной проверкой совместимости порта. Это тот же
+  `Project` и тот же `validateProject`, без отдельной клиентской модели связей.
 - Только Host собирает эти части вместе.
 
 `scripts/architecture-check.mjs` проверяет границы импортов и запрещает явный `any`.
@@ -81,6 +85,14 @@ src/
 
 Приложение Saturn и проект объекта — разные каталоги. Генератор проекта не должен копировать
 исходники самой IDE, её тесты и инфраструктуру.
+
+Инженерные примеры принадлежат отдельному репозиторию `saturn-examples`.
+Конкретный состав установки, модели оборудования и физики, начальные условия,
+2D/3D-представления, анимации и сценарии принадлежат проекту примера. Ядро расширяется
+общими контрактами; оно не выбирает поведение по имени/ID примера и не содержит
+его таблиц оборудования или параметров. Специализированное оборудование подключается
+обычными imports проектных расширений. Проверка достоверности конкретного двойника
+принадлежит примеру и отделена от проверки общих возможностей Saturn.
 
 ```
 project/
@@ -117,6 +129,14 @@ project/
 из окружения runtime, не попадают в Git или артефакт.
 
 Тип оборудования определяется через один `device()` contract. `pump/tank/valve/plc` и project-owned definitions создаются тем же `device()`; отдельного registry для специальных классов нет. Порты, signal schema и diagram bounds принадлежат declaration и не дублируются в `geometry.ts`. Глобальный plugin manager для этого запрещён.
+
+Физические системы объявляются в том же авторском `project.ts` через `system(id, label, parent?)`;
+экземпляр оборудования ссылается на систему через `system` в параметрах `device()`.
+Иерархия проверяется вместе с Project. Границы групп в 2D/3D вычисляются из
+координат и размеров оборудования в `core/system-layout.ts`, поэтому drag меняет
+подложку без второй редактируемой модели. Группа не является оборудованием,
+сигналом или отдельной симуляцией. Группы мониторинга определяют другой срез
+тех же сигналов и не подменяют физическую принадлежность.
 
 ## Source, checked, published, applied
 
@@ -183,11 +203,20 @@ Shell владеет навигацией, открытыми буферами �
 вкладки, высоты и разворачивания принадлежат одному `panelReducer`; колокольчик, вкладки,
 клавиатура и statusbar направляют действия туда. Surface не создаёт собственную нижнюю панель.
 Сворачивание и смена Surface не размонтируют терминал и не теряют введённую команду/журнал.
+Среда исполнения и сценарии запоминают собственную компоновку той же панели и
+при первом открытии оставляют её свёрнутой; возврат в обычную рабочую область
+восстанавливает её вкладку/размер. Все действия проходят через общий panelReducer.
 История тревог загружается один раз через `useAlarmHistory` и передаётся обеим проекциям:
 уведомлениям и терминалу. Квитирование остаётся командой runtime API; ошибка запроса не
 превращается в локальное подтверждение. Инспектор занимает область поверхности над панелью.
-Селектор проекта и его режим находятся в topbar, сайдбар содержит разделы и ресурсы.
-Цвета всех поверхностей определены общими токенами `styles.css`, компоновка — `resources.css`.
+Селектор проекта и его режим находятся в topbar. Узкая рейка выбирает рабочую область,
+контекстный сайдбар показывает ресурсы выбранной области, центральная Surface остаётся
+смонтированной при открытии правых Details или Review. Активная область выводится из
+`ShellSession.navigation.surface`; второй независимый rail-state запрещён. Для оператора
+«Среда» показывает статус и отдельные Source Git / Checked / Published / Applied без
+редактирования плана. Это ограничение интерфейса не заменяет авторизацию API.
+Цвета всех поверхностей определены общими токенами `styles.css`, компоновка — `resources.css`;
+размеры и состояния Shell описаны в [визуальной системе](design-system.md).
 Browser Shell показывает постоянный проводник с режимами Объекты / Значки / Список файлов / Папки. Первые два открывают предметные сущности и сохраняют полный доступ к исходникам в отдельной группе; остальные открывают файлы. Это вычисляемые проекции одного ResourceCatalog. Папки и файлы строятся из настоящих
 `resource.source.path`, объявления устройств/отчётов остаются дочерними узлами своих файлов.
 Несколько объявлений в одном файле не создают выдуманные файлы. Узлы без найденного исходника
@@ -285,10 +314,19 @@ request carries expectedApplied and shares the apply queue, so a build transitio
 race a command accepted for another build. Shell visibility is never the security boundary.
 GitHub remains repository authority: a Saturn policy cannot remove direct GitHub access.
 
-Workflow SDK is optional project-owned scenario orchestration, outside core and runtime.
-Scenario helpers take existing typed Signal references. A durable workflow coordinates
-simulation stimuli and measured assertions; the selected execution backend owns its cycle in a separate
-process. Neither saving source nor retrying a workflow deploys or flashes a PLC.
+Workflow SDK is optional project-owned orchestration, outside core and runtime.
+For bounded simulation sequences, `core/scenarios` supplies typed Signal-based
+commands, waits and measured assertions inside the existing Project/BuildArtifact.
+The report worker host executes these checked sequences in a Bun Worker through the
+runtime-only simulation API; it never reads a changed working source to execute a job.
+Runtime owns the actual driver and fences every command by applied build and telemetry
+run under the apply queue. Live drivers cannot receive scenario commands. The selected
+simulation backend owns integration time. The runner has explicit wall-clock waits
+and opt-in fixed model steps with clock compare-and-swap; checkpoint replay/reset
+remain unfinished. Dev Shell calls a same-origin gateway to the same worker and
+runtime authority, without exposing worker credentials. Neither saving source nor retrying
+a completed job deploys, flashes a PLC or repeats its commands.
+See [runtime scenarios](runtime-scenarios.md) for the API and interruption semantics.
 
 ### Operator feedback → authored DSL proposal
 
@@ -354,6 +392,18 @@ kit, composed through defineProtocol/acquire. The runtime exposes read-only
 inspection independently of SQL; inspection never generates another measurement.
 No separate authored infrastructure model or plugin registry exists. See
 [infrastructure.md](infrastructure.md) for contracts, UI, accounting and limits.
+Copied project plugins may export `monitor()` declarations over canonical numeric
+signals. `project.ts` imports them explicitly into `Project.monitoring`; the checked
+artifact stores plain conditions, not callbacks. A pure projection evaluates limits
+and freshness from runtime observations for the Performance surface. These read-only
+health conditions do not create `Alarm` events or change acquisition policy. See
+[monitoring-plugins.md](monitoring-plugins.md).
+Per-signal `exchange` and `storage` requirements remain on the authored Signal,
+independent of monitoring groups. Selective channel polling requires an explicit
+plugin capability; archive selection never filters the live Snapshot or alarm
+evaluation. SQL rows store their expiry when written, so later Project changes do
+not reinterpret old retention. See [signal-data-policy.md](signal-data-policy.md)
+for profiles, bounds and report/ML limits.
 
 ### Общее ядро команд Shell
 
@@ -405,3 +455,26 @@ signal ID, сохраняя пропуски и покрытие. Старые �
 создаёт настоящий OOXML. Shell/CLI и Workflow SDK используют эти результаты через
 host. Скачивание по artifactId не перечитывает историю. Миграция и границы паритета:
 [report-migration.md](report-migration.md).
+
+## Общий исполнитель расчётов оборудования — 2026-09-28
+
+`@saturn/core/calculations` предоставляет `FixedStepCalculations`: фиксированный
+шаг, один предыдущий снимок для входов всех узлов, отдельный расчёт следующего
+состояния и общая фиксация кадра. Проект передаёт обычными imports свои
+initialize/advance/observe и bindings внутри Driver; нового Project/Signal/Topology
+или registry нет. Формулы, параметры, состав объекта и таймер принадлежат проекту.
+Модуль входит в coreHash. Это перенос механики шага, не всего прежнего Kernel:
+PLC compiler, port bindings, derived evaluator и checkpoint ABI остаются открытыми.
+
+## Общий визуальный контракт приборов — 2026-09-28
+
+Project-owned `device()` может объявить `capabilities.instrument` с формой
+`dial`, `digital` или `inline` и числовым полем сигнала того же оборудования.
+Один контракт управляет SVG-схемой, пространственной моделью и карточкой
+обзора операторского HMI; детальный HMI использует ту же SVG-схему. Они
+показывают наблюдение, его единицу и состояние свежести. Для выносного прибора
+`mount: {pipe: id}` указывает существующую авторскую трубу. Shell вычисляет
+точку отвода из текущего маршрута, поэтому крепление следует за drag и
+не создаёт второй topology model или соединение для физики. `inline` требует
+входной и выходной fluid-порты и устанавливается обычными `pipe()`.
+Старый `tap(line, instrument)` остаётся отдельной задачей миграции API.

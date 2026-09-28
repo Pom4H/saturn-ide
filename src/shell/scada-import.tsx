@@ -14,7 +14,7 @@ export function ScadaImport({importers,locale,onImported}:{importers:readonly Sc
     try{
       const [{projectVersion},source]=await Promise.all([api<{projectVersion:string}>('import/context'),readImportSource(selected)]);
       const ranked=importers.map(importer=>({importer,score:importer.detect(source)})).filter(item=>Number.isFinite(item.score)&&item.score>0).sort((a,b)=>b.score-a.score);
-      const importer=ranked[0]?.importer;if(!importer)throw new Error(ru?'Ни один установленный importer не распознал проект':'No installed importer recognized this project');
+      const importer=ranked[0]?.importer;if(!importer)throw new Error(ru?'Ни один установленный плагин импорта не распознал проект':'No installed importer recognized this project');
       const plan=await importer.import(source);
       if(plan.importer!==importer.id||plan.sourceFingerprint!==source.fingerprint)throw new Error('Importer returned an inconsistent plan');
       setPreview({plan,projectVersion,importer});
@@ -27,7 +27,7 @@ export function ScadaImport({importers,locale,onImported}:{importers:readonly Sc
       const result=await api<{problems:readonly Problem[]}>('import/apply',{plan:preview.plan,projectVersion:preview.projectVersion});
       await onImported();
       if(result.problems.length)setError((ru?'Исходники созданы, но проект требует исправлений: ':'Source was created, but the project has build issues: ')+result.problems.map(item=>item.message[locale]).join('; '));
-      else{setDone(ru?'Миграция применена к исходникам проекта. Проверьте diff и публикуйте явно.':'Migration applied to project source. Review the diff before publishing.');setPreview(undefined);}
+      else{setDone(ru?'Миграция записана в исходники проекта. Проверьте изменения в Git; публикация выполняется отдельно.':'Migration was written to project source. Review the Git diff; publishing is a separate action.');setPreview(undefined);}
     }catch(reason){setError(reason instanceof Error?reason.message:String(reason));}
     finally{setBusy(false);}
   };
@@ -39,8 +39,8 @@ export function ScadaImport({importers,locale,onImported}:{importers:readonly Sc
       {!!preview.plan.stats&&<div className="import-stats">{Object.entries(preview.plan.stats).map(([key,count])=><span key={key}>{key}: {count}</span>)}</div>}
       <div className="import-file-list">{preview.plan.diagnostics.slice(0,80).map((item,index)=><div key={index} data-severity={item.severity}><code>{item.code}</code><small>{item.message[locale]}{item.path?' · '+item.path:''}</small></div>)}</div>
       {preview.plan.diagnostics.length>80&&<small>{ru?'Показаны первые 80 замечаний':'Showing first 80 diagnostics'}</small>}
-      <p>{ru?'Импорт меняет только authored source. Runtime/applied версия не меняется до явной публикации и apply.':'Import changes authored source only. Runtime/applied revision is unchanged until explicit publish/apply.'}</p>
-      <button type="button" className="primary" disabled={busy||blockers>0} onClick={()=>void apply()}>{ru?'Применить миграцию':'Apply migration'}</button> <button type="button" disabled={busy} onClick={()=>setPreview(undefined)}>{ru?'Отмена':'Cancel'}</button>
+      <p>{ru?'Импорт записывает исходники проекта. Симулятор в dev-режиме может обновить предпросмотр автоматически; для реального объекта публикация и применение — отдельные действия.':'Import writes project source. The dev simulator may refresh its preview automatically; publishing and applying to a real asset are separate actions.'}</p>
+      <button type="button" className="primary" disabled={busy||blockers>0} onClick={()=>void apply()}>{ru?'Внести в исходники':'Write project source'}</button> <button type="button" disabled={busy} onClick={()=>setPreview(undefined)}>{ru?'Отмена':'Cancel'}</button>
     </details>}
     {error&&<p className="import-error" role="alert">{error}</p>}{done&&<p className="import-hint" role="status">{done}</p>}
   </section>;

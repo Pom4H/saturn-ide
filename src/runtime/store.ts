@@ -6,6 +6,7 @@ import type { AlarmState, Sample } from "../core";
 import type { AlarmEvent } from '../core/operational';
 import type { PushSubscription } from "web-push";
 export type { AlarmEvent } from '../core/operational';
+export const DEFAULT_SAMPLE_RETENTION_MS = 7 * 86400_000;
 
 interface SampleRow { signal: string; semantic: string | null; at: number | string; value: string; quality: Sample["quality"]; details: string | null }
 type SampleDetails = Pick<Sample, 'sourceAt' | 'receivedAt' | 'sequence' | 'state' | 'provenance'>;
@@ -22,7 +23,7 @@ export class Store {
   async init() {
     const db = this.sql;
     if (this.adapter === "sqlite") await db`PRAGMA journal_mode = WAL`;
-    await db`CREATE TABLE IF NOT EXISTS samples (id TEXT PRIMARY KEY, signal TEXT NOT NULL, semantic TEXT, at BIGINT NOT NULL, value TEXT NOT NULL, quality TEXT NOT NULL, details TEXT)`;
+    await db`CREATE TABLE IF NOT EXISTS samples (id TEXT PRIMARY KEY, signal TEXT NOT NULL, semantic TEXT, at BIGINT NOT NULL, value TEXT NOT NULL, quality TEXT NOT NULL, details TEXT, expires_at BIGINT)`;
     try { await db`ALTER TABLE samples ADD COLUMN semantic TEXT`; } catch { /* already migrated */ }
     // Existing databases retain all rows. Only ignore a genuinely existing column.
     if (this.adapter === 'postgres') await db`ALTER TABLE samples ADD COLUMN IF NOT EXISTS details TEXT`;
@@ -32,6 +33,9 @@ export class Store {
     }
     if(this.adapter==='postgres')await db`ALTER TABLE samples ADD COLUMN IF NOT EXISTS run_id TEXT`;
     else {const columns:{name:string}[]=await db`PRAGMA table_info(samples)`;if(!columns.some(c=>c.name==='run_id'))await db`ALTER TABLE samples ADD COLUMN run_id TEXT`;}
+    if(this.adapter==='postgres')await db`ALTER TABLE samples ADD COLUMN IF NOT EXISTS expires_at BIGINT`;
+    else {const columns:{name:string}[]=await db`PRAGMA table_info(samples)`;if(!columns.some(c=>c.name==='expires_at'))await db`ALTER TABLE samples ADD COLUMN expires_at BIGINT`;}
+    await db`CREATE INDEX IF NOT EXISTS samples_expires_at ON samples(expires_at)`;
     await db`CREATE INDEX IF NOT EXISTS samples_run_semantic_at ON samples(run_id,semantic,at)`;
     await db`CREATE TABLE IF NOT EXISTS telemetry_runs (id TEXT PRIMARY KEY, build TEXT NOT NULL, source_revision TEXT, mode TEXT NOT NULL, started_at BIGINT NOT NULL)`;
     await db`UPDATE samples SET semantic=signal WHERE semantic IS NULL`;
@@ -43,12 +47,14 @@ export class Store {
     await db`CREATE INDEX IF NOT EXISTS alarms_at ON alarm_events(at)`;
     await db`CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, subscription TEXT NOT NULL)`;
   }
-  async append(samples: Sample[], events: AlarmEvent[] = []) {
+  async append(samples: Sample[], events: AlarmEvent[] = [], retentionBySignal: Readonly<Record<string,number>> = {}) {
     await this.sql.begin(async tx => {
       for (const s of samples) {
+        const retention = retentionBySignal[s.signal] ?? DEFAULT_SAMPLE_RETENTION_MS;
+        if (!Number.isSafeInteger(retention) || retention < 3600_000 || retention > 365 * 86400_000 || !Number.isSafeInteger(s.at + retention)) throw new Error('Invalid sample retention');
         const details: SampleDetails = {sourceAt:s.sourceAt,receivedAt:s.receivedAt,sequence:s.sequence,state:s.state,provenance:s.provenance};
         if(s.provenance){const r=s.provenance;await tx`INSERT INTO telemetry_runs (id,build,source_revision,mode,started_at) VALUES (${r.id},${r.build},${r.sourceRevision},${r.mode},${r.startedAt}) ON CONFLICT (id) DO NOTHING`;}
-        await tx`INSERT INTO samples (id,signal,semantic,at,value,quality,details,run_id) VALUES (${crypto.randomUUID()},${s.signal},${s.semantic ?? s.signal},${s.at},${JSON.stringify(s.value)},${s.quality},${JSON.stringify(details)},${s.provenance?.id??null})`;
+        await tx`INSERT INTO samples (id,signal,semantic,at,value,quality,details,run_id,expires_at) VALUES (${crypto.randomUUID()},${s.signal},${s.semantic ?? s.signal},${s.at},${JSON.stringify(s.value)},${s.quality},${JSON.stringify(details)},${s.provenance?.id??null},${s.at + retention})`;
       }
       for (const e of events) await tx`INSERT INTO alarm_events (id,alarm,at,state) VALUES (${crypto.randomUUID()},${e.id},${e.at},${JSON.stringify(e)})`;
     });
@@ -56,6 +62,13 @@ export class Store {
   async runs():Promise<TelemetryRun[]>{
     const rows:{id:string;build:string;source_revision:string|null;mode:TelemetryRun['mode'];started_at:number|string;ended_at:number|string|null}[]=await this.sql`SELECT * FROM telemetry_runs ORDER BY started_at DESC LIMIT 100`;
     return rows.map(r=>({id:r.id,build:r.build,sourceRevision:r.source_revision,mode:r.mode,startedAt:Number(r.started_at),...(r.ended_at===null?{}:{endedAt:Number(r.ended_at)})}));
+  }
+  /** An activation is an auditable run even if its driver never publishes a sample. */
+  async startRun(run:TelemetryRun,previousId?:string){
+    await this.sql.begin(async tx=>{
+      await tx`INSERT INTO telemetry_runs (id,build,source_revision,mode,started_at) VALUES (${run.id},${run.build},${run.sourceRevision},${run.mode},${run.startedAt}) ON CONFLICT (id) DO NOTHING`;
+      if(previousId)await tx`UPDATE telemetry_runs SET ended_at=${run.startedAt} WHERE id=${previousId} AND ended_at IS NULL`;
+    });
   }
   async endRun(id:string,at:number){await this.sql`UPDATE telemetry_runs SET ended_at=${at} WHERE id=${id} AND ended_at IS NULL`;}
   async runSamples(run:string,identity:string,to:number):Promise<Sample[]>{
@@ -119,8 +132,10 @@ export class Store {
     const rows: { subscription: string }[] = await this.sql`SELECT subscription FROM push_subscriptions LIMIT 100`;
     return rows.map(r => JSON.parse(r.subscription) as PushSubscription);
   }
-  async prune(before = Date.now() - 7 * 86400_000) {
-    await this.sql`DELETE FROM samples WHERE at < ${before}`;
+  async prune(now = Date.now()) {
+    if (!Number.isSafeInteger(now) || now < 0) throw new RangeError('Invalid prune time');
+    // Legacy rows have no expiry: keep their original seven-day deadline, independent of current Project policy.
+    await this.sql`DELETE FROM samples WHERE expires_at <= ${now} OR (expires_at IS NULL AND at < ${now - DEFAULT_SAMPLE_RETENTION_MS})`;
     // Alarm audit trail is retained; it must not vanish on restart.
   }
   async close() { await this.sql.close(); }

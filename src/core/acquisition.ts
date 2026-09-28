@@ -26,6 +26,8 @@ export interface ProtocolSession<A> {
 }
 export interface ProtocolDefinition<C, A> {
   readonly id: string;
+  /** The plugin actually reads only requested channels; full-payload reads must leave this false. */
+  readonly perSignalPolling?: true;
   /** Validate address loaded from the checked project's JSON, not just TypeScript. */
   readonly address: (input: unknown) => A;
   /** @ru Проверить совместимость типа/доступа до I/O, при bind и повторно после JSON.
@@ -46,8 +48,10 @@ export interface AcquisitionOptions {
 }
 export interface PreparedProtocol {
   readonly signals: readonly Signal[];
+  /** Distinguishes due-channel reads from older value-only plugin wrappers. */
+  readonly channelRead?: true;
   open(signal: AbortSignal, context?: ProtocolContext): Promise<{
-    read?: (signal: AbortSignal) => Promise<readonly Observation[]>;
+    read?: (due: readonly Signal[], signal: AbortSignal) => Promise<readonly Observation[]>;
     subscribe?: (emit: Observe, signal: AbortSignal) => Promise<void>;
     write?: (id: string, value: Value, signal: AbortSignal) => Promise<void>;
     close: () => void | Promise<void>;
@@ -56,6 +60,7 @@ export interface PreparedProtocol {
 export interface ProtocolSource {
   readonly id: string;
   readonly protocol: string;
+  readonly perSignalPolling?: true;
   readonly options: Readonly<Required<AcquisitionOptions>>;
   /** A derived execution plan, not a separately authored signal registry. */
   prepare(signals: readonly Signal[]): PreparedProtocol;
@@ -81,31 +86,38 @@ export function defineProtocol<C, A>(definition: ProtocolDefinition<C, A>) {
       settings.maxReconnectMs < settings.reconnectMs || settings.maxPendingWrites > 1024 || settings.maxReconnectMs > 2147483647 || settings.timeoutMs > 2147483647 || settings.pollMs > 2147483647)
       throw acquisitionError('PROTOCOL_OPTIONS', 'Invalid endpoint options', 'Неверные параметры подключения');
     return Object.freeze({
-      id, protocol: definition.id, options: settings,
+      id, protocol: definition.id, perSignalPolling: definition.perSignalPolling, options: settings,
       bind<S extends Signal | SignalSpec>(target: S, address: A): S {
         if (target.binding) throw acquisitionError('PROTOCOL_REBIND', 'Signal already has a binding', 'У сигнала уже есть привязка');
+        if (target.exchange && (!definition.perSignalPolling || !Number.isSafeInteger(target.exchange.pollMs) || target.exchange.pollMs < settings.pollMs || target.exchange.pollMs > 86400_000))
+          throw acquisitionError('PROTOCOL_POLL_POLICY', 'Protocol cannot satisfy per-signal polling', 'Протокол не поддерживает заданный опрос сигнала');
         const parsed = definition.address(JSON.parse(canonical(address)));
         definition.validate?.({ signal: target, address: parsed });
         const encoded = canonical(parsed);
         if (encoded.length > 8192) throw acquisitionError('PROTOCOL_ADDRESS', 'Address exceeds limit', 'Адрес превышает лимит');
-        const binding = { protocol: definition.id, endpoint: id, address: encoded, pollMs: settings.pollMs };
+        const binding = { protocol: definition.id, endpoint: id, address: encoded, pollMs: target.exchange?.pollMs ?? settings.pollMs };
         return { ...target, binding, origin: { kind: 'protocol', protocol: definition.id, endpoint: id, address: encoded } };
       },
       prepare(signals: readonly Signal[]): PreparedProtocol {
         const channels = signals.map(signal => {
           const binding = signal.binding;
-          if (!binding || binding.protocol !== definition.id || binding.endpoint !== id || typeof binding.address !== 'string' || binding.address.length > 8192 || binding.codec !== undefined || binding.pollMs !== settings.pollMs)
+          if (!binding || binding.protocol !== definition.id || binding.endpoint !== id || typeof binding.address !== 'string' || binding.address.length > 8192 || binding.codec !== undefined || binding.pollMs !== (signal.exchange?.pollMs ?? settings.pollMs) || !!signal.exchange && (!definition.perSignalPolling || signal.exchange.pollMs < settings.pollMs))
             throw acquisitionError('PROTOCOL_BINDING', `Incompatible binding ${signal.id}`, `Несовместимая привязка ${signal.id}`);
           const channel = { signal, address: definition.address(JSON.parse(binding.address)) };
           definition.validate?.(channel);
           return channel;
         });
         const byId = new Map(channels.map(channel => [channel.signal.id, channel]));
-        return { signals,
+        return { signals, channelRead: true,
           async open(signal, context = {}) {
             const session = await definition.connect(config, signal, context);
             return {
-              read: session.read ? abort => session.read!(channels, abort) : undefined,
+              read: session.read ? (due, abort) => {
+                const requested = due.map(item => byId.get(item.id));
+                if (requested.some(item => !item) || new Set(due.map(item => item.id)).size !== due.length)
+                  throw acquisitionError('PROTOCOL_SIGNAL', 'Invalid due channels', 'Неверные каналы опроса');
+                return session.read!(requested as ProtocolChannel<A>[], abort);
+              } : undefined,
               subscribe: session.subscribe ? (emit, abort) => session.subscribe!(channels, emit, abort) : undefined,
               write: session.write ? async (id, value, abort) => {
                 const channel = byId.get(id);
@@ -145,7 +157,14 @@ export function prepareAcquisition(project: Project, sources: readonly ProtocolS
     if (!signal.binding) continue;
     const source = declared.get(key(signal.binding.protocol, signal.binding.endpoint));
     if (!source) throw acquisitionError('PROTOCOL_MISSING', `Missing source for ${signal.id}`, `Нет источника для ${signal.id}`);
+    if (signal.exchange && (!source.perSignalPolling || signal.exchange.pollMs < source.options.pollMs || signal.binding.pollMs !== signal.exchange.pollMs))
+      throw acquisitionError('PROTOCOL_POLL_POLICY', `Cannot satisfy polling requirement ${signal.id}`, `Невозможно выполнить требования опроса ${signal.id}`);
     groups.get(source)!.push(signal);
   }
-  return sources.map(source => ({ source, plan: source.prepare(groups.get(source)!) }));
+  return sources.map(source => {
+    const plan=source.prepare(groups.get(source)!);
+    if (groups.get(source)!.some(signal=>signal.exchange)&&!plan.channelRead)
+      throw acquisitionError('PROTOCOL_POLL_POLICY', `Plugin ${source.id} does not support due-channel reads`, `Плагин ${source.id} не поддерживает выборочный опрос`);
+    return {source,plan};
+  });
 }

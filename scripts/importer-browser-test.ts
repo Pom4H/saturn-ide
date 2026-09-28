@@ -43,9 +43,9 @@ try{
   await page.getByText(/Пример формата · 1 файлов Saturn/).waitFor({timeout:15000});
   await page.getByText('screens: 1').waitFor();
   await page.getByText('signals: 1').waitFor();
-  const apply=page.getByRole('button',{name:'Применить миграцию',exact:true});
-  assert(await apply.isEnabled(),'migration preview is unexpectedly blocked');
-  await apply.click();
+  const writeSource=page.getByRole('button',{name:'Внести в исходники',exact:true});
+  assert(await writeSource.isEnabled(),'migration preview is unexpectedly blocked');
+  await writeSource.click();
   const deadline=Date.now()+15000;let state:IDEState|undefined;
   while(Date.now()<deadline){
     state=await (await fetch(new URL('/api/state',app.server.url))).json() as IDEState;
@@ -59,10 +59,10 @@ try{
   const signal=Object.values(state.project.signals).find(item=>item.binding?.protocol==='external');
   assert.equal(signal?.binding?.address,'temperature');
   await page.goto(new URL('/hmi?screen=overview',app.server.url).toString());
-  await page.locator('.presentation-view [data-presentation="value"]').waitFor({timeout:15000});
-  assert.match(await page.locator('[data-presentation="value"]').textContent()??'',/Value=—/);
+  await page.getByText(/ожидает применения сборки/).waitFor({timeout:15000});
+  assert.equal(await page.locator('.presentation-view').count(),0,'source-only import must not create an applied HMI');
   assert.deepEqual(errors,[]);
-  console.log('PASS: project-owned importer previews, applies authored Saturn source, validates and renders generated presentation.');
+  console.log('PASS: project-owned importer previews, writes authored Saturn source, validates it, and keeps unapplied HMI source out of the operator view.');
 }catch(error){
   await page.screenshot({path:'artifacts/importer-failure.png'}).catch(()=>{});
   throw error;

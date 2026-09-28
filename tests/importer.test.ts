@@ -1,6 +1,10 @@
 import { expect,test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { zipSync,strToU8 } from 'fflate';
 import { defineImporter, hmi, project, signal } from '../src/core';
+import { createApp } from '../src/host/dev';
 import { readImportSource } from '../src/shell/import-source';
 import { applyImportPlan } from '../src/workspace/importers';
 import { Workspace } from '../src/workspace/files';
@@ -23,6 +27,25 @@ test('import plan is confined to importer namespace and project version',()=>{
     expect(()=>applyImportPlan(workspace,{...plan,files:[{path:'server.ts',source:'bad'}]},result.project.version)).toThrow('invalid');
     expect(()=>applyImportPlan(workspace,plan,projectFile.version)).toThrow('changed after import preview');
   }finally{f.clean();}
+});
+
+test('direct import API rejects blocking diagnostics before changing authored or applied state',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'saturn-import-blocker-')),root=join(dir,'project');
+  mkdirSync(root);
+  writeFileSync(join(root,'project.ts'),"import { project } from '@saturn/core';\nexport default project({id:'blank',label:'Blank',equipment:[],pipes:[],alarms:[]});\n");
+  const app=await createApp({projectDir:root,dataDir:join(dir,'data'),port:0,preview:'manual'});
+  try{
+    const before=app.workspace.read('project.ts'),state=app.state();
+    const releases=await fetch(new URL('/api/releases',app.server.url)).then(response=>response.json()) as {applied:string|null};
+    const plan={importer:'example',sourceFingerprint:'a'.repeat(64),projectSource:"export { default } from './imports/example/project';\n",
+      files:[{path:'imports/example/project.ts',source:"import { project } from '@saturn/core';\nexport default project({id:'imported',label:'Imported',equipment:[],pipes:[],alarms:[]});\n"}],
+      diagnostics:[{severity:'blocker' as const,code:'UNSUPPORTED',message:{en:'Source semantics are unknown',ru:'Семантика источника неизвестна'}}]};
+    const response=await fetch(new URL('/api/import/apply',app.server.url),{method:'POST',headers:{'Content-Type':'application/json','X-Saturn-Key':state.key},body:JSON.stringify({plan,projectVersion:before.version})});
+    expect(response.status).toBe(409);
+    expect(app.workspace.read('project.ts')).toEqual(before);
+    expect(app.workspace.list()).not.toContain('imports/example/project.ts');
+    expect((await fetch(new URL('/api/releases',app.server.url)).then(value=>value.json()) as {applied:string|null}).applied).toBe(releases.applied);
+  }finally{await app.close();rmSync(dir,{recursive:true,force:true});}
 });
 
 test('presentation signals stay canonical project signals',()=>{

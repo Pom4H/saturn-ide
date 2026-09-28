@@ -2,9 +2,10 @@
 
 ## A small starting point
 
-`bun run scaffold project ../new-station` now creates an empty authored project.
-The installed/source launcher also exposes `saturn init ../new-station` / 
-`bun start init ../new-station`. The default has five files:
+`bun run scaffold project ../new-station` creates an empty authored project.
+The installed/source launcher also exposes `saturn init ../new-station` /
+`bun start init ../new-station`. Use `--template pumping-station` with either init
+command for the complete example. The default has five files:
 
 ```
 new-station/
@@ -21,14 +22,21 @@ A simple device adds one source file in `equipment/`. Reports, HMI, targets,
 project tests, custom views and firmware get folders when the project needs them.
 Existing projects are not moved or rewritten.
 
+For a project-owned PLC or plugin skeleton from the IDE checkout, pass the destination
+explicitly: `bun run scaffold plc plc-01 --project ../new-station` or
+`bun run scaffold plugin sensor --project ../new-station`. The generated source is not
+registered globally or added to `project.ts`; import the definitions you choose to use.
+
 `server.ts` is optional and selects a driver through normal exports. `browser.ts`
 is optional and supplies custom browser displays. Their use in the station example
 is intentional; a new project does not need copies of these files. The host,
 compiler, shell and runtime implementation remain part of Saturn IDE.
 
-For standalone TypeScript tooling, `bun install` resolves the declared core Git
-dependency; commit the generated `bun.lock`. The starter does not invent a lockfile
-or claim that installing external dependencies was already performed.
+The IDE checks the starter without project-local `node_modules`. For standalone
+TypeScript tooling, `bun install` resolves the declared core Git dependency over
+SSH; configure repository access first, then commit the generated `bun.lock`.
+The starter does not invent a lockfile or claim that external dependencies were
+installed. See [First project](quickstart.md) for the checked and runtime states.
 
 ## Preserve the full example
 
@@ -41,7 +49,10 @@ bun run scaffold project ../station-demo --template pumping-station
 The example checkout is `../saturn-examples/pumping-station`, overridable with
 `SATURN_EXAMPLE`. If unavailable, creation fails before creating the destination.
 Vendor SVG/3D, Firmverse HMI/firmware, reports, simulation and project tests are
-preserved when copying this template. Firmware remains an explicit real toolchain.
+preserved when copying this template. Install the copied project's dependencies
+before opening it: its project-owned React HMI requires React and type declarations.
+Its core dependency is pinned by the example, so the user needs repository access.
+Firmware remains an explicit real toolchain.
 
 ## Explorer views
 

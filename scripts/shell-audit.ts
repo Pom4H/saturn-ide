@@ -20,7 +20,7 @@ try{
   await page.getByRole('button',{name:'Показать боковую панель'}).click();await nav.waitFor({state:'visible'});
   for(const [label,name,ready] of [
     ['Исходник','source','.cm-content'],['Сигналы','signals','.signals-surface'],['Отчёты','reports','.reports-surface'],
-    ['HMI','hmi','.hmi-surface'],['Документация','docs','.documentation-surface'],['Развёртывание','environment','.environment-surface'],['Git','git','.git-surface'],
+    ['HMI','hmi','.hmi-surface'],['Документация','docs','.documentation-surface'],['Среда исполнения','environment','.environment-surface'],['Git','git','.git-surface'],
   ] as const){await nav.getByRole('treeitem',{name:label==='Исходник'?'P-01.device.ts':label,exact:true}).click();await page.locator(ready).waitFor();await page.waitForTimeout(250);await shot(name);}
   await nav.getByRole('treeitem',{name:'Отчёты',exact:true}).click();await page.getByRole('button',{name:'Сформировать',exact:true}).click();await page.locator('.report-table tbody tr').first().waitFor();await shot('reports-result');
   await nav.getByRole('treeitem',{name:'Схема',exact:true}).click();await page.getByRole('button',{name:'3D',exact:true}).click();await page.locator('.scene3d canvas').waitFor();await page.waitForTimeout(800);await shot('diagram-3d');

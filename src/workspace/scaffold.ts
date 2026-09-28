@@ -6,8 +6,36 @@ export const deviceTemplates=[
   {id:'pump',label:{ru:'Насос',en:'Pump'},icon:'pump',signals:"rpm: signal({ initial: 0, unit: 'rpm' }),\n  run: signal({ initial: false, writable: true })"},
   {id:'valve',label:{ru:'Клапан',en:'Valve'},icon:'valve',signals:"opening: signal({ initial: 0, unit: '%', min: 0, max: 100, writable: true })"},
   {id:'plc',label:{ru:'Базовый ПЛК',en:'Generic PLC'},icon:'plc',signals:"online: signal({ initial: false })"},
+  {id:'custom',label:{ru:'Собственный тип оборудования',en:'Project-owned equipment'},icon:'diagram',signals:''},
 ];
 export interface ScaffoldPreview {path:string;source:string;projectSource:string;projectVersion:string;id:string}
+function projectOwnedDeviceSource(id:string,label:string):string {
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="180" height="120" viewBox="0 0 180 120"><rect x="2" y="2" width="176" height="116" rx="8" fill="#e9f1f4" stroke="#6c8996" stroke-width="2" stroke-dasharray="7 5"/><text x="90" y="65" text-anchor="middle" font-size="13" font-family="sans-serif" fill="#315466">2D placeholder</text></svg>';
+  return `import { device, signal, terminal } from '@saturn/core';
+
+// This definition belongs to the project. Replace the 2D placeholder and add only
+// verified physical ports and signals; their coordinates use the 180 × 120 SVG frame.
+export const defineEquipment = device({
+  id: ${JSON.stringify('project.'+id.toLowerCase())},
+  icon: 'diagram',
+  ports: {
+    // Example after confirming the connector: command: terminal({ x: 0, y: 60, z: 20, side: 'left', medium: 'control', family: 'digital', role: 'sink', valueType: 'boolean' }),
+  },
+  signals: {
+    // Example after confirming the measurement: feedback: signal({ initial: false }),
+  },
+  capabilities: {
+    diagram: { width: 180, height: 120, svg: ${JSON.stringify(svg)} },
+  },
+});
+
+export default defineEquipment(${JSON.stringify(id)}, {
+  semanticId: ${JSON.stringify('equipment:'+id)},
+  label: ${JSON.stringify(label.trim())},
+  x: 80, y: 80,
+});
+`;
+}
 /** Locate the authored array; never replace an arbitrary expression with a second registry. */
 export function addProjectArray(source:string,property:string,binding:string,importPath:string):string {
   const tree=ts.createSourceFile('project.ts',source,ts.ScriptTarget.Latest,true);
@@ -26,7 +54,7 @@ export function addProjectArray(source:string,property:string,binding:string,imp
 export function previewDevice(workspace:Workspace,kind:string,id:string,label:string):ScaffoldPreview {
   const template=deviceTemplates.find(t=>t.id===kind);if(!template)throw new HttpError(400,'Unknown device template');
   if(!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id)||!label.trim()||label.length>160)throw new HttpError(400,'Invalid device ID or label');
-  const path=`equipment/${id}.device.ts`,source=`import { ${kind}, signal } from '@saturn/core';\n\nexport default ${kind}(${JSON.stringify(id)}, {\n  semanticId: ${JSON.stringify('equipment:'+id)},\n  label: ${JSON.stringify(label.trim())},\n  x: 80, y: 80,\n  ${template.signals},\n});\n`;
+  const path=`equipment/${id}.device.ts`,source=kind==='custom'?projectOwnedDeviceSource(id,label):`import { ${kind}, signal } from '@saturn/core';\n\nexport default ${kind}(${JSON.stringify(id)}, {\n  semanticId: ${JSON.stringify('equipment:'+id)},\n  label: ${JSON.stringify(label.trim())},\n  x: 80, y: 80,\n  ${template.signals},\n});\n`;
   if(workspace.list().includes(path))throw new HttpError(409,'Device file already exists');
   const root=workspace.read('project.ts'),binding='device_'+id.replaceAll('-','_');
   const tree=ts.createSourceFile(root.path,root.source,ts.ScriptTarget.Latest,true);let collision=false;const visit=(node:ts.Node)=>{if(ts.isIdentifier(node)&&node.text===binding)collision=true;ts.forEachChild(node,visit);};visit(tree);if(collision)throw new HttpError(409,'Import binding already exists');

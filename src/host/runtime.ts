@@ -48,22 +48,30 @@ export async function createRuntimeHost(options: RuntimeHostOptions) {
     return artifact;
   };
   const manager = new InstallationManager({ prepare: async artifact => ProjectInstallation.prepare(await validate(artifact), runtime, dataDir), persist: (next, previous) => revisions.apply(next, previous) });
-  let timer: ReturnType<typeof setInterval> | undefined;
+  let timer: ReturnType<typeof setInterval> | undefined, retentionTimer: ReturnType<typeof setInterval> | undefined;
   let queue: Promise<unknown> = Promise.resolve(), closing = false, backgroundError = '';
   const serial = <T>(action: () => Promise<T>) => { const work = queue.then(() => { if (closing) throw new RequestError(503, 'Runtime is closing'); return action(); }); queue = work.catch(() => {}); return work; };
   const releaseState = async () => ({ ...await revisions.state(), projectId: options.projectId, phase: manager.phase, error: manager.error || backgroundError, coreHash: options.coreHash, lockHash });
   const snapshot = () => ({ project: runtime.project, snapshot: runtime.snapshot, applied: manager.applied, phase: manager.phase,
     mode: manager.phase === 'running' && manager.installation instanceof ProjectInstallation ? manager.installation.driver?.mode ?? 'offline' : 'offline' });
+  // Called only inside the same host queue as apply and command dispatch.
+  const scenarioState = () => {
+    const installation = manager.installation;
+    if (manager.phase !== 'running' || !(installation instanceof ProjectInstallation) || installation.driver?.mode !== 'simulation') throw new RequestError(409, 'Scenarios require a running simulation');
+    const run = installation.telemetryRun;
+    if (!run || run.mode !== 'simulation' || run.build !== manager.applied) throw new RequestError(409, 'Simulation run is unavailable');
+    return { projectId: options.projectId, applied: manager.applied, phase: manager.phase, mode: 'simulation' as const, run, clock: installation.simulationClock, snapshot: runtime.snapshot };
+  };
   try {
-    await store.init(); await revisions.init();
+    await store.init(); await store.prune(); await revisions.init();
     const retained = await revisions.state();
     if (retained.applied) {
       const artifact = await validate(await revisions.get(retained.applied));
       runtime.project = decodeProject(artifact.model); await runtime.init();
       await manager.restore(artifact);
     }
-    await store.prune();
     timer = setInterval(() => { if (!closing && manager.phase === 'running') void runtime.stale().catch(error => { backgroundError = String(error); }); }, 1000);
+    retentionTimer = setInterval(() => { if (!closing) void serial(()=>store.prune()).catch(() => { backgroundError = 'RETENTION_FAILED'; }); }, 3600_000);
     const server = Bun.serve({ hostname: options.hostname ?? '127.0.0.1', port: options.port ?? 3100, maxRequestBodySize: 24_000_000, idleTimeout: 0,
       async fetch(request) {
         try {
@@ -75,6 +83,10 @@ export async function createRuntimeHost(options: RuntimeHostOptions) {
           const role = (['read', 'control', 'deploy'] as const).find(role => matches(token, options.tokens[role]));
           if (!role) throw new RequestError(401, 'Runtime credentials required');
           if (request.method === 'GET') {
+            if (path === '/api/scenario/state') {
+              if (role !== 'control') throw new RequestError(403, 'Role cannot perform this operation');
+              return await serial(async () => json(scenarioState()));
+            }
             if (path === '/api/state') return json(snapshot());
             if (path === '/api/diagnostics') return json({ ...runtime.inspect(manager.installation instanceof ProjectInstallation ? manager.installation.driver : undefined), phase: manager.phase, applied: manager.applied });
             if (path === '/api/history/range') return historyResponse(store, runtime.project, url);
@@ -92,7 +104,7 @@ export async function createRuntimeHost(options: RuntimeHostOptions) {
             throw new RequestError(404, 'Not found');
           }
           if (request.method !== 'POST') throw new RequestError(405, 'Method not allowed');
-          const control = path === '/api/command' || path === '/api/ack';
+          const control = path === '/api/command' || path === '/api/ack' || path === '/api/scenario/command' || path === '/api/scenario/advance';
           const deploy = ['/api/builds', '/api/publish', '/api/apply'].includes(path);
           if (!control && !deploy) throw new RequestError(404, 'Not found');
           if (role !== (control ? 'control' : 'deploy')) throw new RequestError(403, 'Role cannot perform this operation');
@@ -102,9 +114,17 @@ export async function createRuntimeHost(options: RuntimeHostOptions) {
           const b = body as Record<string, unknown>;
           if (control) return await serial(async () => {
             if (expected(b, 'expectedApplied') !== manager.applied) throw new RequestError(409, 'Applied build changed');
+            if (path === '/api/scenario/command' || path === '/api/scenario/advance') {
+              const state = scenarioState();
+              if (string(b, 'expectedRun') !== state.run.id) throw new RequestError(409, 'Simulation run changed');
+            }
             if (manager.phase !== 'running' || !(manager.installation instanceof ProjectInstallation)) throw new RequestError(409, 'Runtime is not accepting commands');
+            if (path === '/api/scenario/advance') {
+              if (typeof b.steps !== 'number' || !Number.isSafeInteger(b.steps) || b.steps < 1 || b.steps > 10000 || typeof b.expectedTimeMs !== 'number' || !Number.isSafeInteger(b.expectedTimeMs) || b.expectedTimeMs < 0) throw new RequestError(400, 'Expected steps 1–10000 and nonnegative integer expectedTimeMs');
+              return json({ ok: true, clock: await manager.installation.advanceSimulation(b.steps, b.expectedTimeMs) });
+            }
             const id = string(b, 'id');
-            if (path === '/api/command') await manager.installation.command(id, b.value);
+            if (path === '/api/command' || path === '/api/scenario/command') await manager.installation.command(id, b.value);
             else await runtime.acknowledge(id);
             return json({ ok: true });
           });
@@ -129,12 +149,14 @@ export async function createRuntimeHost(options: RuntimeHostOptions) {
     });
     let stopped: Promise<void> | undefined;
     return { server, close: () => stopped ??= (async () => {
-      closing = true; clearInterval(timer); events.close(); await server.stop(true); await queue;
+      closing = true;
+      if (manager.installation instanceof ProjectInstallation) manager.installation.abortPending();
+      clearInterval(timer); clearInterval(retentionTimer); events.close(); await server.stop(true); await queue;
       // Keep the ownership marker if driver cleanup fails: a second owner must not start.
       await manager.close(); await store.close(); rmSync(owner, { recursive: true });
     })() };
   } catch (error) {
-    clearInterval(timer); events.close();
+    clearInterval(timer); clearInterval(retentionTimer); events.close();
     try { await manager.close(); await store.close(); rmSync(owner, { recursive: true }); }
     catch { /* Preserve owner marker after failed cleanup. */ }
     throw error;

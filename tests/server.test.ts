@@ -46,7 +46,7 @@ test('real dev host: simulator preview, telemetry, safe writes and last-good app
   const f = fixture(), app = await createApp({ projectDir: f.root, dataDir: f.dir, databaseUrl: ':memory:', port: 0 });
   try {
     const base = app.server.url, state = await fetch(new URL('api/state', base)).then(r => r.json()) as IDEState;
-    expect(state.problems).toEqual([]); expect(state.mode).toBe('simulation'); expect(state.snapshot.samples['P-01.rpm']?.value).toBe(1450);
+    expect(state.problems).toEqual([]); expect(state.mode).toBe('simulation'); expect(state.runtimePhase).toBe('running'); expect(state.snapshot.samples['P-01.rpm']?.value).toBe(1450);
     const catalog = await fetch(new URL('api/resources', base)).then(r => r.json()) as ResourceCatalog;
     const pump = catalog.resources.find(r => r.entityId === 'P-01')!;
     expect(pump.icon).toBe('pump'); expect(pump.source?.path).toBe('equipment/P-01.device.ts');

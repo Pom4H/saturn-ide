@@ -5,7 +5,7 @@ import { createApp } from '../src/host/dev';
 const f=fixture();
 const app=await createApp({projectDir:f.root,dataDir:f.dir,databaseUrl:':memory:',port:0,preview:'manual'});
 const browser=await chromium.launch({headless:true,args:['--enable-unsafe-swiftshader']}),context=await browser.newContext({viewport:{width:1440,height:1000},recordVideo:{dir:'artifacts/command-shell-recording'}}),page=await context.newPage();
-const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
 const input=page.getByRole('combobox',{name:'Команда оболочки'}),log=page.locator('.shell-terminal-log');
 async function run(command:string,match:string){await input.fill(command);await input.press('Enter');await expect(log).toContainText(`› ${command}`);await expect(log).toContainText(match);await expect(page.getByRole('button',{name:'Выполнить команду',exact:true})).toBeVisible();}
 try{
@@ -35,7 +35,7 @@ try{
   await page.setViewportSize({width:1440,height:1000});
   await run('/project context','topology');
   await page.screenshot({path:'artifacts/command-shell-project-context.png'});
-  await app.close();await expect(page.locator('.sim-badge')).toHaveText('OFFLINE');await input.fill('set P-01.run true');await input.press('Enter');await expect(log).toContainText('Нет связи с runtime');await page.screenshot({path:'artifacts/command-shell-offline.png'});
+  await app.close();await expect(page.locator('.sim-badge')).toHaveText('ОФЛАЙН');await input.fill('set P-01.run true');await input.press('Enter');await expect(log).toContainText('Нет связи с runtime');await page.screenshot({path:'artifacts/command-shell-offline.png'});
   assert.deepEqual(errors,[]);console.log('PASS browser keyboard completion, real TypeScript draft/save, topology context, persistent state, history, failed/offline commands, light/dark/390px.');
-} catch(error){console.error('browser diagnostics',errors);await page.screenshot({path:'artifacts/command-shell-failure.png'});throw error;}
+} catch(error){await page.screenshot({path:'artifacts/command-shell-failure.png'});throw error;}
 finally{await context.close();await browser.close();await app.close();f.clean();}

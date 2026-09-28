@@ -10,6 +10,7 @@ import type { PositionSource } from '../source-edits';
 import { Workspace } from './files';
 import { Language } from './language';
 import { execute } from './git';
+import { projectErrorProblem } from './project-diagnostics';
 export interface DraftBuild { artifact: BuildArtifact; project: Project; positions: Record<string, PositionSource>; authoring?: AuthoringFrame; editorError?: string }
 function buildFailure(error:unknown){
   const message=(value:unknown)=>value instanceof Error?value.message:value&&typeof value==='object'&&'message' in value?String((value as {message:unknown}).message):String(value);
@@ -31,7 +32,7 @@ export class Builder {
     const projectLock = join(this.workspace.root, 'bun.lock');
     const lock = existsSync(projectLock) ? projectLock : join(this.appRoot, 'bun.lock');
     const lockHash = existsSync(lock) ? await digest(readFileSync(lock, 'utf8')) : null;
-    const coreHash = await digest(['core.ts', 'core/acquisition.ts', 'core/reporting.ts', 'core/report-output.ts', 'runtime/acquisition.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
+    const coreHash = await digest(['core.ts', 'core/acquisition.ts', 'core/monitoring.ts', 'core/scenarios.ts', 'core/simulation.ts', 'core/calculations.ts', 'core/operational.ts', 'core/reporting.ts', 'core/report-output.ts', 'runtime/acquisition.ts', 'topology.ts', 'motion.ts', 'reports.ts'].map(path => readFileSync(join(this.appRoot, 'src', path), 'utf8')).join('\n'));
     const inputKey = await digest(canonical({ sourceDigest, coreHash, lockHash, bunVersion: Bun.version }));
     this.language.clear(); const problems = this.language.diagnostics();
     if (problems.length) throw new BuildError(problems);
@@ -52,8 +53,15 @@ export class Builder {
       } }] });
     } catch(error) { throw new Error('Bundle failed: '+buildFailure(error)); }
     if (!result.success) throw new Error('Bundle failed: '+result.logs.map(l => l.message).join('\n'));
-    const project = (await import(pathToFileURL(join(outdir, 'project.mjs')).href)).default as Project;
-    validateProject(project);
+    let project:Project;
+    try{
+      project = (await import(pathToFileURL(join(outdir, 'project.mjs')).href)).default as Project;
+      validateProject(project);
+    }catch(error){
+      const problem=projectErrorProblem(error,this.workspace);
+      if(problem)throw new BuildError([problem]);
+      throw error;
+    }
     const after = await digest(canonical(this.sources().map(({ path, source }) => ({ path, source }))));
     if (after !== sourceDigest || (existsSync(lock) ? await digest(readFileSync(lock, 'utf8')) : null) !== lockHash) throw new Error('Source or dependency lock changed during build; build again');
     const sourceRevision = await execute(['git', 'rev-parse', 'HEAD'], this.workspace.root).then(s => s.trim()).catch(() => null);

@@ -16,7 +16,7 @@ export async function buildRelease(projectDir: string, outputDir: string, appRoo
   try {
     const { artifact } = await builder.build();
     if (artifact.provenance.lockHash !== await digest(lock) || readFileSync(join(project, 'package.json'), 'utf8') !== manifest) throw new Error('Project dependencies changed during release build');
-    const bundled = await Bun.build({ entrypoints: [join(appRoot, 'src/host/runtime.ts')], target: 'bun', packages: 'external', outdir: output, naming: 'runtime.mjs' });
+    const bundled = await Bun.build({ entrypoints: [join(appRoot, 'src/host/runtime.ts'), join(appRoot, 'src/runtime/report-query.ts')], target: 'bun', packages: 'external', outdir: output, naming: '[name].mjs' });
     if (!bundled.success) throw new Error(bundled.logs.map(log => log.message).join('\n'));
     writeFileSync(join(output, 'artifact.json'), JSON.stringify(artifact));
     writeFileSync(join(output, 'package.json'), manifest); writeFileSync(join(output, 'bun.lock'), lock);

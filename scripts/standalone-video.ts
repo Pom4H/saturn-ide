@@ -22,7 +22,7 @@ try{
   await page.goto(base);await Bun.write(join(out,'page.html'),await page.content());
   await page.locator('[data-equipment="P-01"]').waitFor({timeout:30000});await pause(1800);
   const tree=page.getByRole('tree',{name:'Структура проекта'});
-  await page.getByRole('button',{name:'Edit',exact:true}).click();await pause();
+  await page.getByRole('button',{name:'Правка',exact:true}).click();await pause();
   const pump=page.locator('[data-equipment="P-01"]'),box=await pump.boundingBox();if(!box)throw new Error('P-01 is not visible');
   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+70,box.y+box.height/2-24,{steps:18});await pause(450);await page.mouse.up();await pause(1200);
   await tree.getByRole('treeitem',{name:'P-01.device.ts',exact:true}).click();await page.locator('.cm-content').waitFor();await pause(1500);
@@ -30,7 +30,7 @@ try{
   const pressure=page.getByRole('button',{name:'P-01.pressure',exact:true});if(await pressure.count()){await pressure.click();await pause(1500);}
   await tree.getByRole('treeitem',{name:'HMI',exact:true}).click();await page.locator('.hmi-surface iframe').waitFor();await pause(1800);
   await tree.getByRole('treeitem',{name:'Отчёты',exact:true}).click();await pause();const generate=page.getByRole('button',{name:'Сформировать',exact:true});if(await generate.count()){await generate.click();await pause(1800);}
-  await tree.getByRole('treeitem',{name:'Развёртывание',exact:true}).click();await pause(1800);
+  await tree.getByRole('treeitem',{name:'Среда исполнения',exact:true}).click();await pause(1800);
   await tree.getByRole('treeitem',{name:'Схема',exact:true}).click();await page.locator('[data-equipment="P-01"]').waitFor();await pause();
   await page.getByRole('button',{name:'3D',exact:true}).click();await until(async()=>Number(await page.locator('.scene3d').getAttribute('data-frames'))>3,'3D did not render');await pause(2200);
   await page.getByRole('button',{name:'2D',exact:true}).click();await pause(1200);

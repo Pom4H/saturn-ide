@@ -1,0 +1,66 @@
+import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
+import { chromium, expect } from 'playwright/test';
+import { fixture } from '../tests/helpers';
+import { createApp } from '../src/host/dev';
+
+mkdirSync('artifacts/codex-shell-recording', { recursive: true });
+const work = fixture();
+const app = await createApp({ projectDir: work.root, dataDir: work.dir, databaseUrl: ':memory:', port: 0, preview: 'manual' });
+const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--enable-unsafe-swiftshader'] });
+const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, locale: 'ru-RU', recordVideo: { dir: 'artifacts/codex-shell-recording' } });
+const page = await context.newPage();
+const errors: string[] = [];
+page.on('pageerror', error => errors.push(error.message));
+const mode = page.getByRole('button', { name: 'Режим проводника' });
+const tree = page.getByRole('tree', { name: 'Структура проекта' });
+const choose = async (name: 'Код' | 'Объекты') => {
+  await mode.click();
+  await page.getByRole('menuitemcheckbox', { name, exact: true }).click();
+};
+try {
+  await page.goto(app.server.url.toString());
+  await expect(mode).toContainText('Объекты');
+  await expect(tree.locator('[data-tree-id="source"]')).toBeVisible();
+  assert.ok(await page.locator('[data-anatomy="saturn-pump"] circle').count() >= 10, 'authored pump SVG changed');
+  assert.equal(await page.locator('[data-cable]').count(), 2, 'authored cables changed');
+  await page.screenshot({ path: 'artifacts/codex-shell-objects.png' });
+  await page.getByRole('button', { name: '3D', exact: true }).click();
+  await expect(page.locator('.scene3d canvas')).toBeVisible({ timeout: 30_000 });
+  await page.screenshot({ path: 'artifacts/codex-shell-3d.png' });
+  await page.getByRole('button', { name: '2D', exact: true }).click();
+  await mode.click();
+  await expect(page.getByRole('menuitemcheckbox', { name: 'Объекты', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await page.screenshot({ path: 'artifacts/codex-shell-menu.png' });
+  await page.getByRole('menuitemcheckbox', { name: 'Код', exact: true }).click();
+  await expect(mode).toContainText('Код');
+  await expect(page.locator('.code-pane')).toBeVisible();
+  await expect(tree.locator('[data-tree-id="files"]')).toBeVisible();
+  await tree.locator('[data-tree-id="file:equipment/P-01.device.ts"]').click();
+  await expect(page.locator('.code-pane .pane-heading')).toContainText('P-01.device.ts');
+  await page.screenshot({ path: 'artifacts/codex-shell-code.png' });
+  await choose('Объекты');
+  await expect(page.locator('svg.scene')).toBeVisible();
+  await expect(tree.locator('[data-tree-id^="object:"][data-resource-id="P-01"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Тёмная тема' }).click();
+  await page.screenshot({ path: 'artifacts/codex-shell-dark.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.workbench-rail')).toBeVisible();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile horizontal overflow');
+  await page.getByRole('button', { name: 'Открыть навигацию' }).click();
+  await expect(mode).toBeVisible();
+  await mode.click();
+  await page.screenshot({ path: 'artifacts/codex-shell-mobile-menu.png' });
+  await page.keyboard.press('Escape');
+  await expect(tree).toBeHidden();
+  await app.close();
+  await expect(page.locator('.sim-badge')).toHaveText('ОФЛАЙН');
+  await page.screenshot({ path: 'artifacts/codex-shell-offline.png' });
+  assert.deepEqual(errors, []);
+  console.log('PASS Codex-like mode menu, source and object navigation, authored SVG, light/dark/mobile/offline frames, and no page errors');
+} finally {
+  await context.close();
+  await browser.close();
+  await app.close();
+  work.clean();
+}

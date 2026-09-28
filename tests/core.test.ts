@@ -1,14 +1,14 @@
 import { free } from '../src/core';
-import { isAttached, type ConnectionEnd } from '../src/core';
+import { isAttached, type ConnectionEnd, type Project } from '../src/core';
 import { canonical } from '../src/core/artifact';
-import { decodeProject } from '../src/runtime/decode-project';
+import { decodeProject } from '../src/core/project-codec';
 const attachedPort = (end:ConnectionEnd|undefined) => end && isAttached(end) ? end.port : undefined;
 const attachedDevice = (end:ConnectionEnd|undefined) => end && isAttached(end) ? end.device : undefined;
 const isFree = (end:ConnectionEnd|undefined) => !!end && !isAttached(end);
 import { expect, test } from 'bun:test';
-import { device, equipmentCommands, project, pump, signal, standardInterfaces, terminal, terminalFromAnchor, validateProject, validateValue } from '../src/core';
+import { cable, device, equipmentCommands, project, pump, signal, standardInterfaces, terminal, terminalFromAnchor, validateProject, validateValue } from '../src/core';
 import demo from '@saturn/example';
-import { routeConnection, related } from '../src/topology';
+import { routeConnection, routeConnections, related } from '../src/topology';
 import { semanticDiff } from '../src/semantic';
 import { projectDocumentation } from '../src/documentation';
 test('one inferred engineering model, explicit ports and report relationships',()=>{
@@ -19,6 +19,12 @@ test('one inferred engineering model, explicit ports and report relationships',(
   const edge=demo.pipes[0]!,booster=demo.equipment.find(e=>e.id==='P-01')!;
   expect(routeConnection(demo,edge).points).not.toEqual(routeConnection({...demo,equipment:demo.equipment.map(e=>e.id===booster.id?{...e,x:e.x+50}:e)},edge).points);
   expect(related(demo,booster).reports[0]?.id).toBe('hourly-water');
+});
+test('connection view projection routes only the selected authored edges without changing their paths',()=>{
+  const full=routeConnections(demo),ids=new Set([full[1]!.id,full[3]!.id]);
+  expect(routeConnections(demo,undefined,ids)).toEqual(full.filter(route=>ids.has(route.id)));
+  expect(routeConnections(demo,undefined,new Set())).toEqual([]);
+  expect(demo.pipes.length+(demo.cables?.length??0)).toBe(4);
 });
 test('unplugging a cable removes its signal from the detached equipment context',()=>{
   const controller=demo.equipment.find(e=>e.id==='PLC-01')!;
@@ -48,11 +54,37 @@ test('saturn.build@2 decode keeps a legacy loose cable instead of dropping it',(
   expect(decoded.pipes).toHaveLength(demo.pipes.length);
   expect(decoded.signals['P-01.run']?.id).toBe('P-01.run');
 });
+test('transported authored signals are relinked before editor port validation',()=>{
+  const transported=JSON.parse(canonical(demo)) as typeof demo;
+  const controller=transported.equipment.find(item=>item.id==='PLC-01')!;
+  const candidate=(model:Project,port:'DO1'|'AO1'):Project=>({...model,cables:model.cables?.map(edge=>edge.id==='run-command'?{...edge,from:model.equipment.find(item=>item.id==='PLC-01')!.ports[port]!}:edge)});
+  expect(()=>validateProject(candidate(transported,'DO1'))).toThrow('Unknown/incompatible signal');
+  const linked=decodeProject(canonical(transported));
+  expect(controller.ports.DO1?.terminal.family).toBe('digital');
+  expect(()=>validateProject(candidate(linked,'DO1'))).not.toThrow();
+  expect(()=>validateProject(candidate(linked,'AO1'))).toThrow('Incompatible ports');
+});
 test('invalid values and duplicate IDs fail at the model boundary',()=>{
   expect(()=>validateValue(signal('x',{initial:2,min:0,max:5}),7)).toThrow();
   expect(()=>validateValue(signal('x',{initial:2}),Infinity)).toThrow();
   expect(()=>validateValue(signal('x',{initial:false}),0)).toThrow();
   expect(()=>project({...demo,equipment:[demo.equipment[0]!,demo.equipment[0]!]})).toThrow();
+});
+test('authored project validation has no diagram-routing device or connection ceiling',()=>{
+  const sensor=device({id:'scale-sensor',icon:'sensor',ports:{},signals:{value:signal({initial:0})}});
+  const device129=Array.from({length:129},(_,index)=>sensor(`D${index}`,{label:`Device ${index}`,x:index%13*500,y:Math.floor(index/13)*260}));
+  expect(()=>project({id:'scale-devices',label:'Scale devices',equipment:device129,pipes:[],alarms:[]})).not.toThrow();
+  const bank=device({id:'scale-bank',icon:'bank',ports:{
+    output:terminal({x:0,y:0,z:0,side:'right',medium:'control',family:'digital',role:'source',valueType:'boolean',max:128}),
+    input:terminal({x:0,y:0,z:0,side:'left',medium:'control',family:'digital',role:'sink',valueType:'boolean',max:128}),
+  }});
+  const banks=Array.from({length:10},(_,index)=>bank(`P${index}`,{label:`Port bank ${index}`,x:index*300,y:600})),value=signal('scaled-value',{initial:false});
+  const cables=Array.from({length:513},(_,index)=>{const pair=Math.floor(index/128);return cable(`E${index}`,{from:banks[pair*2]!.ports.output,to:banks[pair*2+1]!.ports.input,signal:value});});
+  const model=project({id:'scale-edges',label:'Scale edges',equipment:banks,pipes:[],cables,alarms:[]});
+  expect(model.cables).toHaveLength(513);
+  expect(()=>validateProject(model)).not.toThrow();
+  const overCapacity={...model,cables:Array.from({length:129},(_,index)=>({...model.cables[0]!,id:`X${index}`,from:banks[0]!.ports.output,to:banks[1]!.ports.input}))};
+  expect(()=>validateProject(overCapacity)).toThrow('Port occupied');
 });
 if(false){
   // @ts-expect-error Ethernet cannot use a two-wire RS-485 connector profile.

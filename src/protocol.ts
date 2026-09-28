@@ -11,6 +11,9 @@ export interface IDEState {
   revision: string;
   snapshot: Snapshot;
   mode: Driver["mode"] | "offline";
+  /** Runtime authority; optional for older shell clients and test fixtures. */
+  runtimePhase?: 'empty' | 'running' | 'applying' | 'faulted' | 'closed';
+  runtimeError?: string;
   adapter: "sqlite" | "postgres";
   key: string;
   pushPublicKey: string;

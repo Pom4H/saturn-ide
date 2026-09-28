@@ -22,7 +22,7 @@ export async function cli(argv:string[]):Promise<number> {
   const parsedUrl=new URL(url);if(!['http:','https:'].includes(parsedUrl.protocol)||parsedUrl.username||parsedUrl.password)throw new Error('Expected workspace HTTP(S) URL without credentials');
   if(!args.length&&!batch&&completion===undefined){await runTerminal(url,true);return 0;}
   const client=new ShellClient(parsedUrl.origin),session=new ShellSession('terminal',client);
-  let state=await client.state();session.replaceCatalog(await client.catalog());
+  let state=await client.state().catch(error=>{throw new Error(`Cannot connect to Saturn workspace at ${parsedUrl.origin}. Start “saturn serve --project <directory>” or pass --url. ${error instanceof Error?error.message:String(error)}`);});session.replaceCatalog(await client.catalog());
   const commands=new CommandShell({session,state:()=>state,connected:()=>true,request:(path,body,signal)=>client.request(path,body,signal)});
   let code=0;
   try{

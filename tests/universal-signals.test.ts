@@ -39,8 +39,11 @@ test('semantic diff includes engineering attributes, not only graph edges',()=>{
 });
 
 test('build transport key order does not invent changes to the applied project',()=>{
-  const applied=decodeProject(canonical(demo));
-  expect(semanticDiff(applied,demo)).toEqual([]);
+  // External examples may still contain legacy unplugged/looseEnd fields. Compare
+  // transport of the decoded authored model so migration is not mistaken for key order.
+  const source=decodeProject(canonical(demo));
+  const applied=decodeProject(canonical(source));
+  expect(semanticDiff(applied,source)).toEqual([]);
 });
 
 test('compact runtime quality has a richer canonical interpretation',()=>{

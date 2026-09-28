@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import {mkdirSync} from 'node:fs';
+import {chromium,expect} from 'playwright/test';
+import {fixture} from '../tests/helpers';
+import {createApp} from '../src/host/dev';
+
+const out='artifacts/ux-polish/environment';mkdirSync(out,{recursive:true});
+const work=fixture(),app=await createApp({projectDir:work.root,dataDir:work.dir,databaseUrl:':memory:',port:0,preview:'manual'});
+const browser=await chromium.launch({headless:true});
+const context=await browser.newContext({viewport:{width:1440,height:960},recordVideo:{dir:out+'/video'}});
+await context.addInitScript(()=>{localStorage.setItem('saturn.locale','ru');localStorage.setItem('saturn.theme','system');});
+const page=await context.newPage(),errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+const rail=page.getByRole('navigation',{name:'Рабочие области'}),panel=page.locator('.shell-panel');
+const capture=async(name:string)=>{assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'horizontal overflow');await page.screenshot({path:out+'/'+name+'.png'});};
+try{
+  await page.goto(app.server.url.href);await expect(rail).toBeVisible();
+  await page.getByRole('tab',{name:'Терминал',exact:true}).click();
+  const input=page.getByRole('combobox',{name:'Команда оболочки'});await input.fill('help');await input.press('Enter');
+  await expect(page.locator('.shell-terminal-log')).toContainText('set <signal> <value>');
+  await input.fill('unsubmitted draft');
+  await rail.locator('[data-rail-section="environment"]').click();
+  const environment=page.locator('.environment-surface');await expect(environment).toBeVisible();
+  await expect(panel).toHaveAttribute('data-open','false');
+  await expect(environment.locator('.environment-summary')).toContainText('ещё не применена');
+  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  const review=page.locator('.review-pane');await expect(review).toBeVisible();await expect(review).not.toHaveAttribute('data-review-state','loading');
+  await expect(review.locator('.review-identity-details')).not.toHaveAttribute('open','');
+  await expect(review.locator('[data-release-phase]')).toBeVisible();
+  await capture('1440-checked-only');
+  await review.locator('.review-identity-details>summary').click();await expect(review.locator('.review-identities').first()).toBeVisible();
+  await review.locator('.review-identity-details>summary').click();
+  await page.getByRole('button',{name:'Закрыть ревью',exact:true}).click();
+  await page.getByRole('tab',{name:'Уведомления',exact:true}).click();
+  await expect(panel).toHaveAttribute('data-tab','notifications');
+  await rail.locator('[data-rail-section="object"]').click();
+  await expect(panel).toHaveAttribute('data-tab','terminal');await expect(input).toHaveValue('unsubmitted draft');
+  await expect(page.locator('.shell-terminal-log')).toContainText('set <signal> <value>');
+  await rail.locator('[data-rail-section="environment"]').click();
+  await expect(panel).toHaveAttribute('data-tab','notifications');await expect(panel).toHaveAttribute('data-open','true');
+  await page.getByRole('button',{name:'Скрыть панель',exact:true}).click();
+  await page.emulateMedia({colorScheme:'dark'});await capture('1440-dark');
+  await page.setViewportSize({width:390,height:844});await capture('390-dark');
+  await app.close();await expect(environment).toContainText('Нет связи');await capture('390-offline');
+  assert.deepEqual(errors,[]);
+  console.log('PASS: environment layout memory; terminal draft/log retained; Checked-only summary; collapsed identity details and visible phase; desktop/mobile dark/offline; no page errors.');
+}finally{await context.close();await browser.close();await app.close();work.clean();}

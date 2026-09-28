@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { chromium, expect } from 'playwright/test';
+import { createApp } from '../src/host/dev';
+
+const root=resolve(import.meta.dir,'..'),output=join(root,'artifacts/hmi-overview');mkdirSync(output,{recursive:true});
+const temporary=mkdtempSync(join(root,'.saturn/hmi-overview-'));
+const projectDir=join(temporary,'project');mkdirSync(projectDir);
+writeFileSync(join(projectDir,'project.ts'),`import {device,signal,project,hmi} from '@saturn/core';
+const panel=device({id:'panel',icon:'plc',ports:{},signals:{setpoint:signal({initial:10,writable:true,min:0,max:100,label:'Задание скорости',unit:'%' }),actual:signal({initial:10,label:'Фактическая скорость',unit:'%'})}})('PANEL',{label:'Пульт приводов',x:0,y:0});
+const devices=Array.from({length:5},(_,index)=>device({id:'sensor',icon:'sensor',ports:{},signals:{value:signal({initial:index+20,label:'Температура '+(index+1),unit:'°C'})},capabilities:{diagram:{width:100,height:110},instrument:{form:'digital',field:'value',precision:0}}})('SENSOR-'+(index+1),{label:'Температурный датчик '+(index+1),x:300+index*240,y:0}));
+export default project({id:'hmi-overview',label:'HMI overview test',equipment:[panel,...devices],pipes:[],alarms:[],hmis:[hmi('system',{label:'Система охлаждения',width:1280,height:720,equipment:[panel,...devices]})]});`);
+writeFileSync(join(projectDir,'server.ts'),`import type {Driver,DriverContext,Value} from '@saturn/core';
+let context:DriverContext;const values:Record<string,Value>={'PANEL.setpoint':10,'PANEL.actual':10,...Object.fromEntries(Array.from({length:5},(_,i)=>['SENSOR-'+(i+1)+'.value',20+i]))};
+const driver:Driver={mode:'simulation',async start(next){context=next;await context.publish({...values});return()=>{};},async write(id,value){if(id!=='PANEL.setpoint')throw new Error('Unexpected command');values[id]=value;values['PANEL.actual']=value;await context.publish({...values});}};export default driver;`);
+const app=await createApp({projectDir,dataDir:join(temporary,'data'),port:0,preview:'simulation'});
+const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+const context=await browser.newContext({viewport:{width:1280,height:800}}),page=await context.newPage(),errors:string[]=[];
+page.on('pageerror',error=>errors.push(error.message));await page.addInitScript(()=>localStorage.setItem('saturn.locale','ru'));
+try{
+  assert.deepEqual(app.state().problems,[]);
+  await page.goto(new URL('/hmi?screen=system',app.server.url).toString());
+  await expect(page.locator('[data-hmi-view="overview"]')).toBeVisible();
+  await expect(page.locator('[data-hmi-equipment]')).toHaveCount(6);
+  await expect(page.locator('.hmi-instrument-preview')).toHaveCount(5);
+  await expect(page.locator('[data-hmi-equipment="SENSOR-5"]')).toContainText('Температура 5');
+  await expect(page.locator('[data-hmi-equipment="SENSOR-5"]')).toContainText('24');
+  await page.screenshot({path:join(output,'overview-desktop.png'),fullPage:true});
+  await page.locator('[data-hmi-equipment="PANEL"]').click();
+  await expect(page.locator('.hmi>header>strong')).toHaveText('PANEL');
+  const command=page.getByRole('group',{name:'Задание скорости',exact:true});
+  await command.getByRole('spinbutton',{name:'PANEL.setpoint',exact:true}).fill('42');
+  await command.getByRole('button',{name:'Отправить',exact:true}).click();
+  await expect.poll(()=>app.runtime.snapshot.samples['PANEL.setpoint']?.value).toBe(42);
+  await expect(command.getByRole('status')).toContainText('Принято');
+  await page.screenshot({path:join(output,'equipment-detail-desktop.png'),fullPage:true});
+  await page.getByRole('button',{name:'Обзор системы',exact:true}).click();
+  await expect(page.locator('[data-hmi-view="overview"]')).toBeVisible();
+  await page.setViewportSize({width:390,height:480});
+  await expect(page.locator('[data-hmi-equipment]')).toHaveCount(6);
+  const bounds=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth,body:document.querySelector('.hmi-overview-body')?.scrollWidth}));
+  assert(bounds.document<=bounds.viewport+1,`HMI document overflows: ${JSON.stringify(bounds)}`);
+  assert((bounds.body??0)<=bounds.viewport+1,`Overview overflows: ${JSON.stringify(bounds)}`);
+  await page.screenshot({path:join(output,'overview-mobile.png'),fullPage:true});
+  assert.deepEqual(errors,[]);
+  console.log(`PASS: multi-device HMI overview and command path; no 390×480 horizontal overflow. Frames: ${output}`);
+}finally{await context.close();await browser.close();await app.close();rmSync(temporary,{recursive:true,force:true});}

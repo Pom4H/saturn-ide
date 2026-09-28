@@ -1,0 +1,8 @@
+.identity-value{display:block;min-width:0;max-width:100%;text-align:left}
+.identity-value summary{width:max-content;max-width:100%;cursor:pointer;white-space:nowrap}
+.identity-value summary code{font-size:inherit}
+.identity-full{display:grid;justify-items:start;gap:6px;max-width:100%;padding:7px 0 4px}
+.identity-full code{display:block;max-width:100%;font-size:11px;white-space:normal;overflow-wrap:anywhere;user-select:text}
+.identity-full button{font-size:11px;padding:4px 7px}
+.identity-full small{color:var(--bad);font-size:10px}
+.review-identities dd.review-identity-value{min-width:0;max-width:55%;width:145px}

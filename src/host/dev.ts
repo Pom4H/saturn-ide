@@ -33,6 +33,8 @@ import { applyImportPlan } from '../workspace/importers';
 import type { ScadaImportPlan } from '../core/importer';
 import { deviceTemplates, previewDevice, previewHmi } from '../workspace/scaffold';
 import { previewCableDisconnect, previewCableEndpoint } from '../workspace/cable-edit';
+import { createWorkerHost } from './worker';
+import type { JobReceipt } from '../core/jobs';
 
 const defaultAppRoot = resolve(import.meta.dir, '../..');
 const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 'Проект не загружен' }, signals: {}, equipment: [], pipes: [], alarms: [] };
@@ -40,11 +42,12 @@ const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 
 export async function createApp(options: { appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation' } = {}) {
   const appRoot=options.appRoot??defaultAppRoot;
   const updates=new IDEUpdates(Bun.env.SATURN_IDE_VERSION??(await Bun.file(join(appRoot,'package.json')).json()).version);
-  const workspace = new Workspace(options.projectDir ?? resolve(Bun.env.SATURN_PROJECT ?? '../saturn-examples/pumping-station'));
+  const workspace = new Workspace(options.projectDir ?? resolve(Bun.env.SATURN_PROJECT ?? './examples/reports'));
   const dataDir = options.dataDir ?? join(appRoot, '.saturn', hash(workspace.root).slice(0, 12));
   mkdirSync(dataDir, { recursive: true });
-  const store = new Store(options.databaseUrl ?? Bun.env.DATABASE_URL ?? `sqlite://${join(dataDir, 'history.sqlite')}`);
-  await store.init();
+  const database = options.databaseUrl ?? Bun.env.DATABASE_URL ?? `sqlite://${join(dataDir, 'history.sqlite')}`;
+  const store = new Store(database);
+  await store.init(); await store.prune();
   const revisions = new RevisionStore(store.sql); await revisions.init();
   const events = new Events(), builder = new Builder(workspace, appRoot, dataDir), git = new Git(workspace), push = new Push(store, dataDir);
   const plugins=new ProjectPlugins(workspace);
@@ -65,7 +68,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
   const mode = (): Driver['mode'] | 'offline' => manager.phase === 'running' ? active()?.driver?.mode ?? 'offline' : 'offline';
   const authoringProject = () => draft?.project ?? runtime.project;
   const state = (): IDEState => ({ project: runtime.project, snapshot: runtime.snapshot, revision: (manager.applied ?? releaseState.applied)?.slice(7) ?? '',
-    authoring:draft?.authoring,editorError:draft?.editorError,positions:draft?.authoring?.positions??draft?.positions??{}, problems, mode: mode(), adapter: store.adapter, key, pushPublicKey: push.publicKey });
+    authoring:draft?.authoring,editorError:draft?.editorError,positions:draft?.authoring?.positions??draft?.positions??{}, problems, mode: mode(), runtimePhase:manager.phase, runtimeError:manager.error, adapter: store.adapter, key, pushPublicKey: push.publicKey });
   function reportError(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     problems = [{ code: 'RUNTIME', message: { en: message, ru: message } }];
@@ -105,12 +108,13 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
     }
     events.emit('project', state());
   };
-  let reloadQueue: Promise<void> = Promise.resolve();
-  const reload = () => { const next = reloadQueue.then(reloadNow); reloadQueue = next.catch(reportError); return next; };
+  let closed=false,reloadQueue: Promise<unknown> = Promise.resolve();
+  const runtimeSerial = <T,>(action:()=>Promise<T>) => { const next=reloadQueue.then(()=>{if(closed)throw new HttpError(503,'Workspace is closing');return action();});reloadQueue=next.catch(()=>{});return next; };
+  const reload = () => runtimeSerial(reloadNow);
   await reload();
   let browser = await browserAssets(appRoot, workspace.root, dataDir);
   const staleTimer = setInterval(() => { if (manager.phase === 'running') void runtime.stale().catch(reportError); }, 1000);
-  const retention = setInterval(() => void store.prune().catch(reportError), 3600_000); await store.prune();
+  const retention = setInterval(() => void store.prune().catch(reportError), 3600_000);
   let debounce: ReturnType<typeof setTimeout>;
   const savedVersions = new Map<string, string>();
   const watcher = watch(workspace.root, { recursive: true }, (_event, path) => {
@@ -124,19 +128,58 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
   const field = (b: Record<string, unknown>, name: string) => { const v = b[name]; if (typeof v !== 'string') throw new HttpError(400, `Expected string: ${name}`); return v; };
   const expected = (b: Record<string, unknown>, name: string) => { const v = b[name]; if (v !== null && (typeof v !== 'string' || !HASH.test(v))) throw new HttpError(400, `Expected hash or null: ${name}`); return v; };
   let gitBusy = false;
+  let scenarioWorker:Promise<Awaited<ReturnType<typeof createWorkerHost>>>|undefined;
+  const workerToken=crypto.randomUUID(),scenarioToken=crypto.randomUUID();
+  const workerAvailable=database!==':memory:'&&!database.includes('mode=memory');
+  const scenarioState=()=>{
+    const installation=active(),run=installation?.telemetryRun;
+    if(manager.phase!=='running'||installation?.driver?.mode!=='simulation'||!run||run.build!==manager.applied)throw new HttpError(409,'Scenario requires an active simulation');
+    return {projectId:runtime.project.id,applied:manager.applied!,phase:manager.phase,mode:'simulation',run,clock:installation.simulationClock,snapshot:runtime.snapshot};
+  };
+  const getWorker=()=>{
+    if(closed)throw new HttpError(503,'Workspace is closing');
+    if(!workerAvailable)throw new HttpError(409,'Scenario worker requires a persistent runtime database');
+    return scenarioWorker??=createWorkerHost({directory:join(dataDir,'scenario-worker'),port:0,token:workerToken,projects:{workspace:{root:workspace.root,database,runtime:{url:String(server.url),token:scenarioToken}}}}).catch(error=>{scenarioWorker=undefined;throw error;});
+  };
+  const workerRequest=async(path:string,body?:unknown)=>{
+    const worker=await getWorker();
+    const response=await fetch(new URL(path,worker.server.url),{method:body===undefined?'GET':'POST',headers:{authorization:'Bearer '+workerToken,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+    const data:unknown=await response.json();if(!response.ok)throw new HttpError(response.status,data&&typeof data==='object'&&'error'in data?String(data.error):'Scenario worker request failed');return data;
+  };
   const server = Bun.serve({ hostname: '127.0.0.1', port: options.port ?? Number(Bun.env.PORT ?? 3000), idleTimeout: 0,
     development: false, maxRequestBodySize: 2_500_000,
     async fetch(request) {
       try {
+        if(closed)throw new HttpError(503,'Workspace is closing');
         const url = new URL(request.url), path = url.pathname;
         if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new HttpError(403, 'Untrusted host');
         const origin = request.headers.get('origin'); if (origin && origin !== url.origin) throw new HttpError(403, 'Cross-origin request refused');
+        if(path.startsWith('/api/scenario/')){
+          if(origin||request.headers.get('authorization')!=='Bearer '+scenarioToken)throw new HttpError(403,'Scenario worker credentials required');
+          if(path==='/api/scenario/state'&&request.method==='GET')return await runtimeSerial(async()=>json(scenarioState()));
+          if(request.method!=='POST'||!request.headers.get('content-type')?.includes('application/json'))throw new HttpError(400,'JSON command required');
+          const raw:unknown=await request.json();if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new HttpError(400,'Expected object');const b=raw as Record<string,unknown>;
+          return await runtimeSerial(async()=>{
+            const current=scenarioState();if(b.expectedApplied!==current.applied||b.expectedRun!==current.run.id)throw new HttpError(409,'Simulation build or run changed');
+            if(path==='/api/scenario/command'){await active()!.command(field(b,'id'),b.value);return json({ok:true});}
+            if(path==='/api/scenario/advance'){const clock=await active()!.advanceSimulation(b.steps as number,b.expectedTimeMs as number);return json({ok:true,clock});}
+            throw new HttpError(404,'Not found');
+          });
+        }
         if (request.method === 'GET') {
           if(path==='/' || path==='/hmi') return new Response(browser.html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
           const asset=browser.assets.get(path); if(asset)return new Response(asset,{headers:{'Cache-Control':'no-cache'}});
           if (path === '/api/state') return json(state());
+          if(path==='/api/scenarios'){
+            const context=await runtimeSerial(async()=>{try{return scenarioState();}catch{return null;}});
+            const jobs=workerAvailable?(await workerRequest('/api/jobs?project=workspace') as JobReceipt[]).filter(job=>job.kind==='scenario'):[];
+            return json({available:workerAvailable&&!!context,reason:!workerAvailable?'persistent-database':!context?'simulation-required':null,applied:manager.applied,run:context?.run??null,clock:context?.clock??null,scenarios:manager.applied?(runtime.project.scenarios??[]):[],jobs});
+          }
           if (path === '/api/diagnostics') return json({ ...runtime.inspect(active()?.driver), phase: manager.phase, applied: manager.applied });
-          if (path === '/api/history/range') return historyResponse(store, runtime.project, url);
+          if (path === '/api/history/range') {
+            if (!releaseState.applied) throw new HttpError(409, 'History requires an applied build');
+            return historyResponse(store, runtime.project, url);
+          }
           if (path === '/api/events') return events.response(request, state());
           if (path === '/api/resources') return json({...indexResources(workspace, authoringProject(), draft?.artifact.hash ?? manager.applied ?? ''),workspace:hash(workspace.root)});
           if (path === '/api/documentation') { const locale = url.searchParams.get('locale') === 'en' ? 'en' : 'ru'; return new Response(projectDocumentation(authoringProject(),{locale}), { headers:{'Content-Type':'text/markdown; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'} }); }
@@ -154,9 +197,13 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
           if (path === '/api/git') return json(await git.status());
           if (path === '/api/git/review') return json(await git.review(url.searchParams.get('commit')??undefined));
           if (path === '/api/git/preview') return json({diff:await git.preview(url.searchParams.get('commit')??'')});
-          if (path === '/api/report') return await reportResponse(store, runtime.project, manager.applied ?? '', url);
+          if (path === '/api/report') {
+            if (!url.searchParams.has('artifact') && !manager.applied) throw new HttpError(409, 'Report generation requires an applied build');
+            return await reportResponse(store, runtime.project, manager.applied ?? '', url);
+          }
           if (path === '/api/history') {
-            const id=url.searchParams.get('signal')??'',definition=Object.values(authoringProject().signals).find(signal=>signal.id===id);
+            if (!releaseState.applied) throw new HttpError(409, 'History requires an applied build');
+            const id=url.searchParams.get('signal')??'',definition=Object.values(runtime.project.signals).find(signal=>signal.id===id);
             if(!definition)throw new HttpError(404,'Unknown signal');
             return json(await store.history(definition.semanticId??definition.id));
           }
@@ -169,6 +216,12 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         if (request.method !== 'POST') throw new HttpError(405, 'Method not allowed');
         if (request.headers.get('X-Saturn-Key') !== key || !request.headers.get('content-type')?.includes('application/json')) throw new HttpError(403, 'Missing session key or JSON content type');
         const body: unknown = await request.json(); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected an object'); const b = body as Record<string, unknown>;
+        if(path==='/api/scenarios/start'){
+          const context=await runtimeSerial(async()=>scenarioState());
+          if(b.expectedApplied!==context.applied||b.expectedRun!==context.run.id)throw new HttpError(409,'Simulation changed; refresh scenarios');
+          return json(await workerRequest('/api/jobs',{kind:'scenario',project:'workspace',run:field(b,'run'),scenario:field(b,'scenario'),build:context.applied,expectedRun:context.run.id}),202);
+        }
+        if(path==='/api/scenarios/cancel')return json(await workerRequest('/api/job/cancel',{id:field(b,'id')}),202);
         if(path==='/api/deployment/preview'||path==='/api/deployment/create'){
           if(!b.plan||typeof b.plan!=='object')throw new HttpError(400,'Expected deployment plan');
           const plan=b.plan as DeploymentPlan;let workflow:string;try{workflow=deploymentWorkflow(plan);}catch(error){throw new HttpError(400,String(error));}
@@ -242,7 +295,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
           const hash = field(b, 'hash'); if (hash !== draft?.artifact.hash || problems.length) throw new HttpError(409, 'Only the current checked draft can be published');
           await revisions.publish(hash, expected(b, 'expectedPublished')); releaseState = await revisions.state(); return json(releaseState);
         }
-        if (path === '/api/apply') { const hash = field(b, 'hash'); if ((await revisions.state()).published !== hash) throw new HttpError(409, 'Build is not published'); await apply(await revisions.get(hash), expected(b, 'expectedApplied')); return json(state()); }
+        if (path === '/api/apply') return await runtimeSerial(async()=>{ const hash = field(b, 'hash'); if ((await revisions.state()).published !== hash) throw new HttpError(409, 'Build is not published'); await apply(await revisions.get(hash), expected(b, 'expectedApplied')); return json(state()); });
         if (path === '/api/language') {
           const file = field(b, 'path'), source = field(b, 'source'), op = field(b, 'operation'), position = Number(b.position ?? 0);
           if (source.length > 256_000 || !/\.tsx?$/.test(file) || !Number.isInteger(position) || position < 0 || position > source.length) throw new HttpError(400, 'Invalid TypeScript request');
@@ -279,10 +332,10 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
       } catch (error) { return json({ error: error instanceof Error ? error.message : String(error) }, error instanceof HttpError || error instanceof ReportError ? error.status : 400); }
     },
   });
-  let closed = false;
   const close = async () => {
     if (closed) return; closed = true; watcher.close(); clearTimeout(debounce); clearInterval(staleTimer); clearInterval(retention);
-    await server.stop(true); await reloadQueue; await manager.close(); events.close(); builder.close(); await store.close();
+    active()?.abortPending();
+    await (await scenarioWorker)?.close();await server.stop(true); await reloadQueue; await manager.close(); events.close(); builder.close(); await store.close();
   };
   return { server, close, runtime, workspace, state, reload };
 }

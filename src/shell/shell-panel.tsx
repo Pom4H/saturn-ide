@@ -16,7 +16,7 @@ interface Props {
   operator?:boolean;
   pluginUpdates?:{name:string;latest?:string}[];openDependencies?:()=>void;
   panel: PanelState; dispatch: Dispatch<PanelAction>;
-  project: Project; snapshot: Snapshot; selectedIds: readonly string[]; primaryId: string; signalId?: string;
+  project: Project; authoringProject?: Project; appliedRevision?: string; snapshot: Snapshot; selectedIds: readonly string[]; primaryId: string; signalId?: string; pendingSignalId?: string;
   locale: Locale; connected: boolean; shellError: string; problems: readonly Problem[]; mode: string;
   events: readonly AlarmEvent[]; historyError: string;
   acknowledge: (id: string) => Promise<void>; onInspect: (id:string) => void;
@@ -29,14 +29,15 @@ export function ShellPanel(props: Props) {
   const menu=useMenu();
   const root=useRef<HTMLElement>(null),resize=useRef<{y:number;height:number}|null>(null);
   const ids=selectedIds.length?selectedIds:primaryId?[primaryId]:[];
-  const equipment=useMemo(()=>project.equipment.filter(item=>ids.includes(item.id)),[project,ids.join('\0')]);
+  const equipment=useMemo(()=>props.appliedRevision===''?[]:project.equipment.filter(item=>ids.includes(item.id)),[project,props.appliedRevision,ids.join('\0')]);
+  const pendingEquipment=(props.authoringProject?.equipment??project.equipment).filter(item=>ids.includes(item.id)&&!equipment.some(applied=>applied.id===item.id));
   const signals=useMemo(()=>[...new Map(equipment.flatMap(item=>related(project,item).signals).map(signal=>[signal.id,signal])).values()],[project,equipment]);
   const plotted=signals.filter(signal=>typeof signal.initial==='number'||typeof signal.initial==='boolean');
   const activeAlarms=Object.values(snapshot.alarms).filter(alarmNeedsAttention);
   const count=activeAlarms.length+props.problems.length+(props.shellError?1:0)+(props.pluginUpdates?.length??0);
   const tabs:{id:PanelTab;label:string;icon:string;count?:number}[]=[
     {id:'equipment',label:ru?'Оборудование':'Equipment',icon:'plc'},
-    {id:'graphs',label:ru?'Графики':'Graphs',icon:'signals',count:signalId?1:plotted.length},
+    {id:'graphs',label:ru?'Графики':'Graphs',icon:'signals',count:signalId||props.pendingSignalId?1:plotted.length},
     {id:'terminal',label:ru?'Терминал':'Terminal',icon:'terminal'},
     {id:'notifications',label:ru?'Уведомления':'Notifications',icon:'bell',count},
   ];
@@ -60,16 +61,19 @@ export function ShellPanel(props: Props) {
       <button className="icon-button" aria-label={panel.maximized?(ru?'Восстановить размер панели':'Restore panel size'):(ru?'Развернуть панель':'Expand panel')} title={panel.maximized?(ru?'Восстановить размер':'Restore size'):(ru?'Развернуть':'Expand')} onClick={()=>dispatch({type:'maximize'})}><ResourceIcon icon={panel.maximized?'restore':'expand'} size={16}/></button>
       <button className="icon-button" aria-label={panel.open?(ru?'Скрыть панель':'Hide panel'):(ru?'Показать панель':'Show panel')} title="⌘ J" onClick={()=>dispatch({type:'toggle'})}><ResourceIcon icon={panel.open?'chevron-down':'chevron-up'} size={16}/></button>
     </div></div>
-    <div id="panel-body-equipment" role="tabpanel" aria-labelledby="panel-tab-equipment" className="panel-content" hidden={!panel.open||panel.tab!=='equipment'}>{equipment.length?<div className="panel-equipment-list">{equipment.map(item=><EquipmentCard key={item.id} project={project} equipment={item} snapshot={snapshot} locale={locale} connected={connected} onInspect={props.onInspect}/>)}</div>:<p className="panel-empty">{ru?'Выберите оборудование на схеме или в списке слева.':'Select equipment in the diagram or sidebar.'}</p>}</div>
-    <div id="panel-body-graphs" role="tabpanel" aria-labelledby="panel-tab-graphs" className="panel-content" hidden={!panel.open||panel.tab!=='graphs'}>{signalId?<History key={signalId} id={signalId} locale={locale}/>:<MultiTrend signals={signals} snapshot={snapshot} locale={locale}/>}</div>
+    <div id="panel-body-equipment" role="tabpanel" aria-labelledby="panel-tab-equipment" className="panel-content" hidden={!panel.open||panel.tab!=='equipment'}>{equipment.length||pendingEquipment.length?<div className="panel-equipment-list">{equipment.map(item=><EquipmentCard key={item.id} project={project} equipment={item} snapshot={snapshot} locale={locale} connected={connected} onInspect={props.onInspect}/>)}{pendingEquipment.map(item=><article key={item.id} className="panel-equipment-card"><button className="panel-equipment-identity" onClick={()=>props.onInspect(item.id)}><ResourceIcon icon={item.icon} size={24}/><div><strong>{item.id}</strong><span>{text(item.label,locale)}</span><small className="stale">● {ru?'Ожидает применения':'Awaiting Apply'}</small></div></button><p className="panel-empty">{ru?'Устройство есть в Checked. Показания появятся после применения сборки и получения данных.':'This device is in Checked. Readings require an Applied build and observations.'}</p></article>)}</div>:<p className="panel-empty">{ru?'Выберите оборудование на схеме или в списке слева.':'Select equipment in the diagram or sidebar.'}</p>}</div>
+    <div id="panel-body-graphs" role="tabpanel" aria-labelledby="panel-tab-graphs" className="panel-content" hidden={!panel.open||panel.tab!=='graphs'}>{props.pendingSignalId?<p className="panel-empty" role="status"><code>{props.pendingSignalId}</code> · {ru?'Сигнал есть в Checked и ожидает применения. Архив появится после применения сборки и получения данных.':'This signal is in Checked and awaits Apply. History requires an Applied build and observations.'}</p>:signalId?<History key={`${project.id}:${signalId}`} id={signalId} signal={project.signals[signalId]} locale={locale} active={panel.open&&panel.tab==='graphs'}/>:<MultiTrend signals={signals} snapshot={snapshot} locale={locale}/>}</div>
     <div id="panel-body-terminal" role="tabpanel" aria-labelledby="panel-tab-terminal" className="panel-content" hidden={!panel.open||panel.tab!=='terminal'}><ShellTerminal commands={props.commands} project={project} signals={signals} snapshot={snapshot} locale={locale} connected={connected} shellError={props.shellError} problems={props.problems} mode={props.mode} events={props.events} historyError={props.historyError}/></div>
     <div id="panel-body-notifications" role="tabpanel" aria-labelledby="panel-tab-notifications" className="panel-content" hidden={!panel.open||panel.tab!=='notifications'}><Notifications {...props}/></div>
   </section>;
 }
 
 function EquipmentCard({project,equipment,snapshot,locale,connected,onInspect}:{project:Project;equipment:Equipment;snapshot:Snapshot;locale:Locale;connected:boolean;onInspect:(id:string)=>void}) {
-  const ru=locale==='ru',signals=related(project,equipment).signals,fresh=connected&&signals.some(signal=>snapshot.samples[signal.id]?.quality==='good');
-  return <article className="panel-equipment-card"><button className="panel-equipment-identity" onClick={()=>onInspect(equipment.id)}><ResourceIcon icon={equipment.icon} size={24}/><div><strong>{equipment.id}</strong><span>{text(equipment.label,locale)}</span><small className={fresh?'good':'stale'}>● {fresh?(ru?'Данные актуальны':'Live readings'):connected?(ru?'Нет свежих данных':'No fresh readings'):(ru?'Нет связи':'Disconnected')}</small></div></button><div className="panel-equipment-values">{signals.map(signal=><div key={signal.id}><span title={signal.id}>{signal.id.split('.').at(-1)}</span><strong>{snapshot.samples[signal.id]?.quality==='good'?fmt(snapshot.samples[signal.id]?.value):'—'} <small>{signal.unit}</small></strong></div>)}</div></article>;
+  const ru=locale==='ru',signals=related(project,equipment).signals;
+  const current=signals.filter(signal=>snapshot.samples[signal.id]?.quality==='good').length;
+  const allCurrent=connected&&signals.length>0&&current===signals.length;
+  const status=!connected?(ru?'Нет связи':'Disconnected'):allCurrent?(ru?'Данные актуальны':'Readings current'):current>0?(ru?'Часть данных актуальна':'Some readings current'):(ru?'Нет свежих данных':'No fresh readings');
+  return <article className="panel-equipment-card"><button className="panel-equipment-identity" onClick={()=>onInspect(equipment.id)}><ResourceIcon icon={equipment.icon} size={24}/><div><strong>{equipment.id}</strong><span>{text(equipment.label,locale)}</span><small className={allCurrent?'good':'stale'}>● {status}</small></div></button><div className="panel-equipment-values">{signals.map(signal=><div key={signal.id}><span title={signal.id}>{text(signal.label??signal.description??signal.id.split('.').at(-1)!,locale)}</span><strong>{snapshot.samples[signal.id]?.quality==='good'?fmt(snapshot.samples[signal.id]?.value):'—'} <small>{signal.unit}</small></strong></div>)}</div></article>;
 }
 
 function Notifications({pluginUpdates,openDependencies,project,snapshot,locale,connected,shellError,problems,events,historyError,acknowledge}:Props) {

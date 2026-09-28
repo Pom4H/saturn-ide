@@ -38,11 +38,23 @@ export function chartPath(points: readonly ChartPoint[], from: number, to: numbe
   }
   return path;
 }
+/** Respect authored engineering limits; otherwise leave visual headroom around observed values. */
+export function valueBounds(signal: Signal<number>, values: readonly number[]): readonly [number, number] {
+  const observed = values.filter(Number.isFinite);
+  if (!observed.length) {
+    const lo = signal.min ?? 0, hi = signal.max ?? lo + 1;
+    return [lo, hi > lo ? hi : lo + 1];
+  }
+  const min = Math.min(...observed), max = Math.max(...observed);
+  const pad = Math.max((max - min) * .15, Math.abs((min + max) / 2) * .02, .05);
+  const lo = signal.min === undefined ? min - pad : Math.min(signal.min, min);
+  const hi = signal.max === undefined ? max + pad : Math.max(signal.max, max);
+  return [lo, hi > lo ? hi : lo + Math.max(1, pad * 2)];
+}
 export function chartBounds(signal: Signal<number>, buckets: readonly HistoryBucket[], live?: number): readonly [number, number] {
   const values = buckets.flatMap(bucket => [bucket.min, bucket.max]).filter((n): n is number => n !== null && Number.isFinite(n));
   if (live !== undefined && Number.isFinite(live)) values.push(live);
-  const lo = Math.min(signal.min ?? 0, ...values), maximum = Math.max(signal.max ?? 0, ...values);
-  return [lo, maximum > lo ? maximum : lo + 1];
+  return valueBounds(signal, values);
 }
 export function formatMetric(value: number | null | undefined, unit: string | undefined, locale: Locale): string {
   if (value == null || !Number.isFinite(value)) return '—';

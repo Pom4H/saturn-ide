@@ -5,13 +5,55 @@ import { previewDevice, previewHmi } from '../src/workspace/scaffold';
 import { Builder } from '../src/workspace/build';
 import { moveLayout } from '../src/shell/model/layout-edits';
 import { project, tank, hmi } from '../src/core';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { createProject } from '../src/workspace/project-template';
+import { indexResources } from '../src/workspace/resource-index';
 
 test('device template creates real source + checked import; stale preview cannot overwrite project',async()=>{
  const work=fixture();try{const workspace=new Workspace(work.root),preview=previewDevice(workspace,'pump','P-02','Second pump');workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);
  const built=await new Builder(workspace,resolve('.'),work.dir).build();expect(built.project.equipment.some(e=>e.id==='P-02')).toBe(true);expect(()=>workspace.createAndAttach('equipment/other.ts',preview.source,preview.projectSource,preview.projectVersion)).toThrow('Project changed');expect(workspace.list()).not.toContain('equipment/other.ts');expect(()=>workspace.create('../escape.ts','')).toThrow();
  }finally{work.clean();}
 },15000);
+test('project-owned equipment template checks, indexes and accepts authored ports/signals in topology',async()=>{
+ const scratch=resolve('.saturn');mkdirSync(scratch,{recursive:true});const base=mkdtempSync(join(scratch,'project-owned-'));
+ const root=createProject(join(base,'custom-plant')),workspace=new Workspace(root),builder=new Builder(workspace,resolve('.'),join(base,'data'));
+ try{
+  const preview=previewDevice(workspace,'custom','SK-01','Skid sensor');
+  expect(preview.source).toContain('export const defineEquipment = device({');
+  expect(preview.source).toContain('2D placeholder');
+  workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);
+  const initial=await builder.build(),first=initial.project.equipment[0]!;
+  expect(first.kind).toBe('project.sk-01');
+  expect(Object.keys(first.ports)).toEqual([]);
+  expect(initial.positions['SK-01']?.path).toBe(preview.path);
+  expect(indexResources(workspace,initial.project,initial.artifact.hash).resources.find(item=>item.entityId==='SK-01')?.source?.path).toBe(preview.path);
+
+  const file=workspace.read(preview.path);
+  const source=file.source
+   .replace(/    \/\/ Example after confirming the connector: .*\n/,"    command: terminal({ x: 0, y: 60, z: 20, side: 'left', medium: 'control', family: 'digital', role: 'sink', valueType: 'boolean' }),\n")
+   .replace(/    \/\/ Example after confirming the measurement: .*\n/,"    command: signal({ initial: false, writable: true }),\n");
+  expect(source).not.toBe(file.source);
+  workspace.save(preview.path,source,file.version);
+  const entry=workspace.read('project.ts');
+  workspace.save('project.ts',`import { cable, plc, project, signal } from '@saturn/core';
+import skid from './equipment/SK-01.device';
+
+const controller = plc('PLC-01', { label: 'Controller', x: 400, y: 80, online: signal({ initial: false }) });
+export default project({
+  id: 'custom-plant', label: 'Custom plant',
+  equipment: [skid, controller],
+  pipes: [],
+  cables: [cable('skid-command', { from: controller.ports.DO1, to: skid.ports.command, signal: skid.command })],
+  alarms: [], reports: [],
+});
+`,entry.version);
+  const checked=await builder.build();
+  expect(checked.project.equipment[0]?.ports.command?.terminal.family).toBe('digital');
+  expect(checked.project.signals['SK-01.command']?.writable).toBe(true);
+  expect(checked.project.cables?.[0]?.to).toEqual(checked.project.equipment[0]?.ports.command);
+ }finally{builder.close();rmSync(base,{recursive:true,force:true});}
+},20000);
 test('multiple HMI interfaces are ordinary checked source imports and reject duplicate IDs',async()=>{
  const work=fixture();try{const workspace=new Workspace(work.root);for(const id of ['operator','service']){const p=previewHmi(workspace,id,id,1280,720,[{id:'P-01',path:'equipment/P-01.device.ts'}]);workspace.createAndAttach(p.path,p.source,p.projectSource,p.projectVersion);}const built=await new Builder(workspace,resolve('.'),work.dir).build();expect(built.project.hmis?.map(h=>h.id)).toEqual(['operator','service']);expect(built.project.hmi).toBeDefined();
  }finally{work.clean();}
