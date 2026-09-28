@@ -62,7 +62,7 @@
 | --- | --- | --- |
 | COL-1 | Участники, долговременные обсуждения, точные ссылки на контекст | Существующая модель ресурсов; серверная авторизация |
 | COL-2 | Совместные сеансы, присутствие, показ на дисплеях | COL-1; текущие представления Shell |
-| AGT-1 | ACP-клиент: Codex/Claude/другой внешний агент работает с Saturn-контекстом без собственного Saturn Agent | COL-1; workspace/AST/check; MCP/tool boundaries |
+| AGT-1 | ACP-клиент: Codex/Claude/другой внешний агент работает с Saturn-контекстом без собственного agent harness | COL-1; workspace/AST/check; MCP/tool boundaries |
 | MOB-1 | Единый мобильный Shell для iOS/Android, операторов, инженеров и бизнеса | COL-1; AGT-1 для разработки; Presentation/replay для соответствующих видов |
 | FIELD-1 | Голосовая работа при монтаже и пусконаладке | COL-2, AGT-1, MOB-1; реальная диагностика runtime |
 | EVID-1 | Документы и наблюдения → проверяемый DSL draft | COL-1, AGT-1; importer boundaries |
