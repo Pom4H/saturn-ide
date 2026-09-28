@@ -79,6 +79,6 @@
 .dependencies-workspace{display:grid;gap:16px;align-content:start}
 .scada-import{border:1px solid var(--border);border-radius:var(--radius-2,8px);padding:12px 14px;display:grid;gap:10px;background:var(--surface)}
 .scada-import-heading{display:flex;gap:12px;align-items:center}.scada-import-heading>div{display:grid;gap:2px;min-width:0;flex:1}.scada-import-heading small{color:var(--text-muted,var(--muted));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.assistant-inventory{margin:0;border:1px solid var(--border);border-radius:var(--radius-2,8px);padding:10px}.assistant-inventory p,.assistant-hint{font-size:12px;color:var(--text-muted,var(--muted))}
-.assistant-file-list{max-height:180px;overflow:auto}.assistant-file-list>div{display:flex;gap:10px;justify-content:space-between}.assistant-file-list code{overflow-wrap:anywhere}.assistant-file-list small{color:var(--text-muted,var(--muted))}.assistant-file-list [data-severity="blocker"] small,.assistant-error{color:var(--danger)}.assistant-file-list [data-severity="warning"] small{color:var(--warning)}
-.assistant-suggestions{display:flex;gap:8px;flex-wrap:wrap}
+.import-inventory{margin:0;border:1px solid var(--border);border-radius:var(--radius-2,8px);padding:10px}.import-inventory p,.import-hint{font-size:12px;color:var(--text-muted,var(--muted))}
+.import-file-list{max-height:180px;overflow:auto}.import-file-list>div{display:flex;gap:10px;justify-content:space-between}.import-file-list code{overflow-wrap:anywhere}.import-file-list small{color:var(--text-muted,var(--muted))}.import-file-list [data-severity="blocker"] small,.import-error{color:var(--danger)}.import-file-list [data-severity="warning"] small{color:var(--warning)}
+.import-stats{display:flex;gap:8px;flex-wrap:wrap}
