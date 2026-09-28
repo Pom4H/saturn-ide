@@ -60,7 +60,8 @@ On macOS arm64 with Bun 1.4.2 and Chromium:
   and returned the approved reply.
 - `bun scripts/agent-browser-test.ts`: **PASS** against a real Bun dev host and
   Chromium with the fake ACP child. The existing bottom panel connected, prompted,
-  displayed a permission choice and reply, and stayed within a 390 px viewport with
+  displayed a permission choice and reply, then the child ran `saturn project` and
+  returned the actual project ID without the session key. It stayed within a 390 px viewport with
   no page errors. Frames and WebM are in `artifacts/agent-panel/`; permission and
   mobile frames were visually inspected.
 - A real `@agentclientprotocol/codex-acp@1.13.1` child connected through the same
@@ -70,6 +71,9 @@ On macOS arm64 with Bun 1.4.2 and Chromium:
   was removed afterward. These checks establish local authentication, ACP
   transport and source-file editing, not engineering correctness or real-device
   safety.
+- Real Codex also ran `saturn help` and `saturn project` through the attached CLI
+  on a disposable dev host, and returned the exact `cli-real-smoke` project ID.
+  Its tool events showed the CLI invocation. The temporary project was removed.
 - `bun run architecture:check`: **PASS**, 101 modules. `bun run check` remains
   **FAIL** in this branch because `@saturn/example` and `@saturn/protocols/*` imports
   in the existing scripts/tests are unresolved; no new agent-file TypeScript

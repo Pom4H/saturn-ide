@@ -228,6 +228,14 @@ uses your existing local Codex authentication. This is a new ACP session; it doe
 transfer the conversation from the Codex desktop app. The session ends when the IDE
 host closes. The local host does not provide multi-user authorization for agent access.
 
+The browser ACP session also puts a `saturn` command on the agent's PATH. Ask Codex to
+run `saturn help`, `saturn project`, `saturn resources`, `saturn inspect <id>`,
+`saturn signals`, `saturn alarms`, `saturn releases`, `saturn file <path>` or
+`saturn docs`. These commands read the same local host that serves the IDE and
+return machine-readable project context without the browser session key. This
+agent-facing CLI is currently read-only. It is separate from the richer command
+shell on the divergent local development branch.
+
 The agent edits the same TypeScript files as the engineer. Saturn's existing watcher and build
 pipeline refresh the derived projections; there is no agent-specific workspace or project model.
 Permission requests are shown in the terminal and require an explicit choice.

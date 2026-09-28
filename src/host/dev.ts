@@ -268,6 +268,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
       } catch (error) { return json({ error: error instanceof Error ? error.message : String(error) }, error instanceof HttpError ? error.status : 400); }
     },
   });
+  browserAgent.setHostUrl(String(server.url));
   let closed = false;
   const close = async () => {
     if (closed) return; closed = true; watcher.close(); clearTimeout(debounce); clearInterval(staleTimer); clearInterval(retention);

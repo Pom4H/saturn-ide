@@ -330,6 +330,14 @@ authentication and process startup, not Saturn runtime/database tokens. ACP perm
 are returned through the host and require a browser choice. The session and its in-memory event
 buffer end with the host. This local development host is not a multi-user authorization boundary.
 
+The host creates a temporary `saturn` executable on the ACP child's PATH. It is a
+read-only adapter over the existing HTTP workspace queries and adds no new project
+store or command dispatcher. The executable and URL are removed with the ACP session;
+the CLI does not print the browser session key. This limits what the CLI does, but
+does not sandbox an agent's own shell or make the loopback development host a security
+boundary. Live authority still needs independent transport authentication for a
+multi-user deployment.
+
 ## Importers as extension boundary
 
 External SCADA formats are not part of the Saturn domain model. Saturn exposes only the

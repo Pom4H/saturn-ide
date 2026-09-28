@@ -25,6 +25,10 @@ try{
   await page.screenshot({path:'artifacts/agent-panel/permission.png'});
   await panel.getByRole('button',{name:'Allow once'}).click();
   await panel.getByText('Approved',{exact:true}).waitFor();
+  await panel.getByRole('textbox',{name:'Сообщение Codex'}).fill('check-cli');
+  await panel.getByRole('button',{name:'Отправить'}).click();
+  await panel.getByText('"id": "agent-browser"',{exact:false}).waitFor();
+  assert.equal((await panel.innerText()).includes(app.state().key),false,'CLI must not reveal the host session key');
   await page.screenshot({path:'artifacts/agent-panel/reply.png'});
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
