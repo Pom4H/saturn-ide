@@ -5,7 +5,7 @@ import { advancePhase, flowOf, rpmOf } from '../motion';
 export function useSvgMotion(root: RefObject<SVGSVGElement | null>, project: Project, snapshot: Snapshot, focus?: string) {
   const latest = useRef({ project, snapshot }); latest.current = { project, snapshot };
   const phases = useRef(new Map<string, number>());
-  const nodes = useRef<{ rotors: { equipment: Equipment; node: SVGGElement }[]; pipes: { pipe: Pipe; node: SVGPathElement; fluid: SVGPathElement | null }[] }>({ rotors: [], pipes: [] });
+  const nodes = useRef<{ rotors: { equipment: Equipment; node: SVGGElement; cx: number; cy: number }[]; pipes: { pipe: Pipe; node: SVGPathElement; fluid: SVGPathElement | null }[] }>({ rotors: [], pipes: [] });
   const paint = useRef<(dt: number) => void>(() => {});
   useLayoutEffect(() => {
     const svg = root.current;
@@ -14,7 +14,9 @@ export function useSvgMotion(root: RefObject<SVGSVGElement | null>, project: Pro
     nodes.current = {
       rotors: project.equipment.flatMap(equipment => {
         const node = svg.querySelector<SVGGElement>(`[data-equipment="${equipment.id}"] [data-part="rotor"]`);
-        return node ? [{ equipment, node }] : [];
+        if (!node) return [];
+        const cx = Number(node.dataset.originX), cy = Number(node.dataset.originY);
+        return Number.isFinite(cx) && Number.isFinite(cy) ? [{ equipment, node, cx, cy }] : [];
       }),
       pipes: project.pipes.flatMap(pipe => {
         const node = svg.querySelector<SVGPathElement>(`[data-pipe="${pipe.id}"] .flow`);
@@ -31,11 +33,12 @@ export function useSvgMotion(root: RefObject<SVGSVGElement | null>, project: Pro
     let frame = 0, last = 0, disposed = false;
     paint.current = dt => {
       const { project: p, snapshot: s } = latest.current;
-      for (const { equipment, node } of nodes.current.rotors) {
+      for (const { equipment, node, cx, cy } of nodes.current.rotors) {
         const rpm = rpmOf(equipment, s), rate = reduced.matches || rpm === null ? 0 : rpm / 1450 * .35;
         const phase = advancePhase(phases.current.get(equipment.id) ?? 0, rate, dt);
-        phases.current.set(equipment.id, phase); node.style.animation = 'none';
-        node.style.transform = `rotate(${phase * 360}deg)`; node.dataset.phase = String(phase);
+        phases.current.set(equipment.id, phase);
+        node.setAttribute('transform', `rotate(${phase * 360} ${cx} ${cy})`);
+        node.dataset.phase = String(phase);
       }
       for (const { pipe, node, fluid } of nodes.current.pipes) {
         const flow = flowOf(pipe, p, s), rate = reduced.matches || flow === null ? 0 : Math.sign(flow) * Math.min(2, Math.abs(flow) / 18);

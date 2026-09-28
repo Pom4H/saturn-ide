@@ -80,7 +80,7 @@ export function Symbol({ equipment: e, snapshot, locale }: { equipment: Equipmen
       <circle cx={76} cy={96} r={48} fill={metal} stroke="#7b97a3" strokeWidth={2}/>
       <circle cx={76} cy={96} r={39} fill={dark} stroke="#acbfc7" strokeWidth={3}/>
       <circle cx={76} cy={96} r={32} fill="#143e50" stroke="#deedf1" strokeWidth={1.3}/>
-      <g data-part="rotor" data-rpm={rpm ?? "unknown"} className="rotor" style={{ animationDuration: `${3000 / Math.max(100, rpm ?? 100)}s`, animationPlayState: running ? "running" : "paused", opacity: rpm === null ? .3 : 1 }}>
+      <g data-part="rotor" data-origin-x="76" data-origin-y="96" data-rpm={rpm ?? "unknown"} style={{ opacity: rpm === null ? .3 : 1 }}>
         {[0,72,144,216,288].map(angle => <path key={angle} d="M76 91C83 87 96 86 101 75C105 89 94 101 82 104Z" transform={`rotate(${angle} 76 96)`} fill={metal} stroke="#abc0c9" strokeWidth={.65}/>)}
       </g>
       <circle cx={76} cy={96} r={8} fill={metal} stroke="#718f9c"/>
