@@ -1,5 +1,5 @@
 /** Shell layout only. Observations and alarm acknowledgement remain owned by runtime. */
-export type PanelTab = 'equipment' | 'graphs' | 'terminal' | 'notifications' | 'assistant';
+export type PanelTab = 'equipment' | 'graphs' | 'terminal' | 'notifications';
 export interface PanelState { tab: PanelTab; open: boolean; height: number; maximized: boolean }
 export type PanelAction =
   | { type: 'open'; tab: PanelTab }
@@ -10,7 +10,7 @@ export type PanelAction =
 export const initialPanel: PanelState = { tab: 'equipment', open: true, height: 200, maximized: false };
 export function panelReducer(state: PanelState, action: PanelAction): PanelState {
   switch (action.type) {
-    case 'open': return { ...state, tab: action.tab, open: true, height:action.tab==='assistant'?Math.max(420,state.height):state.height };
+    case 'open': return { ...state, tab: action.tab, open: true };
     case 'toggle': return { ...state, open: !state.open };
     case 'close': return { ...state, open: false };
     case 'maximize': return { ...state, open: true, maximized: !state.maximized };
