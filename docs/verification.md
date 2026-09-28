@@ -51,6 +51,34 @@ claim graphical parity.
 Visual behavior owned by an external equipment/display extension is intentionally not asserted in
 this repository.
 
+### Local ACP Codex panel — 2026-09-28
+
+On macOS arm64 with Bun 1.4.2 and Chromium:
+
+- `bun test tests/browser-agent.test.ts`: **1 pass, 0 fail**. A child ACP agent
+  completed initialize/new/prompt, requested permission, rejected an unknown option,
+  and returned the approved reply.
+- `bun scripts/agent-browser-test.ts`: **PASS** against a real Bun dev host and
+  Chromium with the fake ACP child. The existing bottom panel connected, prompted,
+  displayed a permission choice and reply, then the child ran `saturn project` and
+  returned the actual project ID without the session key. It stayed within a 390 px viewport with
+  no page errors. Frames and WebM are in `artifacts/agent-panel/`; permission and
+  mobile frames were visually inspected.
+- A real `@agentclientprotocol/codex-acp@1.13.1` child connected through the same
+  host adapter and answered a one-turn prompt with `ГОТОВО.`. In a separate
+  disposable project it appended exactly `// ACP_EDIT_VERIFIED` to `project.ts`;
+  the host observed the actual file, tool updates and final reply. The fixture
+  was removed afterward. These checks establish local authentication, ACP
+  transport and source-file editing, not engineering correctness or real-device
+  safety.
+- Real Codex also ran `saturn help` and `saturn project` through the attached CLI
+  on a disposable dev host, and returned the exact `cli-real-smoke` project ID.
+  Its tool events showed the CLI invocation. The temporary project was removed.
+- `bun run architecture:check`: **PASS**, 101 modules. `bun run check` remains
+  **FAIL** in this branch because `@saturn/example` and `@saturn/protocols/*` imports
+  in the existing scripts/tests are unresolved; no new agent-file TypeScript
+  diagnostics were reported after this change. Full branch verification is open.
+
 ## Data and protocols
 
 SQLite behavior is exercised in the default CI run. PostgreSQL cases require an explicit disposable

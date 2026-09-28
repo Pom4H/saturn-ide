@@ -1,5 +1,5 @@
 /** Shell layout only. Observations and alarm acknowledgement remain owned by runtime. */
-export type PanelTab = 'equipment' | 'graphs' | 'terminal' | 'notifications';
+export type PanelTab = 'equipment' | 'graphs' | 'terminal' | 'agent' | 'notifications';
 export interface PanelState { tab: PanelTab; open: boolean; height: number; maximized: boolean }
 export type PanelAction =
   | { type: 'open'; tab: PanelTab }
