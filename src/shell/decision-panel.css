@@ -1,21 +1,34 @@
-.command-modes{display:flex;gap:4px;align-items:center;padding:4px 8px;border-top:1px solid var(--border);font:11px var(--ui)}
+/* Text mode takes the existing terminal surface. Its log is preserved behind Command mode. */
+.shell-terminal:has(.decision-panel){display:block;height:100%;min-height:0}
+.shell-terminal:has(.decision-panel)>.shell-terminal-signals{display:none}
+.shell-terminal-main:has(.decision-panel){display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}
+.shell-terminal-main:has(.decision-panel)>.command-launchers,.shell-terminal-main:has(.decision-panel)>.shell-terminal-filters,.shell-terminal-main:has(.decision-panel)>.shell-terminal-log{display:none}
+.shell-terminal-main:has(.decision-panel)>.command-composer{display:flex;flex-direction:column;flex:1 1 0;min-height:0;overflow:hidden}
+.command-modes{display:flex;flex:0 0 auto;gap:4px;align-items:center;padding:4px 8px;border-top:1px solid var(--border);font:11px var(--ui)}
 .command-modes button{font:inherit;padding:4px 9px;border:1px solid transparent;background:transparent;color:var(--muted)}
 .command-modes button[aria-pressed=true]{color:var(--text);background:var(--accent-soft);border-color:var(--border)}
-.decision-panel{padding:8px 12px;min-width:0;max-height:calc(var(--panel-height,360px) - 70px);overflow:auto;scrollbar-width:thin;font:12px/1.5 var(--ui);color:var(--text);background:var(--editor)}
+.shell-terminal-main .decision-panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto 1fr;column-gap:20px;align-content:start;flex:1;min-height:0;min-width:0;padding:8px 12px;overflow:auto;scrollbar-width:thin;overscroll-behavior:contain;font:12px/1.5 var(--ui);color:var(--text);background:var(--editor)}
 .decision-panel *{min-width:0;box-sizing:border-box}
 .decision-panel p{margin:6px 0}.decision-panel small{display:block;color:var(--muted);font:11px/1.5 var(--ui)}
-.decision-panel pre{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);padding:7px;background:var(--raised);border:1px solid var(--border)}
+.decision-panel pre{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 var(--mono);padding:7px;background:var(--raised);border:1px solid var(--border);user-select:text;-webkit-user-select:text}
 .decision-panel code{overflow-wrap:anywhere;font:11px var(--mono)}
-.decision-connection{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px;color:var(--muted)}
+.decision-connection{grid-column:1/-1;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px;color:var(--muted)}
 .decision-connection details{max-width:80%}.decision-panel summary{cursor:pointer}.decision-panel details[open]{margin-bottom:8px}
-.decision-input textarea{width:100%;resize:vertical;min-height:52px;max-height:120px;background:var(--raised);border:1px solid var(--border);padding:8px;color:var(--text);font:13px/1.5 var(--ui)}
+.shell-terminal-main .decision-panel .decision-input{grid-column:1;grid-row:2;align-self:start;display:block;height:auto;margin:0;padding:0;border:0;background:transparent}
+.decision-input textarea{display:block;width:100%;resize:vertical;min-height:68px;max-height:120px;background:var(--raised);border:1px solid var(--border);border-radius:var(--ui-radius-control);padding:8px;color:var(--text);font:13px/1.5 var(--ui)}
 .decision-input textarea:focus-visible,.decision-panel button:focus-visible,.decision-panel input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.decision-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}.decision-buttons small{margin-left:auto}
-.decision-panel button{padding:5px 9px;font:12px var(--ui);cursor:pointer}.decision-panel button:disabled{opacity:.5;cursor:default}
-.decision-clarification form{display:flex;gap:6px;margin:6px 0}.decision-clarification input{flex:1;width:0}
+.decision-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}.decision-buttons small{flex-basis:100%}
+.decision-panel button{padding:5px 9px;min-height:30px;font:12px var(--ui);cursor:pointer}.decision-panel button:disabled{opacity:.5;cursor:default}
+.decision-panel>.decision-clarification,.decision-panel>.decision-proposal,.decision-panel>.decision-result,.decision-panel>p,.decision-panel>small{grid-column:2;grid-row:2;align-self:start}
+.shell-terminal-main .decision-clarification form{display:flex;height:auto;padding:0;border:0;gap:6px;margin:6px 0}.decision-clarification input{flex:1;width:0}
 .decision-options{display:grid;gap:4px;max-height:170px;overflow:auto;margin:6px 0}.decision-options button{text-align:left;display:flex;flex-direction:column;gap:2px;background:var(--raised);border:1px solid var(--border);color:var(--text);overflow-wrap:anywhere}
 .decision-options button:hover{background:var(--accent-soft)}.decision-options strong{font:12px var(--mono)}
-.decision-scope{display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);margin:6px 0}.decision-scope [data-live=true]{color:var(--danger,var(--accent))}
-.decision-proposal{border-top:1px solid var(--border);margin-top:8px;padding-top:6px}.decision-proposal>small{margin-top:7px}
-.decision-result[role=alert]{color:var(--danger,var(--text))}
-@media(max-width:650px){.decision-panel{padding:7px;max-height:calc(var(--panel-height,320px) - 70px)}.decision-buttons small{display:none}.decision-connection{gap:6px}.decision-panel pre{font-size:11px}}
+.decision-scope{display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);margin:6px 0}.decision-scope [data-live=true]{color:var(--bad)}
+.decision-proposal{margin:0;padding:0 0 6px}.decision-proposal>small{margin-top:7px}.decision-proposal>button{position:sticky;bottom:0;z-index:1;background:var(--accent-soft)}
+.decision-panel [role=alert]{color:var(--bad)}
+@media(max-width:800px){
+ .shell-terminal-main .decision-panel{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;gap:0;padding:7px}
+ .shell-terminal-main .decision-panel .decision-input{grid-column:1;grid-row:2}
+ .decision-panel>.decision-clarification,.decision-panel>.decision-proposal,.decision-panel>.decision-result,.decision-panel>p,.decision-panel>small{grid-column:1;grid-row:3;margin-top:8px}
+ .decision-buttons small{display:none}.decision-connection{gap:6px}.decision-panel pre{font-size:11px}.decision-input textarea{min-height:52px}.decision-panel button{min-height:34px}
+}

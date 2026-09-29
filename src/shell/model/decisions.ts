@@ -14,6 +14,7 @@ export interface DecisionSnapshot {
   readonly input: string;
   readonly phase: 'idle' | 'thinking' | 'clarify' | 'ready' | 'running' | 'done' | 'error';
   readonly message: string;
+  readonly validationError?: string;
   readonly options: readonly DecisionOption[];
   readonly argument?: CommandArgument;
   readonly plan?: DecisionPlan;
@@ -76,7 +77,7 @@ export class DecisionSession {
   }
   setInput(input: string) {
     if (this.snapshot.phase === 'running' || input === this.snapshot.input) return;
-    this.reset(); this.update({ input: input.slice(0, decisionLimits.prompt), phase: 'idle', message: '', plan: undefined, result: undefined, options: [], argument: undefined });
+    this.reset(); this.update({ input: input.slice(0, decisionLimits.prompt), phase: 'idle', message: '', validationError: undefined, plan: undefined, result: undefined, options: [], argument: undefined });
   }
   async loadStatus() {
     try { this.update({ status: await this.commands.port.request<DecisionStatus>('decision') }); }
@@ -98,7 +99,7 @@ export class DecisionSession {
     const input = this.snapshot.input.trim(); if (!input) return;
     this.reset(); const generation = this.generation;
     this.abort = new AbortController(); this.expected = this.stamp();
-    this.update({ phase: 'thinking', message: 'Выбираю действие… / Selecting an action…', plan: undefined, result: undefined, options: [], argument: undefined });
+    this.update({ phase: 'thinking', message: 'Выбираю действие… / Selecting an action…', validationError: undefined, plan: undefined, result: undefined, options: [], argument: undefined });
     try {
       this.context = this.commands.context();
       const specs = commandCatalog.filter(spec => spec.effect !== 'draft' && spec.path !== 'clear'
@@ -114,6 +115,7 @@ export class DecisionSession {
     this.guard(generation);
     const options: DecisionOption[] = values.slice(0, decisionLimits.choices - 1).map((value, index) => ({ ...value, id: `c${index}` }));
     this.pending = { generation, options, accept, manual };
+    this.update({ validationError: undefined });
     if (!options.length) { this.update({ phase: 'clarify', message: question, argument, options }); return; }
     this.update({ phase: 'thinking', message: question, argument, options: [] });
     const request: DecisionRequest = { state: { request: this.snapshot.input, context: this.context, resolved }, questions: { next: {
@@ -180,10 +182,12 @@ export class DecisionSession {
     const pending = this.pending;
     if (!pending?.manual || this.snapshot.phase !== 'clarify') return;
     this.pending = undefined;
+    this.update({ validationError: undefined });
     try { this.guard(pending.generation); const valid = await pending.manual(value); this.guard(pending.generation); await pending.accept(valid); }
     catch (error) {
       if (pending.generation === this.generation && this.expected === this.stamp()) {
-        this.pending = pending; this.update({ phase: 'clarify', message: error instanceof Error ? error.message : 'Invalid argument' });
+        const message = error instanceof Error ? error.message : 'Invalid argument';
+        this.pending = pending; this.update({ phase: 'clarify', message, validationError: message });
       } else this.fail(error, pending.generation);
     }
   }
@@ -192,7 +196,7 @@ export class DecisionSession {
     const state = this.commands.port.state();
     const plan: DecisionPlan = { id: ++this.sequence, command: decisionCommand(spec, args), description: spec.description, effect: spec.effect,
       project: state?.project.id ?? '', mode: state?.mode ?? 'offline', applied: state?.revision ?? '', expiresAt: Date.now() + 60000 };
-    this.update({ phase: 'ready', message: 'Проверьте команду перед выполнением. / Review the command before running it.', plan, options: [], argument: undefined });
+    this.update({ phase: 'ready', message: 'Проверьте команду перед выполнением. / Review the command before running it.', validationError: undefined, plan, options: [], argument: undefined });
     this.expiry = setTimeout(() => {
       if (this.snapshot.phase === 'ready' && this.snapshot.plan?.id === plan.id) this.fail(new Error('Предложение устарело. Запросите его заново. / Proposal expired; prepare again.'), generation);
     }, 60000);

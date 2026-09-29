@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { Locale } from '../core';
 import { decisionPresets } from '../core/decision';
 import type { CommandShell } from './model/commands/engine';
@@ -10,6 +10,7 @@ export function DecisionPanel({ commands, locale }: { commands: CommandShell; lo
   const state = useSyncExternalStore(decisions.subscribe, decisions.getSnapshot, decisions.getSnapshot);
   const [value, setValue] = useState('');
   const [preset, setPreset] = useState<keyof typeof decisionPresets>('kev');
+  const confirmation = useRef<HTMLButtonElement>(null);
   useEffect(() => { void decisions.loadStatus(); }, [decisions]);
   useEffect(() => {
     if (!['thinking', 'clarify', 'ready'].includes(state.phase)) return;
@@ -17,6 +18,8 @@ export function DecisionPanel({ commands, locale }: { commands: CommandShell; lo
     return () => clearInterval(timer);
   }, [decisions, state.phase]);
   useEffect(() => setValue(''), [state.argument?.name, state.phase]);
+  // Reveal the review action in a short dock without moving keyboard focus or executing it.
+  useEffect(() => { if (state.phase === 'ready') confirmation.current?.scrollIntoView({ block: 'nearest' }); }, [state.phase, state.plan?.id]);
   const running = state.phase === 'running', thinking = state.phase === 'thinking';
   const plan = state.plan, configured = state.status?.enabled === true;
   const setup = `SATURN_DECISION_PROVIDER=${preset}\n${preset === 'kev' ? '# SATURN_DECISION_MODEL=kev-latest\n# SATURN_DECISION_TIMEOUT_MS=60000' : 'SATURN_DECISION_API_KEY=your-key'}`;
@@ -44,7 +47,8 @@ export function DecisionPanel({ commands, locale }: { commands: CommandShell; lo
     {thinking && <p role="status">{ru ? 'Подбираю ' : 'Selecting '}{state.argument ? state.argument.name : ru ? 'действие' : 'an action'}…</p>}
     {state.phase === 'clarify' && <div className="decision-clarification">
       <p role="status">{state.argument ? `${ru ? 'Уточните' : 'Specify'}: ${state.argument.name}` : ru ? 'Выберите действие. Модель не смогла однозначно определить запрос.' : 'Choose an action. The model could not resolve the request.'}</p>
-      {state.argument && <form onSubmit={event => { event.preventDefault(); void decisions.provide(value); }}><input aria-label={ru ? 'Точный ID или значение' : 'Exact ID or value'} value={value} onChange={event => setValue(event.target.value)} placeholder={ru ? 'Точный ID, путь или значение' : 'Exact ID, path or value'}/><button type="submit" disabled={!value.trim()}>{ru ? 'Продолжить' : 'Continue'}</button></form>}
+      {state.argument && <form onSubmit={event => { event.preventDefault(); void decisions.provide(value); }}><input aria-label={ru ? 'Точный ID или значение' : 'Exact ID or value'} aria-invalid={!!state.validationError} aria-describedby={state.validationError ? 'decision-argument-error' : undefined} value={value} onChange={event => setValue(event.target.value)} placeholder={ru ? 'Точный ID, путь или значение' : 'Exact ID, path or value'}/><button type="submit" disabled={!value.trim()}>{ru ? 'Продолжить' : 'Continue'}</button></form>}
+      {state.validationError && <p id="decision-argument-error" role="alert">{state.validationError}</p>}
       <div className="decision-options">{choices(0, 5)}</div>
       {state.options.length > 5 && <details><summary>{ru ? 'Остальные варианты' : 'More options'} ({state.options.length - 5})</summary><div className="decision-options">{choices(5)}</div></details>}
       <small>{ru ? 'Ничего не выполнено. При отсутствии нужного объекта введите точный ID или измените запрос.' : 'Nothing has run. Enter an exact ID or revise the request when the target is absent.'}</small>
@@ -54,7 +58,7 @@ export function DecisionPanel({ commands, locale }: { commands: CommandShell; lo
       <div className="decision-scope"><span>{plan.project}</span><strong data-live={plan.mode === 'live'}>{plan.mode}</strong><code title={plan.applied}>{plan.applied ? plan.applied.slice(0, 12) : ru ? 'Нет applied' : 'No applied build'}</code><span>{plan.effect}</span></div>
       {plan.effect === 'control' && <p>{ru ? 'Команда уйдёт в указанную среду. Принятие команды не подтверждает физический результат.' : 'The command will be sent to this environment. Acceptance does not confirm a physical result.'}</p>}
       {plan.effect === 'save' && <p>{ru ? 'Будет сохранён текущий черновик. Автопредпросмотр симуляции зависит от настроек host; это не разрешение на live apply.' : 'The current draft will be saved. Simulator auto-preview follows host settings; this does not authorize live apply.'}</p>}
-      <button type="button" className="primary" onClick={() => void decisions.confirm(plan.id)}>{ru ? 'Подтвердить выполнение' : 'Confirm execution'}</button>
+      <button ref={confirmation} type="button" className="primary" onClick={() => void decisions.confirm(plan.id)}>{ru ? 'Подтвердить выполнение' : 'Confirm execution'}</button>
       <small>{ru ? 'Предложение действует 60 секунд и отменяется при изменении контекста.' : 'Valid for 60 seconds; context changes invalidate the proposal.'}</small>
     </div>}
     {(running || state.phase === 'error' || state.phase === 'done') && <div className="decision-result" role={state.phase === 'error' ? 'alert' : 'status'}><pre>{state.message.slice(0, 12000)}</pre></div>}
