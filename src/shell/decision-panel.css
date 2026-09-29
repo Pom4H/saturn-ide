@@ -24,7 +24,7 @@
 .decision-options{display:grid;gap:4px;max-height:170px;overflow:auto;margin:6px 0}.decision-options button{text-align:left;display:flex;flex-direction:column;gap:2px;background:var(--raised);border:1px solid var(--border);color:var(--text);overflow-wrap:anywhere}
 .decision-options button:hover{background:var(--accent-soft)}.decision-options strong{font:12px var(--mono)}
 .decision-scope{display:flex;flex-wrap:wrap;gap:8px;color:var(--muted);margin:6px 0}.decision-scope [data-live=true]{color:var(--bad)}
-.decision-proposal{margin:0;padding:0 0 6px}.decision-proposal>small{margin-top:7px}.decision-proposal>button{position:sticky;bottom:0;z-index:1;background:var(--accent-soft)}
+.decision-proposal{margin:0;padding:0 0 6px}.decision-proposal>small{margin-top:7px}.decision-proposal>button{background:var(--accent-soft)}
 .decision-panel [role=alert]{color:var(--bad)}
 @media(max-width:800px){
  .shell-terminal-main .decision-panel{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;gap:0;padding:7px}
