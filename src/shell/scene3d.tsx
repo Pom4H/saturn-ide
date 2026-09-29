@@ -184,8 +184,15 @@ export default function Scene3D(props:SceneProps){
         const back=mesh(root,new T.CylinderGeometry(45,45,7,48),paint,96,60,96);back.rotation.z=Math.PI/2;
         const cover=mesh(root,new T.CylinderGeometry(45,45,36,48,1,true),casing,76,60,96);cover.rotation.z=Math.PI/2;
         const rim=mesh(root,new T.TorusGeometry(45,2.5,12,64),metal,57,60,96);rim.rotation.y=Math.PI/2;
-        const rotor=new T.Group();rotor.position.set(59,60,96);root.add(rotor);
-        for(let i=0;i<7;i++){const a=i*Math.PI*2/7,n=box(rotor,4,30,7,0,17*Math.cos(a),17*Math.sin(a),amber);n.rotation.x=a+.5;}
+        // Keep the impeller a rigid, physically connected assembly inside the volute.
+        // The old blades were offset and pitched around an empty center, which made them
+        // visibly orbit as separate "flying" parts at hero-camera angles.
+        const rotor=new T.Group();rotor.position.set(62,60,96);rotor.name=`${e.id}.impeller`;root.add(rotor);
+        const hub=mesh(rotor,new T.CylinderGeometry(10,10,8,24),amber,0,0,0);hub.rotation.z=Math.PI/2;hub.name=`${e.id}.impeller.hub`;
+        for(let i=0;i<7;i++){
+          const a=i*Math.PI*2/7,n=box(rotor,4,26,7,0,19*Math.cos(a),19*Math.sin(a),amber);
+          n.rotation.x=a;n.name=`${e.id}.impeller.blade.${i}`;
+        }
         tube(root,new T.Vector3(0,60,96),new T.Vector3(55,60,96),10);tube(root,new T.Vector3(76,100,96),new T.Vector3(76,105,96),10);tube(root,new T.Vector3(76,105,96),new T.Vector3(76,105,0),10);
         let phase=phases.get(e.id)??0;resources.updaters.push(dt=>{const rpm=rpmOf(e,current.current.snapshot);phase=advancePhase(phase,rpm===null?0:rpm/1450*.35,dt);rotor.rotation.x=phase*Math.PI*2;rotor.visible=rpm!==null;rotor.userData.phase=phase;phases.set(e.id,phase);});
       }else if(e.kind==='valve'){
