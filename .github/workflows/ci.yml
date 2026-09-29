@@ -66,6 +66,17 @@ jobs:
       - name: Install browser recording dependency
         run: bunx playwright install ffmpeg
         working-directory: saturn-ide
+      - name: Decision text UX and System One contract acceptance
+        timeout-minutes: 3
+        run: timeout --kill-after=10s 150s bun scripts/decision-browser-test.ts
+        working-directory: saturn-ide
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: decision-ux-evidence
+          path: saturn-ide/artifacts/decision/
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Importer browser acceptance
         run: bun scripts/importer-browser-test.ts
         working-directory: saturn-ide

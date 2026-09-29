@@ -3,6 +3,7 @@ import { availableEditors, type EditorId, type ProjectResource } from '../../../
 import type { IDEState } from '../../../protocol';
 import type { ReportOutput } from '../../../core/report-output';
 import { ShellSession } from '../session';
+import { DecisionSession } from '../decisions';
 import { related } from '../../../topology';
 import { displaySample } from '../observations';
 import { commandAliases, commandAreas, commandCatalog, usage, type CommandSpec, type CommandPath } from './catalog';
@@ -27,6 +28,7 @@ interface Parsed { spec:CommandSpec & {path:CommandPath}; tokens:Word[]; args:st
 
 /** Application commands shared by every renderer. Workspace and runtime remain the authorities. */
 export class CommandShell {
+  readonly decisions:DecisionSession;
   private snapshot:CommandSnapshot={input:'',cursor:0,cwd:'/',suggestions:[],selected:0,busy:false,completing:false,completionError:'',entries:[],history:[]};
   private listeners=new Set<()=>void>();
   private completionGeneration=0;
@@ -35,13 +37,13 @@ export class CommandShell {
   private historyDraft='';
   private requestAbort:AbortController|null=null;
   private completionAbort:AbortController|null=null;
-  constructor(readonly port:CommandPort) {}
+  constructor(readonly port:CommandPort) {this.decisions=new DecisionSession(this);}
   getSnapshot=()=>this.snapshot;
   subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
   private update(patch:Partial<CommandSnapshot>){this.snapshot={...this.snapshot,...patch};for(const fn of this.listeners)fn();}
   clear(){this.update({entries:[]});}
   cancel(){this.requestAbort?.abort();}
-  dispose(){this.completionGeneration++;this.completionAbort?.abort();this.requestAbort?.abort();}
+  dispose(){this.decisions.dispose();this.completionGeneration++;this.completionAbort?.abort();this.requestAbort?.abort();}
   dismiss(){this.completionGeneration++;this.completionAbort?.abort();this.update({suggestions:[],completing:false,completionError:''});}
   select(index:number){const n=this.snapshot.suggestions.length;if(n)this.update({selected:(index+n)%n});}
   move(delta:number){this.select(this.snapshot.selected+delta);}
@@ -95,7 +97,7 @@ export class CommandShell {
   }
   private resource(id:string):ProjectResource {
     const matches=this.port.session.getCatalog().resources.filter(r=>r.uri===id||r.entityId===id||r.source?.path===id);
-    if(!matches.length)throw new Error(`Ресурс не найден: ${id}`);
+    if(!matches.length)throw new Error(`Ресурс не найдено: ${id}`);
     return matches.find(r=>r.uri===id||r.entityId===id)??matches[0]!;
   }
   private offset(raw:string,length:number){const position=raw==='end'?length:Number(raw);if(!Number.isInteger(position)||position<0||position>length)throw new Error(`Позиция: 0…${length} или end (UTF-16)`);return position;}
@@ -163,22 +165,23 @@ export class CommandShell {
         return entries.filter(e=>e.from!==undefined&&e.to!==undefined&&e.from>=position&&e.to<=position+snippet.length&&e.label.toLowerCase().startsWith(source.slice(e.from,position+snippetCursor).toLowerCase())).map(e=>({label:e.label,detail:`TypeScript · ${e.type} · ${path}`,icon:'source',group:'TypeScript',from:parsed.restStart+e.from!-position,to:parsed.restStart+e.to!-position,insert:e.insertText??e.label}));
       }
     }
-    // Stable IDs can be shared by multiple source declarations; render one candidate per insertion.
     return suggestions.filter((s,i,list)=>list.findIndex(v=>v.insert===s.insert)===i).slice(0,100);
   }
-  async execute(line=this.snapshot.input):Promise<CommandResult> {
+  /** A prepared client may fence execution. Ordinary terminal commands use the same dispatcher. */
+  async execute(line=this.snapshot.input,guard?:()=>void):Promise<CommandResult> {
     if(this.snapshot.busy)return {ok:false,command:line,text:'Предыдущая команда ещё выполняется'};
     line=line.trimStart();if(!line.trim())return {ok:true,command:line,text:''};
     this.dismiss();const controller=new AbortController();this.requestAbort=controller;
     this.update({busy:true,input:'',cursor:0,history:[...this.snapshot.history.filter(h=>h!==line),line].slice(-100)});this.historyIndex=-1;
     let result:CommandResult,cleared=false;
-    try{const parsed=this.resolve(line,true)!;cleared=parsed.spec.path==='clear';const data=await this.run(parsed,controller.signal);result={ok:true,command:line,text:formatCommand(parsed.spec.path,data),data,effect:parsed.spec.effect};}
+    try{const parsed=this.resolve(line,true)!;cleared=parsed.spec.path==='clear';const data=await this.run(parsed,controller.signal,guard);result={ok:true,command:line,text:formatCommand(parsed.spec.path,data),data,effect:parsed.spec.effect};}
     catch(error){result={ok:false,command:line,text:controller.signal.aborted?'Ожидание остановлено; отправленное действие могло завершиться.':String(error instanceof Error?error.message:error)};}
     this.update({busy:false,entries:cleared?[]:[...this.snapshot.entries,{...result,id:++this.sequence,at:Date.now()}].slice(-150)});
     this.requestAbort=null;return result;
   }
-  private async run({spec,args}:Parsed,abort:AbortSignal):Promise<unknown> {
-    const session=this.port.session,request=<T>(path:string,body?:unknown)=>this.port.request<T>(path,body,abort);
+  private async run({spec,args}:Parsed,abort:AbortSignal,guard?:()=>void):Promise<unknown> {
+    const check=()=>{abort.throwIfAborted();guard?.();};check();
+    const session=this.port.session,request=<T>(path:string,body?:unknown)=>{check();return this.port.request<T>(path,body,abort);};
     switch(spec.path){
       case 'help':return commandCatalog.map(c=>({...c,usage:usage(c)}));
       case 'clear':this.clear();return '';
@@ -204,18 +207,22 @@ export class CommandShell {
         return `Команда принята: ${definition.id} = ${String(value)}. Подтверждение смотрите в показаниях.`;
       }
       case 'runtime alarms':return this.state().snapshot.alarms;
-      case 'runtime ack':if(!this.port.connected())throw new Error('Нет связи с runtime');if(!this.state().project.alarms.some(a=>a.id===args[0]))throw new Error('Тревога не найдена');await request('ack',{id:args[0]});return {acknowledged:args[0]};
+      case 'runtime ack':{
+        if(!this.port.connected())throw new Error('Нет связи с runtime');
+        const state=this.state();if(!state.project.alarms.some(a=>a.id===args[0]))throw new Error('Тревога не найдена');
+        await request('ack',{id:args[0],expectedApplied:state.revision?state.revision.startsWith('sha256:')?state.revision:`sha256:${state.revision}`:null});return {acknowledged:args[0]};
+      }
       case 'runtime runs':return request('telemetry/runs');
       case 'runtime compare':{const signal=this.signals().find(s=>s.id===args[0]);if(!signal)throw new Error('Сигнал не найден');const minutes=Number(args[3]??10),duration=minutes*60000;if(!Number.isSafeInteger(duration)||duration<1000||duration>31*86400000)throw new Error('Некорректный период сравнения');return request(`telemetry/compare?${new URLSearchParams({signal:signal.semanticId??signal.id,a:args[1]!,b:args[2]!,duration:String(duration),bucket:String(Math.max(1000,Math.ceil(duration/120/1000)*1000))})}`);}
       case 'runtime history':if(!this.signals().some(s=>s.id===args[0]))throw new Error('Сигнал не найден');return request(`history?signal=${encodeURIComponent(args[0]!)}`);
       case 'source read':return (await session.documents.open(args[0]!)).draft;
       case 'source insert':{
-        const path=args[0]!,buffer=await session.documents.open(path),position=this.offset(args[1]!,buffer.draft.length);
+        const path=args[0]!,buffer=await session.documents.open(path),position=this.offset(args[1]!,buffer.draft.length);check();
         if(buffer.saving)throw new Error('Сохранение ещё выполняется');
         session.documents.edit(path,buffer.draft.slice(0,position)+args[2]!+buffer.draft.slice(position));
         return {draft:path,inserted:args[2]!.length,position,saved:false,next:`/source diagnostics ${quoteWord(path)}`,source:session.documents.getSnapshot().get(path)!.draft};
       }
-      case 'source save':{const path=args[0]!;await session.documents.open(path);await session.documents.save(path);return {saved:path,version:session.documents.getSnapshot().get(path)!.version};}
+      case 'source save':{const path=args[0]!;await session.documents.open(path);check();await session.documents.save(path);return {saved:path,version:session.documents.getSnapshot().get(path)!.version};}
       case 'source diagnostics':case 'source complete':{const buffer=await session.documents.open(args[0]!);return request('language',{operation:spec.path==='source complete'?'complete':'diagnostics',path:buffer.path,source:buffer.draft,position:spec.path==='source complete'?this.offset(args[1]!,buffer.draft.length):0});}
       case 'reports run':{const definition=this.state().project.reports?.find(r=>r.id===args[0]);const hours=Number(args[1]??(definition&&'sql' in definition?definition['window']/3600000:6));if(!Number.isFinite(hours)||hours<=0||hours>24*366)throw new Error('Период: от 0 до 8784 часов');if(!this.state().project.reports?.some(r=>r.id===args[0]))throw new Error('Отчёт не найден');const to=Date.now();return request<ReportOutput>(`report?id=${encodeURIComponent(args[0]!)}&from=${to-hours*3600_000}&to=${to}`);}
       case 'git status':return request('git');

@@ -1,3 +1,4 @@
+import { DecisionService } from './decision-api';
 import { planSourceOperation } from './authoring';
 import { readAuthoredFiles } from '../core/authoring';
 import {ReportError} from '../runtime/report';
@@ -39,8 +40,9 @@ import type { JobReceipt } from '../core/jobs';
 const defaultAppRoot = resolve(import.meta.dir, '../..');
 const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 'Проект не загружен' }, signals: {}, equipment: [], pipes: [], alarms: [] };
 /** Composition root for local development; runtime modules themselves know no workspace. */
-export async function createApp(options: { appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation' } = {}) {
+export async function createApp(options: { appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation'; decision?: Readonly<Record<string,string|undefined>> } = {}) {
   const appRoot=options.appRoot??defaultAppRoot;
+  const decisions=new DecisionService(options.decision);
   const updates=new IDEUpdates(Bun.env.SATURN_IDE_VERSION??(await Bun.file(join(appRoot,'package.json')).json()).version);
   const workspace = new Workspace(options.projectDir ?? resolve(Bun.env.SATURN_PROJECT ?? './examples/reports'));
   const dataDir = options.dataDir ?? join(appRoot, '.saturn', hash(workspace.root).slice(0, 12));
@@ -170,6 +172,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
           if(path==='/' || path==='/hmi') return new Response(browser.html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
           const asset=browser.assets.get(path); if(asset)return new Response(asset,{headers:{'Cache-Control':'no-cache'}});
           if (path === '/api/state') return json(state());
+          if (path === '/api/decision') return json(decisions.status());
           if(path==='/api/scenarios'){
             const context=await runtimeSerial(async()=>{try{return scenarioState();}catch{return null;}});
             const jobs=workerAvailable?(await workerRequest('/api/jobs?project=workspace') as JobReceipt[]).filter(job=>job.kind==='scenario'):[];
@@ -216,6 +219,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         if (request.method !== 'POST') throw new HttpError(405, 'Method not allowed');
         if (request.headers.get('X-Saturn-Key') !== key || !request.headers.get('content-type')?.includes('application/json')) throw new HttpError(403, 'Missing session key or JSON content type');
         const body: unknown = await request.json(); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected an object'); const b = body as Record<string, unknown>;
+        if (path === '/api/decision/evaluate') return json(await decisions.evaluate(b,request.signal));
         if(path==='/api/scenarios/start'){
           const context=await runtimeSerial(async()=>scenarioState());
           if(b.expectedApplied!==context.applied||b.expectedRun!==context.run.id)throw new HttpError(409,'Simulation changed; refresh scenarios');
@@ -306,20 +310,25 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
           if (op === 'signal-hints') return json(builder.language.signalHints(file, source, authoringProject()));
           throw new HttpError(400, 'Unknown language operation');
         }
-        if (path === '/api/command') {
+        if (path === '/api/command') return await runtimeSerial(async()=>{
           if (manager.phase !== 'running') throw new HttpError(409, 'Runtime is not accepting commands');
           const installation = active();
           if (!installation) throw new HttpError(409, 'No applied installation');
-          if (installation.driver?.mode === 'live' && b.expectedApplied !== manager.applied) throw new HttpError(409, 'Live commands require the current applied revision');
+          // Check after waiting in the same queue as apply, including simulator changes.
+          if ((b.expectedApplied !== undefined || installation.driver?.mode === 'live') && b.expectedApplied !== manager.applied) throw new HttpError(409, 'Applied revision changed; prepare the command again');
           await installation.command(field(b, 'signal'), b.value);
           return json({ accepted: true });
-        }
+        });
         if (path === '/api/telemetry') {
           if (manager.phase !== 'running') throw new HttpError(409, 'Runtime is not running');
           if (!b.values || typeof b.values !== 'object' || Array.isArray(b.values)) throw new HttpError(400, 'Expected signal values');
           await runtime.ingest(b.values as Record<string, unknown>); return json({ accepted: true });
         }
-        if (path === '/api/ack') { if (manager.phase !== 'running') throw new HttpError(409, 'Runtime is not running'); await runtime.acknowledge(field(b, 'id')); return json({ ok: true }); }
+        if (path === '/api/ack') return await runtimeSerial(async()=>{
+          if (manager.phase !== 'running') throw new HttpError(409, 'Runtime is not running');
+          if(b.expectedApplied!==undefined&&b.expectedApplied!==manager.applied)throw new HttpError(409,'Applied revision changed; prepare the acknowledgement again');
+          await runtime.acknowledge(field(b, 'id')); return json({ ok: true });
+        });
         if (path === '/api/ide/check') return json(await updates.check());
         if (path === '/api/git') {
           if (gitBusy) throw new HttpError(409, 'Git operation already running'); gitBusy = true;
@@ -333,7 +342,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
     },
   });
   const close = async () => {
-    if (closed) return; closed = true; watcher.close(); clearTimeout(debounce); clearInterval(staleTimer); clearInterval(retention);
+    if (closed) return; closed = true; decisions.close(); watcher.close(); clearTimeout(debounce); clearInterval(staleTimer); clearInterval(retention);
     active()?.abortPending();
     await (await scenarioWorker)?.close();await server.stop(true); await reloadQueue; await manager.close(); events.close(); builder.close(); await store.close();
   };

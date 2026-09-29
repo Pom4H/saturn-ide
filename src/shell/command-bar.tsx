@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import { CommandShell } from './model/commands/engine';
 import { ResourceIcon } from './icons';
+import { DecisionPanel } from './decision-panel';
 import type { Locale } from '../core';
 import './command-shell.css';
 
@@ -10,6 +11,7 @@ export function CommandBar({commands,onClear,locale}:{commands:CommandShell;onCl
   const ru=locale==='ru';
   const input=useRef<HTMLInputElement>(null),list=useRef<HTMLDivElement>(null),id=useId();
   const [focused,setFocused]=useState(false);
+  const [natural,setNatural]=useState(()=>!!commands.decisions.getSnapshot().input);
   const shown=focused&&state.suggestions.length>0;
   useEffect(()=>{if(input.current&&document.activeElement===input.current)input.current.setSelectionRange(state.cursor,state.cursor);},[state.input]);
   useEffect(()=>{list.current?.querySelector('[aria-selected=true]')?.scrollIntoView({block:'nearest'});},[state.selected]);
@@ -26,6 +28,11 @@ export function CommandBar({commands,onClear,locale}:{commands:CommandShell;onCl
     else if(event.ctrlKey&&(event.key==='p'||event.key==='n')){event.preventDefault();void commands.history(event.key==='p'?-1:1);}
   };
   return <div className="command-composer">
+    <div className="command-modes" role="group" aria-label={ru?'Способ ввода':'Input mode'}>
+      <button type="button" aria-pressed={!natural} disabled={state.busy} onClick={()=>{commands.decisions.cancel();setNatural(false);}}>{ru?'Команда':'Command'}</button>
+      <button type="button" aria-pressed={natural} disabled={state.busy} onClick={()=>{commands.dismiss();setNatural(true);}}>{ru?'Текст':'Text'}</button>
+    </div>
+    {natural?<DecisionPanel commands={commands} locale={locale}/>:<>
     {shown&&<div className="command-suggestions" role="listbox" id={id} aria-label={ru?'Подсказки команд':'Command suggestions'} ref={list}>
       {state.suggestions.map((item,index)=><div role="option" id={`${id}-${index}`} key={`${item.from}:${item.insert}`} aria-selected={state.selected===index} className="command-suggestion" onMouseDown={event=>event.preventDefault()} onMouseEnter={()=>commands.select(index)} onClick={()=>{void commands.accept(index);input.current?.focus();}}>
         <span className="command-suggestion-icon"><ResourceIcon icon={item.icon} size={17}/></span><span className="command-suggestion-text"><strong>{item.label}</strong><small>{item.detail}</small></span><span className="command-suggestion-group">{item.group}</span>{state.selected===index&&<kbd>Tab</kbd>}
@@ -40,5 +47,6 @@ export function CommandBar({commands,onClear,locale}:{commands:CommandShell;onCl
       {state.busy?<button type="button" onClick={()=>commands.cancel()} aria-label={ru?'Остановить ожидание':'Cancel command'}>■</button>:<button type="submit" aria-label={ru?'Выполнить команду':'Run command'}><ResourceIcon icon="terminal" size={16}/><span>Enter</span></button>}
     </form>
     <div className="command-keybar"><span>{state.completionError|| (state.completing?'TypeScript…':state.busy?(ru?'Выполняется…':'Running…'):(ru?'Tab дополнить · ↑↓ выбрать · Enter выполнить':'Tab complete · ↑↓ select · Enter run'))}</span><span>{ru?'Ctrl R история · Ctrl L очистить · Esc закрыть':'Ctrl R history · Ctrl L clear · Esc close'}</span></div>
+    </>}
   </div>;
 }
