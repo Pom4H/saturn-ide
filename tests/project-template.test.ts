@@ -6,6 +6,8 @@ import {Workspace} from '../src/workspace/files';
 import {Builder} from '../src/workspace/build';
 import {previewDevice} from '../src/workspace/scaffold';
 import {application} from '../src/host/application';
+// This test also runs first or alone on a clean checkout; do not depend on fixture order.
+mkdirSync(resolve('.saturn'),{recursive:true});
 test('fresh project has one model and optional folders; generated devices check without copying IDE or station infrastructure',async()=>{
  const base=mkdtempSync(resolve('.saturn/project-template-')),root=join(base,'my-station'),data=join(base,'data');mkdirSync(data);
  const directory=createProject(root),workspace=new Workspace(directory),builder=new Builder(workspace,resolve('.'),data);

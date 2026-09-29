@@ -59,14 +59,17 @@ jobs:
           ln -s ../saturn-ide/node_modules saturn-examples/node_modules
           ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
       - run: bun run check
+        id: compile
         working-directory: saturn-ide
       - name: Unit, SQLite, PostgreSQL and protocol tests
         run: timeout --kill-after=10s 180s bun test tests
         working-directory: saturn-ide
       - name: Install browser recording dependency
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         run: bunx playwright install ffmpeg
         working-directory: saturn-ide
       - name: Decision text UX and System One contract acceptance
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         timeout-minutes: 3
         run: timeout --kill-after=10s 150s bun scripts/decision-browser-test.ts
         working-directory: saturn-ide
