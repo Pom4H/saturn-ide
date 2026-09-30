@@ -11,7 +11,13 @@ export function useLayoutEditing(shell: ReturnType<typeof useShell>, operator: b
   const fail = (error: unknown) => setError(error instanceof Error ? error.message : String(error));
 
   useEffect(() => {
-    if (state) editing.reconcile((operator?state.project:state.authoring?.scene??state.project).equipment);
+    if(state){
+      const project=operator?state.project:state.authoring?.scene??state.project;
+      editing.reconcile(project.equipment.flatMap(e=>[
+        {id:e.id,x:e.x,y:e.y},
+        ...(e.mount?[{id:`mount:${e.id}`,x:e.mount.x,y:e.mount.y}]:[]),
+      ]));
+    }
   }, [editing, state?.project, state?.authoring, operator, documents, snapshot.dragging]);
 
   const begin = (id: string) => {

@@ -50,7 +50,10 @@ export function inactiveScene(project: Project, inactive: readonly InactiveEntit
 /** Shared transient scene projection for 2D and 3D hosts; never changes authored data. */
 export function previewScene(frame:AuthoringFrame, poses:Readonly<Record<string,{x:number;y:number}>>, plug:{id:string;end:'from'|'to';x:number;y:number;z:number}|null):Project {
   const update=<T extends Pipe|Cable>(edge:T):T=>plug?.id===edge.id?{...edge,[plug.end]:free(edge[plug.end],{x:plug.x,y:plug.y,z:plug.z})}:edge;
-  return {...frame.scene,equipment:frame.scene.equipment.map(e=>poses[e.id]?{...e,...poses[e.id]}:e),pipes:frame.scene.pipes.map(update),cables:frame.scene.cables?.map(update)};
+  return {...frame.scene,equipment:frame.scene.equipment.map(e=>{
+    const diagram=poses[e.id],mounted=poses[`mount:${e.id}`];
+    return diagram||mounted?{...e,...(diagram?{x:diagram.x,y:diagram.y}:{}),...(mounted&&e.mount?{mount:{...e.mount,x:mounted.x,y:mounted.y}}:{})}:e;
+  }),pipes:frame.scene.pipes.map(update),cables:frame.scene.cables?.map(update)};
 }
 export function readAuthoringOperation(value:unknown):AuthoringOperation {
   if(!value||typeof value!=='object'||!('id' in value)||typeof value.id!=='string'||value.id.length>80||!('kind' in value))throw new Error('Invalid source operation');

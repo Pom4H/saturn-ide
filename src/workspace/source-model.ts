@@ -2,7 +2,7 @@ import ts from 'typescript';
 import { inactiveScene, type AuthoredFile, type AuthoringFrame, type AuthoredKind, type EntitySource, type InactiveEntity, type SourceEntry } from '../core/authoring';
 import type { Equipment, Pipe, Cable, Project } from '../core';
 import type { PositionSource, Range } from '../source-edits';
-import { deviceCalls, numericLiteral } from './ast';
+import { deviceCalls, mountCoordinates, numericLiteral } from './ast';
 
 export interface SourcePlan { source: string; expanded: string; entries: SourceEntry[] }
 const arrayKinds = new Set(['equipment', 'pipes', 'cables', 'alarms', 'reports', 'hmis']);
@@ -125,9 +125,14 @@ export function authoringFrame(project: Project, files: readonly AuthoredFile[],
   const scene = inactiveScene(project, inactive), positions: Record<string, PositionSource> = {}, ambiguous = new Set<string>();
   for (const file of authoredModules(files)) {
     const tree = parse(sourcePlan(file).expanded, file.path);
-    for (const { id, x, y } of deviceCalls(tree, new Set(scene.equipment.map(e => e.id)))) if (numericLiteral(x) && numericLiteral(y)) {
-      if (positions[id]) ambiguous.add(id);
-      positions[id] = { path: file.path, version: file.version, x: { from: x.getStart(tree), to: x.end }, y: { from: y.getStart(tree), to: y.end } };
+    for (const call of deviceCalls(tree, new Set(scene.equipment.map(e => e.id)))) {
+      const add=(key:string,x:ts.Expression,y:ts.Expression)=>{
+        if(!numericLiteral(x)||!numericLiteral(y))return;
+        if(positions[key])ambiguous.add(key);
+        positions[key]={path:file.path,version:file.version,x:{from:x.getStart(tree),to:x.end},y:{from:y.getStart(tree),to:y.end}};
+      };
+      add(call.id,call.x,call.y);
+      const mounted=mountCoordinates(call,tree);if(mounted)add(`mount:${call.id}`,mounted.x,mounted.y);
     }
   }
   for (const id of ambiguous) delete positions[id];

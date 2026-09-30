@@ -93,6 +93,19 @@ export type SignalValues<S extends Record<string, Signal>> = { [K in keyof S]: S
 export function command<S extends Signal<Value,string,true>>(target: S, value: NoInfer<SignalValue<S>>) {
   validateValue(target, value); return { signal: target.id, value };
 }
+export interface MountPlacement<I extends string=string> {
+  readonly enclosure:I; readonly x:number; readonly y:number; readonly z?:number;
+}
+/** Physical container used for cabinet/panel/rack mounting. Dimensions are millimetres. */
+export interface Enclosure<I extends string=string> {
+  readonly id:I; readonly label:Text; readonly width:number; readonly height:number; readonly depth:number;
+  readonly grid?:number; readonly description?:Text;
+}
+export function enclosure<const I extends string>(id:I,options:Omit<Enclosure<I>,'id'>):Enclosure<I> { return {id,...options}; }
+export function mount<const I extends string>(target:Enclosure<I>,position:Omit<MountPlacement<I>,'enclosure'>):MountPlacement<I> {
+  return {enclosure:target.id,...position};
+}
+
 export interface Position {
   /** @ru Координата X схемы. Числовой литерал доступен для перемещения мышью.
    * @en Diagram X coordinate. Numeric literals support drag editing. */
@@ -102,6 +115,8 @@ export interface Position {
   /** @ru Высота основания, в единицах схемы. @en Base elevation in diagram units. */
   z?: number;
   label: Text;
+  /** Physical placement is independent from process-diagram x/y. */
+  mount?: MountPlacement;
   /** Authored installation system; grouping never creates runtime equipment. */
   system?:string;
   /** @ru Стабильная семантическая identity физической сущности; tag/имя можно менять независимо.
@@ -161,7 +176,8 @@ export interface InstrumentCapability {
 }
 export interface FirmwareCapability {readonly target:string;readonly languages:readonly string[];readonly sourceDir?:string}
 export interface EmulatorCapability {readonly runtime:string;readonly abi?:string}
-export interface DeviceCapabilities {readonly diagram?:DiagramCapability;readonly instrument?:InstrumentCapability;readonly scene3d?:Scene3DCapability;readonly hmi?:HmiCapability;readonly firmware?:FirmwareCapability;readonly emulator?:EmulatorCapability}
+export interface MountingCapability {readonly width:number;readonly height:number;readonly depth:number}
+export interface DeviceCapabilities {readonly diagram?:DiagramCapability;readonly mounting?:MountingCapability;readonly instrument?:InstrumentCapability;readonly scene3d?:Scene3DCapability;readonly hmi?:HmiCapability;readonly firmware?:FirmwareCapability;readonly emulator?:EmulatorCapability}
 export interface EngineeringConstraint {readonly id:string;readonly severity:'info'|'warning'|'error';readonly label:Text;readonly description?:Text}
 export interface DeviceKnowledge {readonly summary?:Text;readonly commissioning?:readonly Text[];readonly constraints?:readonly EngineeringConstraint[]}
 export interface DeviceAlarmTemplate<S extends Readonly<Record<string,SignalSpec>>> {readonly label:Text;readonly signal:Extract<keyof S,string>;readonly above:number;readonly hysteresis?:number}
@@ -288,9 +304,39 @@ export function monitorMetric<const S extends Signal<number>>(id:string,source:S
 export function monitor(id:string,options:Omit<MonitoringGroup,'id'>):MonitoringGroup {return {id,...options};}
 export interface Project {
   id:string; label:Text; signals:Record<string,Signal>; equipment:Equipment[]; pipes:Pipe[]; cables?:Cable[];
-  alarms:Alarm[]; hmi?:Hmi; hmis?:HmiInterface[]; reports?:Report[]; monitoring?:readonly MonitoringGroup[]; systems?:readonly System[]; scenarios?:readonly Scenario[];
+  alarms:Alarm[]; hmi?:Hmi; hmis?:HmiInterface[]; reports?:Report[]; monitoring?:readonly MonitoringGroup[]; systems?:readonly System[]; enclosures?:readonly Enclosure[]; scenarios?:readonly Scenario[];
 }
 export type ProjectDefinition = Omit<Project,'signals'|'hmi'|'hmis'|'alarms'> & {signals?:Record<string,Signal>;hmi?:Hmi|AutoHmi;hmis?:HmiIntent[];alarms?:Alarm[]};
+export type MountCheck = {readonly valid:true} | {readonly valid:false;readonly code:string;readonly message:Record<Locale,string>};
+const mountFailure=(code:string,en:string,ru:string):MountCheck=>({valid:false,code,message:{en,ru}});
+/** One authoritative fit/collision check is shared by project validation and source-first mounting UI. */
+export function checkMountPlacement(project:Pick<Project,'equipment'|'enclosures'>,equipmentId:string,placement?:MountPlacement):MountCheck {
+  const equipment=project.equipment.find(item=>item.id===equipmentId);
+  if(!equipment)return mountFailure('MOUNT_EQUIPMENT',`Unknown equipment ${equipmentId}`,`Неизвестное оборудование ${equipmentId}`);
+  const target=placement??equipment.mount;
+  if(!target)return mountFailure('MOUNT_POSITION',`Equipment ${equipmentId} is not mounted`,`Оборудование ${equipmentId} не смонтировано`);
+  const enclosure=(project.enclosures??[]).find(item=>item.id===target.enclosure);
+  if(!enclosure)return mountFailure('MOUNT_ENCLOSURE',`Unknown enclosure ${target.enclosure} for ${equipmentId}`,`Неизвестный шкаф/корпус ${target.enclosure} для ${equipmentId}`);
+  const size=equipment.capabilities.mounting;
+  if(!size)return mountFailure('MOUNT_FOOTPRINT',`Equipment ${equipmentId} has no physical mounting dimensions`,`У оборудования ${equipmentId} нет физических монтажных размеров`);
+  const z=target.z??0;
+  if(![target.x,target.y,z].every(Number.isFinite)||target.x<0||target.y<0||z<0)
+    return mountFailure('MOUNT_POSITION',`Invalid mounting position for ${equipmentId}`,`Неверная монтажная позиция ${equipmentId}`);
+  if(![size.width,size.height,size.depth].every(value=>Number.isFinite(value)&&value>0))
+    return mountFailure('MOUNT_FOOTPRINT',`Invalid mounting dimensions for ${equipmentId}`,`Неверные монтажные размеры ${equipmentId}`);
+  if(target.x+size.width>enclosure.width||target.y+size.height>enclosure.height||z+size.depth>enclosure.depth)
+    return mountFailure('MOUNT_BOUNDS',`${equipmentId} does not fit inside ${enclosure.id}`,`${equipmentId} не помещается в ${enclosure.id}`);
+  const overlaps=(a0:number,a1:number,b0:number,b1:number)=>a0<b1&&b0<a1;
+  for(const other of project.equipment){
+    if(other.id===equipmentId||other.mount?.enclosure!==target.enclosure||!other.capabilities.mounting)continue;
+    const otherZ=other.mount.z??0,otherSize=other.capabilities.mounting;
+    if(overlaps(target.x,target.x+size.width,other.mount.x,other.mount.x+otherSize.width)
+      &&overlaps(target.y,target.y+size.height,other.mount.y,other.mount.y+otherSize.height)
+      &&overlaps(z,z+size.depth,otherZ,otherZ+otherSize.depth))
+      return mountFailure('MOUNT_COLLISION',`${equipmentId} overlaps ${other.id} in ${enclosure.id}`,`${equipmentId} пересекается с ${other.id} в ${enclosure.id}`);
+  }
+  return {valid:true};
+}
 /** @ru Производный индекс всех сигналов. Он не является вторым authored-файлом и не требует ручных строковых путей.
  * @en Derived index of every signal. It is not a second authored file and requires no manually duplicated string paths. */
 export function collectSignals(definition:ProjectDefinition):Record<string,Signal> {
@@ -346,7 +392,8 @@ export function validateProject(p:Project):void {
   validateScenarios(p);
   requireThat(p.monitoring===undefined||Array.isArray(p.monitoring)&&p.monitoring.length<=32&&p.monitoring.every(group=>group&&typeof group==='object'&&typeof group.id==='string'&&Array.isArray(group.metrics)&&group.metrics.length>0&&group.metrics.length<=32),'MONITOR_LIMIT','Invalid monitoring group size','Неверный размер группы мониторинга');
   requireThat(p.systems===undefined||Array.isArray(p.systems),'SYSTEM_SHAPE','Invalid installation systems','Неверные системы установки');
-  const systems=new Map<string,System>();
+  requireThat(p.enclosures===undefined||Array.isArray(p.enclosures),'ENCLOSURE_SHAPE','Invalid enclosures','Неверные шкафы/корпуса');
+  const systems=new Map<string,System>(),enclosures=new Map<string,Enclosure>();
   const named=(value:unknown):value is Text=>typeof value==='string'&&!!value.trim()||!!value&&typeof value==='object'&&!Array.isArray(value)&&['en','ru'].every(locale=>typeof (value as Record<string,unknown>)[locale]==='string'&&!!String((value as Record<string,unknown>)[locale]).trim());
   for(const group of p.systems??[]){
     requireThat(!!group&&typeof group.id==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(group.id)&&!systems.has(group.id)&&named(group.label)&&(group.parent===undefined||typeof group.parent==='string'),'SYSTEM_SHAPE',`Invalid/duplicate system ${group?.id}`,`Неверная/повторяющаяся система ${group?.id}`);
@@ -356,8 +403,14 @@ export function validateProject(p:Project):void {
     const seen=new Set([group.id]);let parent=group.parent;
     while(parent!==undefined){requireThat(systems.has(parent)&&!seen.has(parent),'SYSTEM_HIERARCHY',`Missing/cyclic system parent ${group.id}`,`Отсутствует/зациклен родитель системы ${group.id}`);seen.add(parent);parent=systems.get(parent)!.parent;}
   }
+  for(const item of p.enclosures??[]){
+    requireThat(!!item&&typeof item.id==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(item.id)&&!enclosures.has(item.id)&&named(item.label)
+      &&[item.width,item.height,item.depth].every(value=>Number.isFinite(value)&&value>0&&value<=15000)
+      &&(item.grid===undefined||Number.isFinite(item.grid)&&item.grid>0&&item.grid<=1000),'ENCLOSURE_SHAPE',`Invalid/duplicate enclosure ${item?.id}`,`Неверный/повторяющийся шкаф или корпус ${item?.id}`);
+    enclosures.set(item.id,item);
+  }
   const all=new Set<string>();
-  for(const item of [...Object.values(p.signals),...p.equipment,...p.pipes,...p.cables??[],...p.alarms,...p.reports??[],...p.monitoring??[],...p.scenarios??[]]) {
+  for(const item of [...Object.values(p.signals),...p.equipment,...p.pipes,...p.cables??[],...p.alarms,...p.reports??[],...p.monitoring??[],...p.enclosures??[],...p.scenarios??[]]) {
     requireThat(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(item.id)&&!all.has(item.id)&&!(item.id in Object.prototype),'DUPLICATE_ID',`Invalid/duplicate ID ${item.id}`,`Неверный/повторяющийся ID ${item.id}`);all.add(item.id);
   }
   const signals=new Map(Object.values(p.signals).map(s=>[s.id,s]));
@@ -385,6 +438,8 @@ export function validateProject(p:Project):void {
     }
     for(const value of Object.values(e))if(signalLike(value)&&'id' in value)ref(value as Signal);
     const diagram=e.capabilities.diagram;if(diagram)requireThat(Number.isFinite(diagram.width)&&diagram.width>0&&Number.isFinite(diagram.height)&&diagram.height>0,'EQUIPMENT_VIEW','Invalid equipment diagram bounds','Неверные размеры схемы оборудования');
+    const mounting=e.capabilities.mounting;if(mounting)requireThat([mounting.width,mounting.height,mounting.depth].every(value=>Number.isFinite(value)&&value>0&&value<=15000),'EQUIPMENT_MOUNTING','Invalid equipment mounting dimensions','Неверные монтажные размеры оборудования');
+    if(e.mount){const checked=checkMountPlacement(p,e.id,e.mount);if(!checked.valid)throw new ProjectError(checked.code,checked.message);}
     if(e.capabilities.instrument){
       const instrument=e.capabilities.instrument,reading=equipmentSignal<number>(e,instrument.field,'number');
       const min=instrument.min??reading?.min??0,max=instrument.max??reading?.max??100;

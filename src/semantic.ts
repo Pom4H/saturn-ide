@@ -19,7 +19,7 @@ const signalIdentity=(signal:Signal)=>signal.semanticId??(signal.owner?`signal:$
 export function semanticGraph(project:Project):SemanticGraph {
   const drafts:{semanticId:string;kind:SemanticKind;id:string;label:Text;signature:string;owner?:string;uses:string[]}[]=[];
   const sig=canonical;
-  drafts.push({semanticId:`project:${project.id}`,kind:'project',id:project.id,label:project.label,signature:sig({hmis:project.hmis?.map(hmi=>({id:hmi.id,label:hmi.label,width:hmi.width,height:hmi.height,equipment:hmi.equipment.map(e=>e.semanticId??`equipment:${e.id}`)}))??[],hmi:project.hmi?{width:project.hmi.width,height:project.hmi.height,source:project.hmi.source,controller:project.hmi.controller,equipment:project.hmi.equipment.map(e=>e.semanticId??`equipment:${e.id}`)}:null}),uses:[]});
+  drafts.push({semanticId:`project:${project.id}`,kind:'project',id:project.id,label:project.label,signature:sig({enclosures:project.enclosures??[],hmis:project.hmis?.map(hmi=>({id:hmi.id,label:hmi.label,width:hmi.width,height:hmi.height,equipment:hmi.equipment.map(e=>e.semanticId??`equipment:${e.id}`)}))??[],hmi:project.hmi?{width:project.hmi.width,height:project.hmi.height,source:project.hmi.source,controller:project.hmi.controller,equipment:project.hmi.equipment.map(e=>e.semanticId??`equipment:${e.id}`)}:null}),uses:[]});
   const equipmentIds=new Map(project.equipment.map(e=>[e.id,equipmentIdentity(e)]));
   const signalIds=new Map(Object.values(project.signals).map(s=>[s.id,signalIdentity(s)]));
   for(const group of project.systems??[])drafts.push({semanticId:`system:${group.id}`,kind:'system',id:group.id,label:group.label,
@@ -29,7 +29,7 @@ export function semanticGraph(project:Project):SemanticGraph {
     ]});
   for(const equipment of project.equipment){
     const owned=equipmentSignals(equipment).map(signalIdentity).sort();
-    drafts.push({semanticId:equipmentIdentity(equipment),kind:'equipment',id:equipment.id,label:equipment.label,signature:sig({kind:equipment.kind,icon:equipment.icon,x:equipment.x,y:equipment.y,z:equipment.z??0,system:equipment.system??null,description:equipment.description??null,ports:equipment.ports,capabilities:equipment.capabilities,knowledge:equipment.knowledge,alarms:equipment.alarms.map(alarm=>({id:alarm.id,signal:signalIdentity(alarm.signal),above:alarm.above,hysteresis:alarm.hysteresis??null,label:alarm.label}))}),uses:owned});
+    drafts.push({semanticId:equipmentIdentity(equipment),kind:'equipment',id:equipment.id,label:equipment.label,signature:sig({kind:equipment.kind,icon:equipment.icon,x:equipment.x,y:equipment.y,z:equipment.z??0,mount:equipment.mount??null,system:equipment.system??null,description:equipment.description??null,ports:equipment.ports,capabilities:equipment.capabilities,knowledge:equipment.knowledge,alarms:equipment.alarms.map(alarm=>({id:alarm.id,signal:signalIdentity(alarm.signal),above:alarm.above,hysteresis:alarm.hysteresis??null,label:alarm.label}))}),uses:owned});
   }
   for(const signal of Object.values(project.signals)){
     const owner=signal.owner?.kind==='equipment'?equipmentIds.get(signal.owner.id):undefined;
