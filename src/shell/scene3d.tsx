@@ -50,7 +50,7 @@ export default function Scene3D(props:SceneProps){
   const [dragPorts,setDragPorts]=useState<{count:number;target:string}|null>(null);
   const [routesExpanded,setRoutesExpanded]=useState(true);
   const invalidRoutes=props.routes.filter(route=>!route.valid&&route.id!==props.cablePreview?.id);
-  const genericEquipment=props.project.equipment.filter(e=>!e.capabilities.instrument&&!['tank','pump','valve','plc'].includes(e.kind)&&!(e.capabilities.scene3d?.kind==='control-panel'&&e.capabilities.diagram));
+  const genericEquipment=props.project.equipment.filter(e=>!e.capabilities.instrument&&!['tank','pump','valve','tee','plc'].includes(e.kind)&&!(e.capabilities.scene3d?.kind==='control-panel'&&e.capabilities.diagram));
   const focusRoute=useRef<(id:string,free?:boolean)=>void>(()=>{});
   const rebuild=useRef<()=>void>(()=>{}),fit=useRef<()=>void>(()=>{});
   useEffect(()=>{
@@ -165,6 +165,10 @@ export default function Scene3D(props:SceneProps){
           if(reading&&state!==previous){previous=state;paintInstrumentFace(canvas,form,reading.display,reading.unit,reading.value===null);texture.needsUpdate=true;}
           if(needle){needle.visible=reading?.fraction!==null&&reading!==null;if(reading?.fraction!==null&&reading)needle.rotation.z=-(135+reading.fraction*270)*Math.PI/180;}
         });
+      }else if(e.kind==='tee'){
+        tube(root,new T.Vector3(0,60,40),new T.Vector3(80,60,40),11,paint);
+        tube(root,new T.Vector3(40,60,0),new T.Vector3(40,60,40),11,paint);
+        mesh(root,new T.SphereGeometry(12,24,16),paint,40,60,40);
       }else if(e.kind==='tank'){
         const levelSignal=equipmentSignal<number>(e,'level','number');if(!levelSignal)return;
         box(root,140,7,150,79,5,116);for(const x of [28,120])box(root,10,25,10,x,17,130);

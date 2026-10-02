@@ -5,6 +5,7 @@ export const deviceTemplates=[
   {id:'tank',label:{ru:'Резервуар',en:'Tank'},icon:'tank',signals:"level: signal({ initial: 0, unit: '%', min: 0, max: 100 })"},
   {id:'pump',label:{ru:'Насос',en:'Pump'},icon:'pump',signals:"rpm: signal({ initial: 0, unit: 'rpm' }),\n  run: signal({ initial: false, writable: true })"},
   {id:'valve',label:{ru:'Клапан',en:'Valve'},icon:'valve',signals:"opening: signal({ initial: 0, unit: '%', min: 0, max: 100, writable: true })"},
+  {id:'tee',label:{ru:'Тройник',en:'Pipe tee'},icon:'tee',signals:''},
   {id:'plc',label:{ru:'Базовый ПЛК',en:'Generic PLC'},icon:'plc',signals:"online: signal({ initial: false })"},
   {id:'custom',label:{ru:'Собственный тип оборудования',en:'Project-owned equipment'},icon:'diagram',signals:''},
 ];
@@ -54,7 +55,15 @@ export function addProjectArray(source:string,property:string,binding:string,imp
 export function previewDevice(workspace:Workspace,kind:string,id:string,label:string):ScaffoldPreview {
   const template=deviceTemplates.find(t=>t.id===kind);if(!template)throw new HttpError(400,'Unknown device template');
   if(!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id)||!label.trim()||label.length>160)throw new HttpError(400,'Invalid device ID or label');
-  const path=`equipment/${id}.device.ts`,source=kind==='custom'?projectOwnedDeviceSource(id,label):`import { ${kind}, signal } from '@saturn/core';\n\nexport default ${kind}(${JSON.stringify(id)}, {\n  semanticId: ${JSON.stringify('equipment:'+id)},\n  label: ${JSON.stringify(label.trim())},\n  x: 80, y: 80,\n  ${template.signals},\n});\n`;
+  const path=`equipment/${id}.device.ts`,signalImport=template.signals?', signal':'',signalFields=template.signals?`  ${template.signals},\n`:'';
+  const source=kind==='custom'?projectOwnedDeviceSource(id,label):`import { ${kind}${signalImport} } from '@saturn/core';
+
+export default ${kind}(${JSON.stringify(id)}, {
+  semanticId: ${JSON.stringify('equipment:'+id)},
+  label: ${JSON.stringify(label.trim())},
+  x: 80, y: 80,
+${signalFields}});
+`;
   if(workspace.list().includes(path))throw new HttpError(409,'Device file already exists');
   const root=workspace.read('project.ts'),binding='device_'+id.replaceAll('-','_');
   const tree=ts.createSourceFile(root.path,root.source,ts.ScriptTarget.Latest,true);let collision=false;const visit=(node:ts.Node)=>{if(ts.isIdentifier(node)&&node.text===binding)collision=true;ts.forEachChild(node,visit);};visit(tree);if(collision)throw new HttpError(409,'Import binding already exists');

@@ -128,7 +128,7 @@ project/
 Импорты явные: директория не сканируется для скрытой активации плагинов. Секреты поступают
 из окружения runtime, не попадают в Git или артефакт.
 
-Тип оборудования определяется через один `device()` contract. `pump/tank/valve/plc` и project-owned definitions создаются тем же `device()`; отдельного registry для специальных классов нет. Порты, signal schema и diagram bounds принадлежат declaration и не дублируются в `geometry.ts`. Глобальный plugin manager для этого запрещён.
+Тип оборудования определяется через один `device()` contract. `pump/tank/valve/plc/tee` и project-owned definitions создаются тем же `device()`; отдельного registry для специальных классов нет. Порты, signal schema и diagram bounds принадлежат declaration и не дублируются в `geometry.ts`. Глобальный plugin manager для этого запрещён.
 
 Физические системы объявляются в том же авторском `project.ts` через `system(id, label, parent?)`;
 экземпляр оборудования ссылается на систему через `system` в параметрах `device()`.

@@ -215,6 +215,7 @@ export function equipmentCommands(equipment:Equipment):Signal[] {return equipmen
 const tankPorts={inlet:terminal({x:79,y:3,z:195,side:'up',medium:'fluid',family:'water',role:'sink',interfaceId:'fluid-flange'}),outlet:terminal({x:170,y:184,z:24,side:'right',medium:'fluid',family:'water',role:'source',interfaceId:'fluid-flange'})} as const;
 const pumpPorts={inlet:terminal({x:0,y:96,z:60,side:'left',medium:'fluid',family:'water',role:'sink',interfaceId:'fluid-flange'}),outlet:terminal({x:76,y:0,z:105,side:'up',medium:'fluid',family:'water',role:'source',interfaceId:'fluid-flange'}),run:terminal({x:170,y:40,z:85,side:'up',medium:'control',family:'digital',role:'sink',interfaceId:'control-screw',valueType:'boolean'})} as const;
 const valvePorts={inlet:terminal({x:0,y:102,z:60,side:'left',medium:'fluid',family:'water',role:'sink',interfaceId:'fluid-flange'}),outlet:terminal({x:160,y:102,z:60,side:'right',medium:'fluid',family:'water',role:'source',interfaceId:'fluid-flange'}),command:terminal({x:80,y:6,z:105,side:'up',medium:'control',family:'analog',role:'sink',interfaceId:'control-screw',unit:'%',valueType:'number'})} as const;
+const teePorts={left:terminal({x:0,y:40,z:60,side:'left',medium:'fluid',family:'water',role:'passive',interfaceId:'fluid-flange'}),right:terminal({x:80,y:40,z:60,side:'right',medium:'fluid',family:'water',role:'passive',interfaceId:'fluid-flange'}),branch:terminal({x:40,y:0,z:60,side:'up',medium:'fluid',family:'water',role:'passive',interfaceId:'fluid-flange'})} as const;
 const plcPorts={DO1:terminal({x:35,y:0,z:70,side:'up',medium:'control',family:'digital',role:'source',interfaceId:'control-screw',valueType:'boolean'}),AO1:terminal({x:80,y:0,z:70,side:'up',medium:'control',family:'analog',role:'source',interfaceId:'control-screw',unit:'%',valueType:'number'}),RS485:terminal({x:145,y:130,z:35,side:'down',medium:'bus',family:'rs485',role:'passive',max:2,interfaceId:'rs485-terminal'})} as const;
 /** Built-ins are ordinary device() declarations, not a privileged registry. */
 /** @ru Резервуар с измеряемым уровнем. @en Tank with measured level. */
@@ -225,6 +226,9 @@ export const pump=device({id:'pump',icon:'pump',ports:pumpPorts,signals:{rpm:sig
 /** @ru Клапан с измеряемым/управляемым положением открытия.
  * @en Valve with measured/commanded opening. */
 export const valve=device({id:'valve',icon:'valve',ports:valvePorts,signals:{opening:signal({initial:0,writable:true})},capabilities:{diagram:{width:160,height:164}},knowledge:{summary:{ru:'Клапан с управляемым положением открытия.',en:'Valve with commanded opening position.'}}});
+/** @ru Тройник трубопровода. Три пассивных fluid-порта задают явный узел ветвления; направление потока определяется подключёнными трубами.
+ * @en Pipe tee. Three passive fluid ports form an explicit branch node; connected pipes define flow direction. */
+export const tee=device({id:'tee',icon:'tee',ports:teePorts,capabilities:{diagram:{width:80,height:80}},knowledge:{summary:{ru:'Тройник трубопровода: явный узел split/merge без скрытого соединения пересекающихся трасс.',en:'Pipe tee: an explicit split/merge node; crossing routes never connect implicitly.'}}});
 /** @ru Базовый ПЛК без привязки к конкретному toolchain.
  * @en Generic PLC without a device-specific toolchain. */
 export const plc=device({id:'plc',icon:'plc',ports:plcPorts,signals:{online:signal({initial:false})},capabilities:{diagram:{width:160,height:150}},knowledge:{summary:{ru:'Базовый ПЛК без привязки к конкретному toolchain.',en:'Generic PLC without a device-specific toolchain.'}}});
@@ -246,11 +250,11 @@ export interface Connection { id:string; from:ConnectionEnd; to:ConnectionEnd; v
 export const isConnected=(edge:Connection):boolean=>isAttached(edge.from)&&isAttached(edge.to);
 export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number> }
 export interface Cable extends Connection { kind:'cable'; signal?:Signal }
-type FluidSource<F extends string=string> = ConnectionEnd<'fluid',F,'source'>;
-type FluidSink<F extends string=string> = ConnectionEnd<'fluid',F,'sink'>;
-/** @ru Труба с жидкостью. Соединяет совместимые выход и вход; направление и среда проверяются типами и runtime.
- * @en Liquid pipe. Connect compatible outlet/inlet ports; direction and medium are checked statically and at runtime. */
-export function pipe<const F extends string>(id:string, options:{from:FluidSource<F>;to:FluidSink<NoInfer<F>>;flow:Signal<number>;via?:Connection['via']}):Pipe {
+type FluidFrom<F extends string=string> = ConnectionEnd<'fluid',F,'source'|'passive'>;
+type FluidTo<F extends string=string> = ConnectionEnd<'fluid',F,'sink'|'passive'>;
+/** @ru Труба с жидкостью. Соединяет совместимые порты; source/sink задают направление оборудования, passive допускает явные fitting-узлы вроде tee().
+ * @en Liquid pipe. Connect compatible ports; equipment source/sink keep direction while passive ends allow explicit fittings such as tee(). */
+export function pipe<const F extends string>(id:string, options:{from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:Signal<number>;via?:Connection['via']}):Pipe {
   return {...options,id,kind:'pipe'};
 }
 /** @ru Кабель управления, питания или шины. Не труба и не зависимость вычисляемого сигнала.

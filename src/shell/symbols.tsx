@@ -49,6 +49,14 @@ export function Symbol({ equipment: e, snapshot, locale }: { equipment: Equipmen
   const clip = useId().replace(/:/g, "");
   const number = (id: string) => { const s = snapshot.samples[id]; return s?.quality === "good" && typeof s.value === "number" ? s.value : null; };
   if(e.capabilities.instrument)return <InstrumentSymbol equipment={e} snapshot={snapshot}/>;
+  if (e.kind === "tee") {
+    return <g data-anatomy="saturn-tee">
+      <path d="M0 40H80M40 40V0" fill="none" stroke="var(--pipe-rim)" strokeWidth={28} strokeLinecap="butt" strokeLinejoin="round"/>
+      <path d="M0 40H80M40 40V0" fill="none" stroke="var(--pipe-shell)" strokeWidth={23} strokeLinecap="butt" strokeLinejoin="round"/>
+      <path d="M0 40H80M40 40V0" fill="none" stroke="var(--pipe-fill)" strokeWidth={15} strokeLinecap="butt" strokeLinejoin="round"/>
+      <circle cx={40} cy={40} r={9} fill="var(--pipe-fill)" stroke="var(--pipe-shell)" strokeWidth={4}/>
+    </g>;
+  }
   if (e.kind === "tank") {
     const levelSignal=equipmentSignal<number>(e,"level","number"), level=levelSignal?number(levelSignal.id):null, y = 195 - Math.max(0, Math.min(100, level ?? 0)) * 1.44;
     return <g data-anatomy="saturn-tank">
