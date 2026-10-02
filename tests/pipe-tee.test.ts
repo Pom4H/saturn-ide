@@ -22,7 +22,7 @@ test('tee is one explicit three-port topology node for split and merge', () => {
   expect(new Set(splitProject.pipes.flatMap(edge=>[edge.from,edge.to]).filter(end=>!('kind' in end)&&end.device==='T-S').map(end=>!('kind' in end)?end.port:''))).toEqual(new Set(['left','right','branch']));
 
   const left=tank('TK-L',{label:'Left source',x:0,y:80});
-  const branch=tank('TK-B',{label:'Branch source',x:260,y:0});
+  const branch=tank('TK-B',{label:'Branch source',x:260,y:-300});
   const merge=tee('T-M',{label:'Merge tee',x:360,y:220});
   const sink=pump('P-M',{label:'Sink',x:680,y:200});
   const inA=signal('merge.a',{initial:7}),inB=signal('merge.b',{initial:5}),out=signal('merge.out',{initial:12});
@@ -34,7 +34,8 @@ test('tee is one explicit three-port topology node for split and merge', () => {
       pipe('out',{from:merge.ports.right,to:sink.ports.inlet,flow:out}),
     ],
   });
-  expect(routeConnections(mergeProject).every(route=>route.valid)).toBe(true);
+  const mergeRoutes=routeConnections(mergeProject);
+  expect(mergeRoutes.filter(route=>!route.valid).map(route=>({id:route.id,error:route.error}))).toEqual([]);
 
   expect(()=>project({
     id:'tee-occupied',label:'Occupied tee',equipment:[left,branch,merge,sink],
