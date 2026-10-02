@@ -64,9 +64,10 @@ const context=await browser.newContext({viewport:{width:1600,height:1000},device
 const page=await context.newPage(),video=page.video(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
 const proof:{revision:string;cases:Record<string,unknown>;browserErrors:string[]}={revision:process.env.GITHUB_SHA??'local',cases:{},browserErrors:errors};
 const pause=(ms=950)=>page.waitForTimeout(ms);
-const wait=async(check:()=>Promise<boolean>|boolean,message:string)=>{for(let i=0;i<160;i++){if(await check().catch(()=>false))return;await pause(100);}throw new Error(message);};
+const wait=async(check:()=>Promise<boolean>|boolean,message:string)=>{for(let i=0;i<160;i++){try{if(await check())return;}catch{}await pause(100);}throw new Error(message);};
 const edge=(id:string)=>app.state().project.pipes.find(item=>item.id===id);
 const attached=(end:ConnectionEnd|undefined)=>!!end&&isAttached(end);
+const port=(end:ConnectionEnd|undefined)=>end&&isAttached(end)?end.port:undefined;
 const routes=()=>routeConnections(app.state().project);
 const center=async(locator:Locator)=>{const box=await locator.boundingBox();assert(box,'Missing visible target');return{x:box.x+box.width/2,y:box.y+box.height/2};};
 const drag=async(from:{x:number;y:number},to:{x:number;y:number},steps=14)=>{await page.mouse.move(from.x,from.y);await page.mouse.down();await page.mouse.move(to.x,to.y,{steps});await pause(250);await page.mouse.up();};
@@ -105,7 +106,7 @@ try{
   const aPlug=await center(page.locator('[data-cable-plug="split-a.from"]'));await drag(aPlug,{x:aPlug.x,y:aPlug.y+130});
   await wait(()=>!attached(edge('split-a')?.from),'2D unplug did not create free end');assert(routes().find(route=>route.id==='split-a')?.valid);
   const bPlug=await center(page.locator('[data-cable-plug="split-b.from"]')),right=await center(page.locator('[data-equipment="T-S"] [data-port="right"]'));await drag(bPlug,right);
-  await wait(()=>attached(edge('split-b')?.from)&&edge('split-b')?.from.port==='right','2D rewire failed');
+  await wait(()=>port(edge('split-b')?.from)==='right','2D rewire failed');
   proof.cases.rewire2d={splitA:edge('split-a')?.from,splitB:edge('split-b')?.from};
   await caption('4/10 · 2D UNPLUG + REWIRE','split-a → free(); split-b → освободившийся T-S.right');await shot('04-unplug-rewire-2d');
 
@@ -116,9 +117,9 @@ try{
   await openDiagram();await page.getByRole('button',{name:'3D',exact:true}).click();const scene=page.locator('.scene3d');await scene.waitFor();await wait(async()=>Number(await scene.getAttribute('data-frames'))>8,'3D did not render');assert.equal(await scene.getAttribute('data-invalid-routes'),'0');
   const projection=()=>scene.evaluate(node=>({equipment:JSON.parse((node as HTMLElement).dataset.equipmentScreens??'[]') as {id:string;x:number;y:number}[],plugs:JSON.parse((node as HTMLElement).dataset.cablePlugs??'[]') as {id:string;end:string;x:number;y:number}[],ports:JSON.parse((node as HTMLElement).dataset.portScreens??'[]') as {device:string;port:string;x:number;y:number}[]}));
   let p=await projection(),plugB=p.plugs.find(item=>item.id==='split-b'&&item.end==='from'),branch=p.ports.find(item=>item.device==='T-S'&&item.port==='branch');assert(plugB&&branch);await drag(plugB,branch);
-  await wait(()=>attached(edge('split-b')?.from)&&edge('split-b')?.from.port==='branch','3D branch rewire failed');
+  await wait(()=>port(edge('split-b')?.from)==='branch','3D branch rewire failed');
   p=await projection();const plugA=p.plugs.find(item=>item.id==='split-a'&&item.end==='from'),right3d=p.ports.find(item=>item.device==='T-S'&&item.port==='right');assert(plugA&&right3d);await drag(plugA,right3d);
-  await wait(()=>attached(edge('split-a')?.from)&&edge('split-a')?.from.port==='right','3D free-end reconnect failed');assert(routes().every(route=>route.valid));
+  await wait(()=>port(edge('split-a')?.from)==='right','3D free-end reconnect failed');assert(routes().every(route=>route.valid));
   proof.cases.rewire3d={splitA:edge('split-a')?.from,splitB:edge('split-b')?.from};
   await caption('6/10 · 3D REWIRE','те же authored endpoints: branch возвращён, free-end подключён к right');await shot('06-rewire-3d');
 
