@@ -25,7 +25,7 @@ const split=tee('T-S',{label:'Split tee',x:300,y:180});
 const splitA=valve('V-SA',{label:'Split A',x:620,y:70});
 const splitB=valve('V-SB',{label:'Split B',x:620,y:300});
 const mergeA=tank('TK-MA',{label:'Merge A',x:20,y:600});
-const mergeB=tank('TK-MB',{label:'Merge B',x:20,y:330});
+const mergeB=tank('TK-MB',{label:'Merge B',x:-250,y:330});
 const merge=tee('T-M',{label:'Merge tee',x:390,y:620});
 const mergeSink=pump('P-M',{label:'Merge sink',x:710,y:590});
 const crossA=tank('TK-CA',{label:'Cross A source',x:960,y:40});
@@ -86,7 +86,9 @@ try{
 
   assert.equal(await page.locator('[data-equipment="T-S"] [data-port]').count(),3);
   assert.equal(Object.keys(app.state().project.equipment.find(item=>item.id==='T-S')?.ports??{}).length,3);
-  assert(routes().every(route=>route.valid));
+  const initialRoutes=routes();proof.cases.initialRoutes=initialRoutes.map(route=>({id:route.id,valid:route.valid,error:route.error,points:route.points}));
+  const badInitial=initialRoutes.filter(route=>!route.valid).map(route=>({id:route.id,error:route.error}));
+  assert.equal(badInitial.length,0,'Invalid initial routes: '+JSON.stringify(badInitial));
   proof.cases.splitMerge={split:['split-feed','split-a','split-b'],merge:['merge-a','merge-b','merge-out'],ports:['left','right','branch']};
   await caption('1/10 · SPLIT + MERGE','один tee(), три физических порта, split и merge одновременно');await shot('01-split-merge-2d');
 
