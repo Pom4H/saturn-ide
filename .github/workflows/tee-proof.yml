@@ -60,8 +60,6 @@ jobs:
       - name: Install Chromium
         run: bunx playwright install chromium
         working-directory: saturn-ide
-      - name: Ensure MP4 encoder
-        run: command -v ffmpeg >/dev/null || (sudo apt-get update && sudo apt-get install -y ffmpeg)
       - name: Typecheck architecture
         run: bun run check
         working-directory: saturn-ide
