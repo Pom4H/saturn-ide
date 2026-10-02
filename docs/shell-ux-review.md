@@ -215,3 +215,42 @@ source-вкладка одна на путь. При выборе прибора
 - Batch close is guarded before the first close. “Close saved tabs” explicitly preserves
   drafts. Menus reuse session and panel actions and never apply a build or issue a command.
 - Mobile uses the same menu primitive and the explorer action opens the mobile drawer.
+
+
+## Object-first Shell — 2026-10-02
+
+Предыдущая модель «IDE с равноправными редакторами» больше не определяет основной
+человеческий UX. TypeScript остаётся каноническим authored source для Git, типов,
+агентов, воспроизводимости и ручной диагностики, но физический объект становится
+главной рабочей поверхностью.
+
+- **Центр по умолчанию — объект.** 2D и 3D используют одну selection/topology model.
+  Глобальные Diagram / Signals / Reports / HMI / Environment / Git больше не
+  накапливаются как ряд равноправных вкладок. Полоса вкладок остаётся только в
+  advanced source workflow, где она действительно представляет открытые файлы.
+- **Слева — навигатор объекта.** Основной режим показывает системы, оборудование и
+  проекции. Отдельной рабочей области Source в rail больше нет. Файловая система
+  доступна как явный режим `Исходники · advanced`; возврат в «Объект» всегда
+  возвращает семантический навигатор и не оставляет файловый режим скрыто активным.
+- **Справа — один Context Dock.** Properties и Review используют тот же слот.
+  Source добавлен туда как ещё одна вторичная проекция текущего ресурса и использует
+  тот же DocumentBuffer/Language Service, а не копию исходника. Открытие source из
+  схемы, свойств и deployment не уводит инженера с объекта. Полный центральный
+  source editor сохранён только как advanced/debugging path.
+- **Снизу — исполнение во времени.** ShellPanel остаётся единственной общей панелью
+  Equipment / Graphs / Terminal / Notifications, но теперь закрыта по умолчанию и
+  поднимается действием пользователя или событием.
+- Переключатель верхней строки называется **«Проект / Операторский вид»**, чтобы не
+  выглядеть выдачей полномочий. Реальные права runtime остаются отдельной authority
+  boundary; изменение вида их не расширяет.
+
+Эта компоновка намеренно сохраняет существующую архитектуру «одна authored модель —
+несколько проекций». Изменяется приоритет представлений для человека, а не owner
+данных: diagram drag по-прежнему переписывает authored source, Git видит обычный
+diff, runtime исполняет только applied artifact.
+
+Эталонные light-theme кадры генерируются `scripts/screenshots.ts` из self-contained
+DSL fixture. В наборе отдельно фиксируются чистый object-first экран, advanced
+source и Source Context Dock; screenshot workflow ребейзит evidence commit перед
+публикацией, чтобы параллельные изменения main не превращали успешный capture в
+ложный push failure.
