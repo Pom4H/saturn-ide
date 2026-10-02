@@ -124,24 +124,29 @@ try{
   await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');
   await page.locator('[data-equipment="P-01"]').waitFor({timeout:30000});
 
-  const nav=page.getByRole('navigation',{name:'Рабочие разделы'});
-  const capture=async(label:string,file:string,ready?:()=>Promise<void>)=>{
-    await nav.getByRole('button',{name:label,exact:true}).click();
+  const rail=page.getByRole('navigation',{name:'Рабочие области'});
+  const shoot=async(file:string,ready?:()=>Promise<void>)=>{
     if(ready)await ready();
     await page.waitForTimeout(120);
     if(await page.evaluate(()=>document.documentElement.dataset.theme)!=='light')throw new Error(`Screenshot ${file} is not using the light theme`);
     await page.screenshot({path:`docs/screenshots/${file}`,fullPage:false});
   };
+  const captureRail=async(label:string,file:string,ready?:()=>Promise<void>)=>{
+    await rail.getByRole('button',{name:label,exact:true}).click();
+    await shoot(file,ready);
+  };
 
-  await page.screenshot({path:'docs/screenshots/diagram.png'});
-  await capture('Исходник','source.png',async()=>{await page.locator('.cm-content').waitFor();});
-  await capture('Сигналы','signals.png');
-  await capture('Отчёты','reports.png');
-  await capture('HMI','hmi.png',async()=>{await page.locator('.hmi-surface iframe').waitFor();});
-  await capture('Среда исполнения','environment.png');
-  await capture('Git','git.png');
+  await shoot('diagram.png');
+  await captureRail('Исходники','source.png',async()=>{await page.locator('.cm-content').waitFor();});
+  await captureRail('Мониторинг','signals.png');
+  await captureRail('Отчёты','reports.png');
+  await rail.getByRole('button',{name:'Объект',exact:true}).click();
+  await page.getByRole('treeitem',{name:'HMI',exact:true}).click();
+  await shoot('hmi.png',async()=>{await page.locator('.hmi-surface iframe').waitFor();});
+  await captureRail('Среда','environment.png');
+  await captureRail('Изменения','git.png');
 
-  await nav.getByRole('button',{name:'Схема',exact:true}).click();
+  await rail.getByRole('button',{name:'Объект',exact:true}).click();
   await page.locator('[data-equipment="P-01"]').waitFor();
   await page.screenshot({path:'docs/screenshots/ide-light.png'});
 
