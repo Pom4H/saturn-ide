@@ -5,6 +5,7 @@ import { chromium, expect } from 'playwright/test';
 import { fixture } from '../tests/helpers';
 import { createApp } from '../src/host/dev';
 import { execute } from '../src/workspace/git';
+import { chooseExplorerMode } from './helpers/explorer-mode';
 
 mkdirSync('artifacts/review-pane-recording', { recursive: true });
 const work = fixture(), git = (...args:string[]) => execute(['git',...args],work.root);
@@ -99,7 +100,8 @@ try{
   await page.getByRole('button',{name:'Ревью',exact:true}).click();
   await expect(review).toBeVisible();
   await page.screenshot({path:'artifacts/review-pane-signals.png'});
-  await rail.getByRole('button',{name:'Исходники',exact:true}).click();
+  await rail.getByRole('button',{name:'Объект',exact:true}).click();
+  await chooseExplorerMode(page,'Код');
   await page.getByRole('tree',{name:'Структура проекта'}).locator('[data-tree-id="file:project.ts"]').click();
   await expect(source).toBeVisible();
   await expect(review.locator('.review-path').first()).toHaveText('project.ts');
