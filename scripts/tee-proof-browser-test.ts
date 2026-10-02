@@ -83,9 +83,9 @@ const shot=(name:string)=>page.screenshot({path:join(out,name+'.png'),fullPage:f
 let failure:unknown;
 try{
   await page.addInitScript(()=>{localStorage.setItem('saturn.locale','ru');localStorage.setItem('saturn.theme','light');});
-  await page.goto(app.server.url.href);await page.locator('[data-equipment="T-S"]').waitFor({timeout:30000});await page.getByRole('button',{name:'Правка',exact:true}).click();
+  await page.goto(app.server.url.href);await page.locator('.scene [data-equipment="T-S"]').waitFor({timeout:30000});await page.getByRole('button',{name:'Правка',exact:true}).click();
 
-  assert.equal(await page.locator('[data-equipment="T-S"] [data-port]').count(),3);
+  assert.equal(await page.locator('.scene [data-equipment="T-S"] [data-port]').count(),3);
   assert.equal(Object.keys(app.state().project.equipment.find(item=>item.id==='T-S')?.ports??{}).length,3);
   const initialRoutes=routes();proof.cases.initialRoutes=initialRoutes.map(route=>({id:route.id,valid:route.valid,error:route.error,points:route.points}));
   const badInitial=initialRoutes.filter(route=>!route.valid).map(route=>({id:route.id,error:route.error}));
@@ -101,7 +101,7 @@ try{
   proof.cases.crossing={waypoint,crossAPath:ca.points,crossBPath:cb.points,topologyDevices:{crossA:[...da],crossB:[...db]}};
   await caption('2/10 · CROSSING ≠ CONNECTION','трубы проходят через одну точку, но не получают скрытого topology node');await shot('02-crossing-not-connection');
 
-  const before2d=app.workspace.read('project.ts').source,teeBox=await page.locator('[data-equipment="T-S"]').boundingBox();assert(teeBox);
+  const before2d=app.workspace.read('project.ts').source,teeBox=await page.locator('.scene [data-equipment="T-S"]').boundingBox();assert(teeBox);
   await drag({x:teeBox.x+teeBox.width/2,y:teeBox.y+teeBox.height/2},{x:teeBox.x+teeBox.width/2+55,y:teeBox.y+teeBox.height/2+28});
   await wait(()=>app.workspace.read('project.ts').source!==before2d,'2D drag did not update source');assert(routes().every(route=>route.valid));
   proof.cases.drag2d={tee:app.state().project.equipment.find(item=>item.id==='T-S')};
@@ -109,7 +109,7 @@ try{
 
   const aPlug=await center(page.locator('[data-cable-plug="split-a.from"]'));await drag(aPlug,{x:aPlug.x,y:aPlug.y+130});
   await wait(()=>!attached(edge('split-a')?.from),'2D unplug did not create free end');assert(routes().find(route=>route.id==='split-a')?.valid);
-  const bPlug=await center(page.locator('[data-cable-plug="split-b.from"]')),right=await center(page.locator('[data-equipment="T-S"] [data-port="right"]'));await drag(bPlug,right);
+  const bPlug=await center(page.locator('[data-cable-plug="split-b.from"]')),right=await center(page.locator('.scene [data-equipment="T-S"] [data-port="right"]'));await drag(bPlug,right);
   await wait(()=>port(edge('split-b')?.from)==='right','2D rewire failed');
   proof.cases.rewire2d={splitA:edge('split-a')?.from,splitB:edge('split-b')?.from};
   await caption('4/10 · 2D UNPLUG + REWIRE','split-a → free(); split-b → освободившийся T-S.right');await shot('04-unplug-rewire-2d');
