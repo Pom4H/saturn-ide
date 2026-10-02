@@ -152,6 +152,10 @@ try{
   await rail.getByRole('button',{name:'Объект',exact:true}).click();
   await page.locator('[data-equipment="P-01"]').waitFor();
   await page.screenshot({path:'docs/screenshots/ide-light.png'});
+  await page.locator('[data-equipment="P-01"]').click();
+  await page.getByRole('button',{name:'Исходник',exact:true}).click();
+  await shoot('source-context.png',async()=>{await page.getByRole('complementary',{name:'Исходник объекта'}).getByRole('textbox',{name:'Исходный код'}).waitFor();});
+  await page.getByRole('button',{name:'Закрыть исходник',exact:true}).click();
 
   await page.getByRole('button',{name:'3D',exact:true}).click();
   await until(async()=>Number(await page.locator('.scene3d').getAttribute('data-frames'))>2,'3D did not render');
