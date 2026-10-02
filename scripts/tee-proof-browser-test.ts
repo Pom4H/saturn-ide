@@ -79,6 +79,11 @@ const openSource=async(query:string)=>{await rail().getByRole('button',{name:'О
 const save=async(next:string)=>{const file=app.workspace.read('project.ts'),response=await fetch(new URL('/api/file',app.server.url),{method:'POST',headers:{'content-type':'application/json','X-Saturn-Key':app.state().key},body:JSON.stringify({path:file.path,source:next,version:file.version})});assert.equal(response.status,200,await response.text());};
 const checked=async()=>((await (await fetch(new URL('/api/releases',app.server.url))).json()) as {checked:string|null}).checked;
 const shot=(name:string)=>page.screenshot({path:join(out,name+'.png'),fullPage:false});
+const openProjectProblems=async()=>{
+  const alert=page.getByRole('alert').filter({hasText:'Ошибок проекта:'});await expect(alert).toBeVisible();
+  await alert.getByRole('button',{name:/Ошибок проекта:/}).click();
+  const panel=page.locator('#panel-body-notifications');await expect(panel).toBeVisible();return panel;
+};
 
 let failure:unknown;
 try{
@@ -145,9 +150,10 @@ try{
   await caption('8/10 · SOURCE AFTER 2D + 3D','финальные координаты и right/branch endpoints видны в одном project.ts');await shot('08-source-final');
 
   const occupied=good.replace("pipe('split-b',{from:split.ports.branch","pipe('split-b',{from:split.ports.right");assert.notEqual(occupied,good);await save(occupied);
-  await wait(()=>app.state().problems.some(problem=>problem.code==='PORT_OCCUPIED'),'occupied port was accepted');await expect(page.locator('.cm-lintRange-error, .cm-lintPoint-error').first()).toBeVisible({timeout:15000});assert.equal(await checked(),checkedGood);
+  await wait(()=>app.state().problems.some(problem=>problem.code==='PORT_OCCUPIED'),'occupied port was accepted');assert.equal(await checked(),checkedGood);
+  const occupiedPanel=await openProjectProblems();await expect(occupiedPanel).toContainText('PORT_OCCUPIED');await expect(occupiedPanel).toContainText('Порт занят T-S.right');
   proof.cases.portOccupied={problems:app.state().problems.filter(problem=>problem.code==='PORT_OCCUPIED'),checkedRetained:true};
-  await caption('9/10 · PORT OCCUPIED — REJECT','две трубы на T-S.right: draft блокируется, Checked не меняется');await shot('09-port-occupied-source');
+  await caption('9/10 · PORT OCCUPIED — REJECT','две трубы на T-S.right: PORT_OCCUPIED виден рядом с кодом, Checked не меняется');await shot('09-port-occupied-source');
 
   await openDiagram();assert(routes().every(route=>route.valid));await page.getByRole('button',{name:'3D',exact:true}).click();await wait(async()=>await page.locator('.scene3d').getAttribute('data-invalid-routes')==='0','invalid draft leaked into 3D');
   await caption('9/10 · INVALID DRAFT ISOLATED','2D/3D продолжают показывать последний Checked graph');await shot('09b-invalid-isolated-3d');
@@ -155,9 +161,10 @@ try{
 
   await openSource("pipe('merge-out'");const good2=app.workspace.read('project.ts').source,checked2=await checked();
   const wrong=good2.replace("pipe('merge-out',{from:merge.ports.right,to:mergeSink.ports.inlet","pipe('merge-out',{from:mergeSink.ports.inlet,to:merge.ports.right");assert.notEqual(wrong,good2);await save(wrong);
-  await wait(()=>app.state().problems.length>0,'wrong direction was accepted');await expect(page.locator('.cm-lintRange-error, .cm-lintPoint-error').first()).toBeVisible({timeout:15000});assert.equal(await checked(),checked2);
+  await wait(()=>app.state().problems.length>0,'wrong direction was accepted');assert.equal(await checked(),checked2);
+  const directionCode=app.state().problems[0]!.code,directionPanel=await openProjectProblems();await expect(directionPanel).toContainText(directionCode);
   proof.cases.wrongDirection={problems:app.state().problems,checkedRetained:true};
-  await caption('10/10 · SINK-AS-SOURCE — REJECT','mergeSink.inlet нельзя использовать как from; Checked остаётся прежним');await shot('10-wrong-direction-source');
+  await caption('10/10 · SINK-AS-SOURCE — REJECT',`mergeSink.inlet нельзя использовать как from; ${directionCode} виден рядом с кодом, Checked не меняется`);await shot('10-wrong-direction-source');
   await save(good2);await wait(()=>app.state().problems.length===0,'recovery after direction test failed');
 
   await openDiagram();await page.getByRole('button',{name:'2D',exact:true}).click();await caption('DONE · REAL SATURN SHELL','split, merge, crossing, 2D/3D drag+rewire, source-first и invalid-draft safety доказаны');await shot('11-final-2d');
