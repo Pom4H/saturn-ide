@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { chromium, expect } from 'playwright/test';
 import { fixture } from '../tests/helpers';
 import { createApp } from '../src/host/dev';
+import { chooseExplorerMode } from './helpers/explorer-mode';
 
 mkdirSync('artifacts/workbench-rail-recording', { recursive: true });
 const work = fixture();
@@ -19,18 +20,17 @@ const noOverflow = async () => assert.ok(await page.evaluate(() => document.docu
 try {
   await page.goto(app.server.url.toString());
   await expect(rail).toBeVisible();
-  await expect(rail.locator('.rail-destination')).toHaveCount(6);
+  await expect(rail.locator('.rail-destination')).toHaveCount(5);
   await expect(item('object')).toHaveAttribute('aria-current', 'page');
-  await expect(tree.locator('[data-tree-id="source"]')).toBeVisible();
+  await expect(tree.locator('[data-tree-id="source"]')).toHaveCount(0);
   await page.screenshot({ path: 'artifacts/workbench-rail-object-desktop.png' });
 
-  await item('source').focus();
-  assert.equal(await item('source').evaluate(element => document.activeElement === element), true, 'rail button cannot receive focus');
-  await page.keyboard.press('Enter');
-  await expect(item('source')).toHaveAttribute('aria-current', 'page');
+  await chooseExplorerMode(page,'Код');
+  await tree.locator('[data-tree-id="file:project.ts"]').click();
   await expect(page.locator('.code-pane')).toBeVisible();
-  await expect(tree.locator('[data-tree-id="source"]')).toBeVisible();
+  await expect(item('object')).toHaveAttribute('aria-current','page');
   await page.screenshot({ path: 'artifacts/workbench-rail-source-desktop.png' });
+  await chooseExplorerMode(page,'Объекты');
 
   await item('monitor').click();
   await expect(item('monitor')).toHaveAttribute('aria-current', 'page');
@@ -91,9 +91,9 @@ try {
   await expect(tree).toBeHidden();
   await noOverflow();
 
-  await page.getByRole('button', { name: 'Оператор', exact: true }).click();
+  await page.getByRole('button', { name: 'Операторский вид', exact: true }).click();
   await expect(rail.locator('.rail-destination')).toHaveCount(4);
-  for (const hidden of ['source', 'git']) await expect(item(hidden)).toHaveCount(0);
+  await expect(item('git')).toHaveCount(0);
   await expect(item('object')).toHaveAttribute('aria-current', 'page');
   await page.getByRole('button', { name: 'Открыть навигацию' }).click();
   await expect(tree.locator('[data-tree-id="source"]')).toHaveCount(0);
