@@ -27,11 +27,16 @@ try{
   await page.locator('[data-equipment="P-01"] [data-rpm="1450"]').waitFor({timeout:30000});
   const activityNav=page.getByRole('tree',{name:'Структура проекта'}),rail=page.getByRole('navigation',{name:'Рабочие области'});
   const openSurface=async(name:string)=>{
-    const section:Record<string,string>={'Исходник':'Исходники','Сигналы':'Мониторинг','Отчёты':'Отчёты','HMI':'Объект','Среда исполнения':'Среда','Git':'Изменения','Схема':'Объект'};
+    if(name==='Исходник'){
+      await rail.getByRole('button',{name:'Объект',exact:true}).click();
+      await chooseExplorerMode(page,'Код');
+      await activityNav.getByRole('treeitem',{name:'P-01.device.ts',exact:true}).click();
+      return;
+    }
+    const section:Record<string,string>={'Сигналы':'Мониторинг','Отчёты':'Отчёты','HMI':'Объект','Среда исполнения':'Среда','Git':'Изменения','Схема':'Объект'};
     const target=section[name];if(!target)throw new Error(`Unknown surface ${name}`);
     await rail.getByRole('button',{name:target,exact:true}).click();
-    if(name==='HMI')await chooseExplorerMode(page,'Объекты');
-    if(name==='Исходник'||name==='HMI')await activityNav.getByRole('treeitem',{name:name==='Исходник'?'P-01.device.ts':'HMI',exact:true}).click();
+    if(name==='HMI'){await chooseExplorerMode(page,'Объекты');await activityNav.getByRole('treeitem',{name:'HMI',exact:true}).click();}
   };
   const captureSurface=async(name:string,file:string,ready?:()=>Promise<void>)=>{await openSurface(name);if(ready)await ready();await screenshot(page,`artifacts/${file}`);};
   await screenshot(page,'artifacts/menu-diagram.png');
@@ -49,7 +54,7 @@ try{
   await openSurface('Исходник');await page.locator('.cm-content').waitFor();
   assert((await page.locator('.code-pane .pane-heading').innerText()).includes('P-01.device.ts'),'device opens its real named source');
   await activityNav.getByRole('treeitem',{name:'P-01.device.ts',exact:true}).click();
-  await page.getByRole('button',{name:'Перейти',exact:true}).click();await page.getByRole('menuitem',{name:'Схема',exact:true}).click();
+  await page.getByRole('button',{name:'Проекции',exact:true}).click();await page.getByRole('menuitem',{name:'Схема',exact:true}).click();
   assert(await page.locator('.unified-sidebar [data-icon="pump"]').count()>=1,'Explicit view navigation must preserve device identity');
   checks.push('one device resource, one named source and a consistent class icon across editors');
   await page.getByRole('button',{name:'Правка',exact:true}).click();
@@ -64,7 +69,7 @@ try{
   await until(async()=>(await state()).project.equipment.find(e=>e.id==='P-01')!.x!==originalX,'drop did not save source');
   assert(await page.locator('.scene [data-route-valid="false"]').count()===0,'2D graph has blocked routes after clear equipment drag');
   checks.push('2D drag updates routes before drop and persists the authored source after drop');
-  await openSurface('Исходник');await hoverPump(page);assert((await page.locator('.jsdoc').innerText()).includes('Насос'),'RU JSDoc missing');await page.mouse.move(5,5);checks.push('RU JSDoc from actual TypeScript Language Service');await page.getByRole('tab',{name:'Схема',exact:true}).click();
+  await openSurface('Исходник');await hoverPump(page);assert((await page.locator('.jsdoc').innerText()).includes('Насос'),'RU JSDoc missing');await page.mouse.move(5,5);checks.push('RU JSDoc from actual TypeScript Language Service');await openSurface('Схема');
   const rotor=page.locator('[data-equipment="P-01"] [data-part="rotor"]');
   const phase=await rotor.getAttribute('data-phase');await page.waitForTimeout(150);assert(await rotor.getAttribute('data-phase')!==phase,'measured rotor must animate');
   const rotorCenterError=async()=>page.evaluate(()=>{const rotor=document.querySelector<SVGGElement>('[data-equipment="P-01"] [data-part="rotor"]'),equipment=rotor?.closest<SVGGElement>('[data-equipment="P-01"]');if(!rotor||!equipment)return Infinity;const cx=Number(rotor.dataset.originX),cy=Number(rotor.dataset.originY),point=new DOMPoint(cx,cy),actual=point.matrixTransform(rotor.getScreenCTM()!),expected=point.matrixTransform(equipment.getScreenCTM()!);return Math.hypot(actual.x-expected.x,actual.y-expected.y);});
