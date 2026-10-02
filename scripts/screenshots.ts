@@ -1,11 +1,107 @@
 import { chromium } from 'playwright';
-import { mkdirSync } from 'node:fs';
-import { fixture } from '../tests/helpers';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { createProject } from '../src/workspace/project-template';
 
-const fixtureProject=fixture();
+mkdirSync('.saturn',{recursive:true});
+const temp=mkdtempSync(resolve('.saturn/screenshots-'));
+const root=createProject(join(temp,'pumping-station'));
+writeFileSync(join(root,'project.ts'), `import {
+  alarm, autoHmi, cable, column, pipe, plc, project, pump, report, signal, tank, valve,
+} from '@saturn/core';
+
+export const reservoir = tank('TK-01', {
+  label: { en: 'Supply tank', ru: 'Питающий резервуар' }, x: 40, y: 110,
+  level: signal({ initial: 64, unit: '%', min: 0, max: 100, staleAfter: 5000 }),
+});
+
+export const booster = pump('P-01', {
+  label: { en: 'Booster pump', ru: 'Повысительный насос' }, x: 330, y: 180,
+  rpm: signal({ initial: 1450, unit: 'rpm', min: 0, max: 3000, staleAfter: 5000 }),
+  run: signal({ initial: true, writable: true }),
+  flow: signal({ initial: 18, unit: 'm³/h', min: 0, dimension: 'flow', staleAfter: 5000 }),
+  pressure: signal({ initial: 2.95, unit: 'bar', min: 0, dimension: 'pressure', staleAfter: 5000 }),
+});
+
+export const outlet = valve('V-01', {
+  label: { en: 'Outlet valve', ru: 'Выходной клапан' }, x: 650, y: 110,
+  opening: signal({ initial: 75, unit: '%', writable: true, min: 0, max: 100 }),
+});
+
+export const controller = plc('PLC-01', {
+  label: { en: 'Station controller', ru: 'Контроллер станции' }, x: 760, y: 360,
+});
+
+export const hourly = report('hourly-water', {
+  label: { en: 'Hourly water flow', ru: 'Почасовой расход воды' },
+  bucketMs: 3_600_000,
+  columns: {
+    flow: column(booster.flow, 'mean', { en: 'Flow', ru: 'Расход' }),
+    pressure: column(booster.pressure, 'mean', { en: 'Pressure', ru: 'Давление' }),
+    speed: column(booster.rpm, 'mean', { en: 'Speed', ru: 'Обороты' }),
+  },
+});
+
+export default project({
+  id: 'pumping-station',
+  label: { en: 'Pumping station', ru: 'Насосная станция' },
+  equipment: [reservoir, booster, outlet, controller],
+  pipes: [
+    pipe('suction', { from: reservoir.ports.outlet, to: booster.ports.inlet, flow: booster.flow }),
+    pipe('discharge', { from: booster.ports.outlet, to: outlet.ports.inlet, flow: booster.flow }),
+  ],
+  cables: [
+    cable('pump-start', { from: controller.ports.DO1, to: booster.ports.run, signal: booster.run }),
+    cable('valve-command', { from: controller.ports.AO1, to: outlet.ports.command, signal: outlet.opening }),
+  ],
+  alarms: [alarm('high-pressure', {
+    label: { en: 'High pressure', ru: 'Высокое давление' },
+    signal: booster.pressure, above: 4.5, hysteresis: 0.2,
+  })],
+  reports: [hourly],
+  hmi: autoHmi(controller),
+});
+`);
+writeFileSync(join(root,'server.ts'), `import type { Driver, Value } from '@saturn/core';
+import { booster, controller, outlet, reservoir } from './project';
+
+const commands:Record<string,Value>={};
+const driver:Driver={
+  mode:'simulation',
+  async start({project,snapshot,publish}){
+    let disposed=false,elapsed=0,timer:ReturnType<typeof setTimeout>;
+    for(const item of Object.values(project.signals)) commands[item.id]??=snapshot.samples[item.id]?.value??item.initial;
+    const tick=async()=>{
+      if(disposed)return;
+      const running=commands[booster.run.id]===true;
+      const opening=Number(commands[outlet.opening.id]??75);
+      await publish({
+        [reservoir.level.id]:64+Math.sin(elapsed++/20)*3,
+        [booster.run.id]:running,
+        [booster.rpm.id]:running?1450:0,
+        [booster.flow.id]:running?opening*.24:0,
+        [booster.pressure.id]:running?2+(100-opening)*.038:0,
+        [outlet.opening.id]:opening,
+        [controller.online.id]:true,
+      });
+      if(!disposed)timer=setTimeout(()=>void tick().catch(console.error),1000);
+    };
+    await tick();
+    return()=>{disposed=true;clearTimeout(timer);};
+  },
+  async write(id,value){commands[id]=value;},
+};
+export default driver;
+`);
+
+const git=(...args:string[])=>Bun.spawnSync(['git','-C',root,...args],{stdout:'ignore',stderr:'pipe'});
+git('init'); git('config','user.name','Saturn Screenshots'); git('config','user.email','screenshots@localhost');
+git('add','.'); git('commit','-m','Screenshot fixture');
+
+const fixtureProject={root,clean:()=>rmSync(temp,{recursive:true,force:true})};
 const base='http://127.0.0.1:4017';
 mkdirSync('docs/screenshots',{recursive:true});
-// Documentation captures intentionally use a deterministic light Shell.
+// Documentation captures intentionally use a deterministic light Shell and a self-contained public DSL fixture.
 
 const server=Bun.spawn(['bun','dev'],{
   env:{...Bun.env,SATURN_PROJECT:fixtureProject.root,PORT:'4017',DATABASE_URL:':memory:',SATURN_PREVIEW:'simulation'},
