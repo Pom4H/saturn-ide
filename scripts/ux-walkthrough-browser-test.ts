@@ -6,6 +6,7 @@ import { fixture } from '../tests/helpers';
 import { createApp } from '../src/host/dev';
 import { createProject } from '../src/workspace/project-template';
 import { execute } from '../src/workspace/git';
+import { chooseExplorerMode } from './helpers/explorer-mode';
 
 const output = 'artifacts/ux-walkthrough';
 mkdirSync(join(output, 'recording'), { recursive: true });
@@ -47,7 +48,6 @@ try {
     if (await review.count()) await page.getByRole('button', { name: 'Закрыть ревью' }).click();
     for (const [id, name, selector] of [
       ['object', 'diagram', 'svg.scene'],
-      ['source', 'source', '.code-pane'],
       ['monitor', 'monitor', '.signals-surface'],
       ['reports', 'reports', '.reports-surface'],
       ['git', 'git-review', '.git-surface'],
@@ -66,6 +66,12 @@ try {
         await page.getByRole('button', { name: 'Закрыть свойства' }).click();
       }
     }
+    await section('object').click();
+    await chooseExplorerMode(page,'Код');
+    await page.getByRole('tree',{name:'Структура проекта'}).locator('[data-tree-id="file:project.ts"]').click();
+    await expect(page.locator('.code-pane')).toBeVisible();
+    await capture(width,'source-advanced');
+    await chooseExplorerMode(page,'Объекты');
     await section('object').click();
     await expect(review).toBeVisible();
     await capture(width, 'diagram-review');
