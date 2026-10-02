@@ -93,10 +93,11 @@ try{
   await caption('1/10 · SPLIT + MERGE','один tee(), три физических порта, split и merge одновременно');await shot('01-split-merge-2d');
 
   const ca=routes().find(route=>route.id==='cross-a'),cb=routes().find(route=>route.id==='cross-b');assert(ca&&cb);
-  const shared=ca.points.filter(a=>cb.points.some(b=>a.x===b.x&&a.y===b.y&&a.z===b.z));assert(shared.some(point=>point.x===1160&&point.y===390));
+  const waypoint={x:1160,y:390},passes=(route:typeof ca)=>route.points.slice(1).some((b,index)=>{const a=route.points[index]!;return (a.x===b.x&&a.x===waypoint.x&&waypoint.y>=Math.min(a.y,b.y)&&waypoint.y<=Math.max(a.y,b.y))||(a.y===b.y&&a.y===waypoint.y&&waypoint.x>=Math.min(a.x,b.x)&&waypoint.x<=Math.max(a.x,b.x));});
+  assert(passes(ca)&&passes(cb),'Both crossing routes must pass through the authored waypoint');
   const devices=(id:string)=>{const item=edge(id);assert(item&&attached(item.from)&&attached(item.to));return new Set([item.from.device,item.to.device]);};
   const da=devices('cross-a'),db=devices('cross-b');assert([...da].every(id=>!db.has(id)));
-  proof.cases.crossing={sharedGeometry:shared,crossA:[...da],crossB:[...db]};
+  proof.cases.crossing={waypoint,crossAPath:ca.points,crossBPath:cb.points,topologyDevices:{crossA:[...da],crossB:[...db]}};
   await caption('2/10 · CROSSING ≠ CONNECTION','трубы проходят через одну точку, но не получают скрытого topology node');await shot('02-crossing-not-connection');
 
   const before2d=app.workspace.read('project.ts').source,teeBox=await page.locator('[data-equipment="T-S"]').boundingBox();assert(teeBox);
