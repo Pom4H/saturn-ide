@@ -8,9 +8,14 @@ on:
         required: true
         default: main
         type: string
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/screenshots.ts'
+      - 'src/shell/**'
 
 concurrency:
-  group: saturn-ide-screenshots-${{ inputs.branch }}
+  group: saturn-ide-screenshots-${{ inputs.branch || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -23,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ inputs.branch }}
+          ref: ${{ inputs.branch || github.ref_name }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -48,7 +53,7 @@ jobs:
 
       - name: Store screenshots in selected branch
         env:
-          TARGET_BRANCH: ${{ inputs.branch }}
+          TARGET_BRANCH: ${{ inputs.branch || github.ref_name }}
         run: |
           git add docs/screenshots
           if git diff --cached --quiet; then
