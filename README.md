@@ -22,7 +22,7 @@ and engineering metadata when they describe the same system.
 
 [Открыть интерактивный сайт Saturn IDE](https://pom4h.github.io/saturn-ide/)
 
-![Saturn IDE](docs/screenshots/ide-light.png)
+![Saturn IDE](docs/screenshots/diagram.png)
 
 ## System as code
 
@@ -58,7 +58,7 @@ reports, deployment and runtime views.
 Moving equipment on the diagram rewrites its authored coordinates in TypeScript. Connections
 reroute before drop; the source is saved only after the gesture completes.
 
-![Diagram](docs/screenshots/diagram.png)
+![Object with source context](docs/screenshots/source-context.png)
 
 The resource explorer follows the same rule: an equipment instance is one engineering resource
 with several views, not unrelated files and UI objects.
