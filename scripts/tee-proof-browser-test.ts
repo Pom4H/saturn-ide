@@ -6,6 +6,7 @@ import {createProject} from '../src/workspace/project-template';
 import {createApp} from '../src/host/dev';
 import {isAttached,type ConnectionEnd} from '../src/core';
 import {routeConnections} from '../src/topology';
+import {chooseExplorerMode} from './helpers/explorer-mode';
 
 const out=resolve('artifacts/tee-proof');mkdirSync(out,{recursive:true});mkdirSync(resolve('.saturn'),{recursive:true});
 const temp=mkdtempSync(resolve('.saturn/tee-proof-')),root=createProject(join(temp,'project'));
@@ -74,7 +75,7 @@ const drag=async(from:{x:number;y:number},to:{x:number;y:number},steps=14)=>{awa
 const caption=async(title:string,detail:string)=>{await page.evaluate(({title,detail})=>{let box=document.getElementById('tee-proof-caption');if(!box){box=document.createElement('div');box.id='tee-proof-caption';Object.assign(box.style,{position:'fixed',left:'50%',top:'16px',transform:'translateX(-50%)',zIndex:'2147483647',pointerEvents:'none',padding:'10px 14px',borderRadius:'8px',background:'rgba(5,18,25,.90)',color:'#f5fbff',font:'600 14px ui-monospace,monospace',boxShadow:'0 8px 28px rgba(0,0,0,.28)',maxWidth:'980px',textAlign:'center'});document.body.appendChild(box);}box.textContent=title+' — '+detail;},{title,detail});await pause();};
 const rail=()=>page.getByRole('navigation',{name:'Рабочие области'});
 const openDiagram=async()=>{await rail().getByRole('button',{name:'Объект',exact:true}).click();await page.locator('.diagram-workspace').waitFor();};
-const openSource=async(query:string)=>{await rail().getByRole('button',{name:'Исходники',exact:true}).click();await page.getByRole('tree',{name:'Структура проекта'}).locator('[data-tree-id="file:project.ts"]').click();const code=page.locator('.code-pane');await code.waitFor();await code.locator('.cm-content').click();await page.keyboard.press(process.platform==='darwin'?'Meta+f':'Control+f');await page.keyboard.insertText(query);await page.keyboard.press('Enter');await page.keyboard.press('Escape');await pause(650);};
+const openSource=async(query:string)=>{await rail().getByRole('button',{name:'Объект',exact:true}).click();await chooseExplorerMode(page,'Код');await page.getByRole('tree',{name:'Структура проекта'}).locator('[data-tree-id="file:project.ts"]').click();const code=page.locator('.code-pane');await code.waitFor();await code.locator('.cm-content').click();await page.keyboard.press(process.platform==='darwin'?'Meta+f':'Control+f');await page.keyboard.insertText(query);await page.keyboard.press('Enter');await page.keyboard.press('Escape');await pause(650);};
 const save=async(next:string)=>{const file=app.workspace.read('project.ts'),response=await fetch(new URL('/api/file',app.server.url),{method:'POST',headers:{'content-type':'application/json','X-Saturn-Key':app.state().key},body:JSON.stringify({path:file.path,source:next,version:file.version})});assert.equal(response.status,200,await response.text());};
 const checked=async()=>((await (await fetch(new URL('/api/releases',app.server.url))).json()) as {checked:string|null}).checked;
 const shot=(name:string)=>page.screenshot({path:join(out,name+'.png'),fullPage:false});
