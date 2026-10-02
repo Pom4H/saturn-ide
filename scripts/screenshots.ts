@@ -102,7 +102,7 @@ git('add','.'); git('commit','-m','Screenshot fixture');
 const fixtureProject={root,clean:()=>rmSync(temp,{recursive:true,force:true})};
 const base='http://127.0.0.1:4017';
 mkdirSync('docs/screenshots',{recursive:true});
-// Documentation captures intentionally use a deterministic light Shell and a self-contained DSL fixture owned by this repository.
+// Documentation captures intentionally use a deterministic light Shell and a self-contained DSL fixture owned by this repository. The workflow rebases generated evidence before publishing it.
 
 const server=Bun.spawn(['bun','dev'],{
   env:{...Bun.env,SATURN_PROJECT:fixtureProject.root,PORT:'4017',DATABASE_URL:':memory:',SATURN_PREVIEW:'simulation'},
