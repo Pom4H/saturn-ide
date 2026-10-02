@@ -30,6 +30,11 @@ jobs:
         with:
           ref: ${{ inputs.branch || github.ref_name }}
 
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: Pom4H/saturn-examples
+          path: saturn-examples
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
@@ -49,6 +54,8 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Capture repository screenshots
+        env:
+          SATURN_EXAMPLE: ${{ github.workspace }}/saturn-examples/pumping-station
         run: bun scripts/screenshots.ts
 
       - name: Store screenshots in selected branch
