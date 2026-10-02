@@ -22,7 +22,7 @@ and engineering metadata when they describe the same system.
 
 [Открыть интерактивный сайт Saturn IDE](https://pom4h.github.io/saturn-ide/)
 
-![Saturn IDE](docs/screenshots/ide-dark.png)
+![Saturn IDE](docs/screenshots/ide-light.png)
 
 ## System as code
 
