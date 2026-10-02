@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createProject } from '../src/workspace/project-template';
+import { chooseExplorerMode } from './helpers/explorer-mode';
 
 mkdirSync('.saturn',{recursive:true});
 const temp=mkdtempSync(resolve('.saturn/screenshots-'));
@@ -137,7 +138,9 @@ try{
   };
 
   await shoot('diagram.png');
-  await captureRail('Исходники','source.png',async()=>{await page.locator('.cm-content').waitFor();});
+  await chooseExplorerMode(page,'Код');
+  await page.getByRole('tree',{name:'Структура проекта'}).getByRole('treeitem',{name:'project.ts',exact:true}).click();
+  await shoot('source.png',async()=>{await page.locator('.cm-content').waitFor();});
   await captureRail('Мониторинг','signals.png');
   await captureRail('Отчёты','reports.png');
   await rail.getByRole('button',{name:'Объект',exact:true}).click();
