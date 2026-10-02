@@ -1,3 +1,5 @@
+import { toggleShellDetails } from './helpers/shell-details';
+import { prepareInterface, setInterfaceTheme } from './helpers/interface-preferences';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,11 +21,14 @@ const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enabl
 const context=await browser.newContext({viewport:{width:1440,height:960},locale:'ru-RU',recordVideo:{dir:'artifacts/review-pane-recording'}});
 const page=await context.newPage(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
 try{
+  await prepareInterface(context);
   await page.goto(app.server.url.toString());
+  await page.locator('[data-rail-section="home"]').click();
+
   const review=page.getByRole('complementary',{name:'Ревью проекта'});
   const diagram=page.locator('.diagram-workspace'),source=page.locator('.code-pane');
   await diagram.waitFor();
-  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toHaveAttribute('data-review-state','ready');
   await expect(page.locator('.unified-sidebar')).toBeVisible();
   await expect(diagram).toBeVisible();
@@ -67,9 +72,9 @@ try{
   await page.waitForFunction(()=>Number(document.querySelector<HTMLElement>('.scene3d')?.dataset.frames)>4);
   await page.locator('.scene3d canvas').evaluate(canvas=>(canvas as HTMLElement).dataset.reviewSentinel='mounted');
   const before=Number(await scene.getAttribute('data-frames'));
-  await page.getByRole('button',{name:'Свойства',exact:true}).click();
+  await toggleShellDetails(page,'properties');
   await expect(page.getByRole('complementary',{name:'Свойства объекта'})).toBeVisible();
-  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toBeVisible();
   assert.equal(await page.locator('.scene3d canvas').getAttribute('data-review-sentinel'),'mounted','switching right pane remounted 3D');
   await page.waitForFunction(previous=>Number(document.querySelector<HTMLElement>('.scene3d')?.dataset.frames)>previous,before);
@@ -80,7 +85,7 @@ try{
   await rail.getByRole('button',{name:'Изменения',exact:true}).click();
   await expect(page.locator('.git-surface')).toBeVisible();
   await expect(review).toBeVisible();
-  await page.getByRole('button',{name:'Тёмная тема',exact:true}).click();
+  await setInterfaceTheme(page,'dark');
   await page.screenshot({path:'artifacts/review-pane-git-dark.png'});
   await rail.getByRole('button',{name:'Среда',exact:true}).click();
   const environment=page.locator('.environment-surface');await expect(environment).toBeVisible();
@@ -90,14 +95,14 @@ try{
   await environment.locator(`dd[title="${sourceHead}"]`).scrollIntoViewIfNeeded();
   await expect(environment.locator(`dd[title="${sourceHead}"]`)).toBeVisible();
   await page.screenshot({path:'artifacts/review-pane-environment-identities.png'});
-  await rail.getByRole('button',{name:'Мониторинг',exact:true}).click();
+  await rail.getByRole('button',{name:'Мониторинг',exact:true}).click();await page.getByRole('treeitem',{name:'Сигналы',exact:true}).click();
   const signalList=page.locator('.signals-surface>.table-scroll');await expect(signalList).toBeVisible();
   const signalListBounds=await signalList.boundingBox();assert(signalListBounds&&signalListBounds.height>=150,'signal table collapsed beneath diagnostics');
   await signalList.getByRole('button',{name:'P-01.pressure',exact:true}).click();
   await expect(page.locator('.signals-surface>.inspector-body')).toContainText('P-01.pressure');
   await expect(page.getByRole('complementary',{name:'Свойства объекта'})).toBeVisible();
   await expect(review).toHaveCount(0);
-  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toBeVisible();
   await page.screenshot({path:'artifacts/review-pane-signals.png'});
   await rail.getByRole('button',{name:'Объект',exact:true}).click();
@@ -109,9 +114,9 @@ try{
   await expect(review.locator('.review-file-state')).toContainText('Черновик не сохранён');
   await expect(review.locator('.git-diff')).not.toContainText('Unsaved review draft');
   await source.locator('.cm-content').evaluate(node=>(node as HTMLElement).dataset.reviewSentinel='mounted');
-  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toHaveCount(0);
-  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toBeVisible();
   assert.equal(await source.locator('.cm-content').getAttribute('data-review-sentinel'),'mounted','closing review remounted Source editor');
   await expect(source.locator('.cm-content')).toContainText('Unsaved review draft');
@@ -128,7 +133,7 @@ try{
   await page.setViewportSize({width:1440,height:960});
 
   await page.route('**/api/git/review*',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Review fixture failure'})}));
-  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toHaveAttribute('data-review-state','failed');
   const reviewFailure=review.getByText('Не удалось прочитать изменения:',{exact:false});
   await expect(reviewFailure).toContainText('Review fixture failure');
@@ -138,16 +143,16 @@ try{
   await page.unroute('**/api/git/review*');
   const releaseState=await page.evaluate(async()=>await (await fetch('/api/releases')).json()) as Record<string,unknown>;
   await page.route('**/api/releases',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...releaseState,phase:'faulted',error:'Previous driver did not stop; replacement was not started'})}));
-  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toHaveAttribute('data-review-state','faulted');
   await expect(review.locator('.review-release-error')).toContainText('Previous driver did not stop');
   await page.screenshot({path:'artifacts/review-pane-runtime-faulted.png'});
   await page.getByRole('button',{name:'Закрыть ревью',exact:true}).click();
   await page.unroute('**/api/releases');
-  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toHaveAttribute('data-review-state','ready');
   await app.close();
-  await page.waitForFunction(()=>document.querySelector('.sim-badge')?.textContent==='ОФЛАЙН');
+  await page.waitForFunction(()=>document.querySelector('.environment-chip')?.classList.contains('offline'));
   await expect(review).toHaveAttribute('data-review-state','offline');
   await expect(review.locator('.review-files button')).toHaveCount(3);
   await page.screenshot({path:'artifacts/review-pane-offline.png'});

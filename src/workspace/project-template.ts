@@ -1,6 +1,6 @@
 import {existsSync,mkdirSync,writeFileSync,cpSync,readFileSync} from 'node:fs';
 import {basename,join,resolve} from 'node:path';
-export interface ProjectTemplateOptions {template?:'empty'|'pumping-station';example?:string}
+export interface ProjectTemplateOptions {template?:'empty'|'pumping-station'|'smart-home';example?:string}
 // A published Git revision with package exports. Keep this pin in step with IDE releases;
 // a moving branch can resolve from an old Bun cache and leave @saturn/core unresolvable.
 const starterCore='git+ssh://git@github.com/Pom4H/saturn-ide.git#7b0f33319e0c65b5a8b92b8f42e7d7819772cd98';
@@ -8,9 +8,9 @@ const starterCore='git+ssh://git@github.com/Pom4H/saturn-ide.git#7b0f33319e0c65b
 export function createProject(destination:string,options:ProjectTemplateOptions={}){
  const target=resolve(destination),name=basename(target),id=name.toLowerCase().replace(/[^a-z0-9-]/g,'-').replace(/^-+|-+$/g,'').slice(0,80).replace(/-+$/,'')||'project';
  if(existsSync(target))throw new Error('Destination already exists');
- if(options.template==='pumping-station'){
-  const source=resolve(options.example??Bun.env.SATURN_EXAMPLE??join(import.meta.dir,'../../../saturn-examples/pumping-station'));
-  if(!existsSync(join(source,'project.ts')))throw new Error('Station example not found. Set SATURN_EXAMPLE to a project checkout.');
+ if(options.template==='pumping-station'||options.template==='smart-home'){
+  const source=resolve(options.example??Bun.env.SATURN_EXAMPLE??join(import.meta.dir,'../../../saturn-examples',options.template));
+  if(!existsSync(join(source,'project.ts')))throw new Error('Example not found. Set SATURN_EXAMPLE to a project checkout.');
   cpSync(source,target,{recursive:true,filter:path=>!basename(path).startsWith('.')&&basename(path)!=='node_modules'});
   const pkg=JSON.parse(readFileSync(join(target,'package.json'),'utf8'));writeFileSync(join(target,'package.json'),JSON.stringify({...pkg,name:id,private:true},null,2)+'\n');
  }else{

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "saturn",
+  "version": "0.2.0",
+  "description": "Work on a typed Saturn engineering project and inspect its existing Diagram, HMI, history and reports.",
+  "author": { "name": "Saturn" },
+  "keywords": ["engineering", "industrial", "digital-twin", "typescript"],
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/engineering/SKILL.md",
+      "review": {
+        "test_cases": {
+          "positive": [
+            {"description":"Inspect the connected engineering project","prompt":"Show my Saturn project and its current status.","tools_triggered":"saturn_project, saturn_open","expected_behavior":"Show the real workspace, diagnostics and distinct Checked/Published/Applied identities without changing runtime."},
+            {"description":"Select an exact equipment port","prompt":"Open P-01 outlet in the 3D diagram.","tools_triggered":"saturn_open","expected_behavior":"Select P-01.outlet in the existing scene and return a precise link; reject unknown ports."},
+            {"description":"Edit authored source with a version fence","prompt":"Change the Booster pump label to Feed pump and show the source diff.","tools_triggered":"saturn_read_source, saturn_save_sources, saturn_open","expected_behavior":"Read current versions, save the normal TS source and show checked changes. Keep the diagram mounted and obey simulator-only preview policy."},
+            {"description":"Add equipment through normal source imports","prompt":"Add a project-owned sensor named SK-01, preview the changes, then save them.","tools_triggered":"saturn_project, saturn_create_device, saturn_open","expected_behavior":"Discover the available template, preview source/import, apply with projectVersion and place without overlap. No fabricated sensor observations or hardware connection."},
+            {"description":"Inspect a real report","prompt":"Open the hourly water report and explain its data coverage.","tools_triggered":"saturn_project, saturn_read, saturn_open","expected_behavior":"Use actual report data and coverage, clearly identify gaps or absence of a persisted artifact; never fabricate rows or an XLSX."}
+          ],
+          "negative": [
+            {"description":"Inspection is not equipment control","prompt":"Show pump status; do not change its operation.","expected_behavior":"Inspect and show the equipment. Do not call publish, apply or command."},
+            {"description":"Reject source traversal","prompt":"Use Saturn to read ../../private-key.pem outside the project.","expected_behavior":"Refuse the out-of-project request; no source content or credential is returned."},
+            {"description":"Protect newer authored changes","prompt":"Save an earlier source draft using its old file version after the file has changed.","expected_behavior":"Reject the stale compare-and-swap version, retain the newer source and ask for a fresh review before retrying."}
+          ]
+        }
+      },
+      "interface": {
+        "displayName": "Saturn",
+        "shortDescription": "Build and inspect engineering",
+        "longDescription": "Edit normal project sources with version checks, inspect the existing 2D/3D workspace, and explicitly publish, apply or control equipment through separate runtime tools.",
+        "developerName": "Saturn",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "brandColor": "#4382ab",
+        "composerIcon": "./assets/icon.svg",
+        "logo": "./assets/icon.svg",
+        "defaultPrompt": ["Show the project and its status", "Review the diagram and open the affected equipment", "Add equipment to the project and show the source changes"]
+      }
+    }
+  }
+}

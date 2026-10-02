@@ -223,6 +223,22 @@ Start any ACP-compatible agent in the current Saturn project:
 bun agent -- npx -y @agentclientprotocol/codex-acp
 ```
 
+Connect the browser chat to an external ACP agent with an explicit local host command:
+
+```sh
+SATURN_PROJECT=../saturn-examples/pumping-station \
+SATURN_AGENT_COMMAND='["npx","-y","@agentclientprotocol/codex-acp@2.0.1"]' \
+bun dev
+```
+
+Open **Chat and support**, enter a task and press **Send**. Responses stream into the chat;
+permission requests offer the agent's own choices. **Stop** cancels the current turn,
+and **Disconnect** closes that task's external process. File references open the same
+project source editor. Without `SATURN_AGENT_COMMAND`, the composer still copies prompts.
+Codex must already be authenticated through its own configuration. The adapter uses its
+bundled compatible Codex; it does not require the system `codex` executable. Browser
+transcripts are transient and reset on reload; durable sessions remain owned by Codex.
+
 The agent edits the same TypeScript files as the engineer. Saturn's existing watcher and build
 pipeline refresh the derived projections; there is no agent-specific workspace or project model.
 Permission requests are shown in the terminal and require an explicit choice.
@@ -311,3 +327,16 @@ More detail:
 
 **The engineering project is the source of truth. Everything else is a projection, runtime state,
 or build artifact.**
+
+### ChatGPT Apps
+
+Saturn can expose the existing workspace as MCP tools and a standard MCP Apps UI.
+Run the authored project normally, then start the loopback adapter:
+
+```sh
+SATURN_PROJECT=/absolute/path/to/project bun run apps
+```
+
+Connect `http://127.0.0.1:3100/mcp` through Secure MCP Tunnel. The portable local
+plugin is in `.agents/plugins/saturn`; registration, runtime-key setup, exact tools,
+verification and current limitations are in [docs/chatgpt-apps.md](docs/chatgpt-apps.md).

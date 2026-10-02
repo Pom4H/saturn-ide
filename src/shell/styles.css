@@ -120,7 +120,7 @@ table{width:100%;border-collapse:collapse;text-align:left;font-size:12px}th{font
 @media print{
   :root{color-scheme:light;--panel:#fff;--text:#222;--muted:#667;--border:#ddd;--warn:#8a6122}
   .shell,.shell-body,.workbench,.surface-content,.reports-surface{display:block!important;height:auto!important;overflow:visible!important;background:white!important}
-  .topbar,.unified-sidebar,.resource-tabs,.surface-toolbar,.statusbar,.shell-panel,.shell-alert,.no-print,.palette-backdrop{display:none!important}
+  .topbar,.unified-sidebar,.resource-tabs,.surface-toolbar,.shell-panel,.shell-alert,.no-print,.palette-backdrop{display:none!important}
   .report-page{margin:0;padding:12mm 8mm;border:0;max-width:none;overflow:visible}.report-table th{position:static}tr,.report-page footer{break-inside:avoid}@page{size:A4 landscape;margin:10mm}
 }
 

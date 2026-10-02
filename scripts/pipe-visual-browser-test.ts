@@ -4,6 +4,7 @@ import {chromium} from 'playwright';
 import {fixture} from '../tests/helpers';
 import {createApp} from '../src/host/dev';
 import {routeConnections} from '../src/topology';
+import {prepareInterface} from './helpers/interface-preferences';
 
 mkdirSync('artifacts/pipe-visual-recording',{recursive:true});
 const work=fixture(),app=await createApp({projectDir:work.root,dataDir:work.dir,databaseUrl:':memory:',port:0,preview:'simulation'});
@@ -13,27 +14,61 @@ const errors:string[]=[],record:Record<string,unknown>={};page.on('pageerror',er
 const until=async(check:()=>Promise<boolean>,message:string)=>{const end=Date.now()+20000;while(Date.now()<end){if(await check().catch(()=>false))return;await page.waitForTimeout(80);}throw new Error(message);};
 const routes=()=>routeConnections(app.state().project).map(route=>({id:route.id,kind:route.kind,valid:route.valid,error:route.error,points:route.points.map(point=>({x:point.x,y:point.y,z:point.z}))}));
 const browserPipes=()=>page.locator('.scene [data-pipe]').evaluateAll(nodes=>nodes.map(node=>({id:(node as HTMLElement).dataset.pipe,valid:(node as HTMLElement).dataset.routeValid,path:node.querySelector('path')?.getAttribute('d')})));
+const orthogonalPipes=async()=>{
+  for(const pipe of await browserPipes()){
+    if(pipe.valid!=='true')continue;
+    let last=[0,0];
+    for(const command of pipe.path?.matchAll(/([MLQ])([^MLQ]+)/g)??[]){
+      const values=command[2]!.trim().split(/[ ,]+/).map(Number);
+      if(command[1]==='L')assert(Math.abs(values[0]!-last[0]!)<.02||Math.abs(values[1]!-last[1]!)<.02,`diagonal SVG segment in ${pipe.id}: ${command[0]}`);
+      last=values.slice(-2);
+    }
+  }
+};
 const validPipes=()=>routes().filter(route=>route.kind==='pipe').every(route=>route.valid);
 try{
+  await prepareInterface(context);
   await page.goto(app.server.url.toString());await page.locator('[data-equipment="P-01"]').waitFor();
   await page.getByRole('button',{name:'Правка',exact:true}).click();
   const pump=page.locator('.scene [data-equipment="P-01"]'),rect=await pump.boundingBox();assert(rect);
   const start={x:rect.x+rect.width/2,y:rect.y+rect.height/2},move={x:start.x+80,y:start.y-45},beforeX=app.state().project.equipment.find(e=>e.id==='P-01')!.x;
   record.before2d={routes:routes(),browserPipes:await browserPipes()};
+  await orthogonalPipes();
   assert(await page.locator('.scene [data-pipe] .pipe-fluid').count()>0,'2D fluid layer is missing');
   assert.equal(await page.locator('.scene [data-pipe] path').first().getAttribute('stroke-width'),'22','2D pipe body lost its readable diameter');
   assert((await browserPipes()).some(pipe=>pipe.path?.includes('Q')),'2D pipe bends are not rounded');
   await page.screenshot({path:'artifacts/pipe-before-2d.png'});
   await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(move.x,move.y,{steps:12});await page.waitForTimeout(150);
   record.during2d={routes:routes(),browserPipes:await browserPipes()};
+  await orthogonalPipes();
   assert((await browserPipes()).every(pipe=>pipe.valid==='true'),'pipe preview became invalid during a clear 2D drag');
   await page.screenshot({path:'artifacts/pipe-during-2d.png'});
   await page.mouse.up();await until(async()=>app.state().project.equipment.find(e=>e.id==='P-01')!.x!==beforeX,'2D drop did not save pump position');
   record.after2d={routes:routes(),browserPipes:await browserPipes()};
+  await orthogonalPipes();
   assert(validPipes(),'clear 2D drop produced an invalid physical pipe');
   assert((await browserPipes()).every(pipe=>pipe.valid==='true'),'browser pipe became invalid after 2D drop');
   assert.deepEqual((record.after2d as {browserPipes:unknown}).browserPipes,(record.during2d as {browserPipes:unknown}).browserPipes,'a rendered 2D pipe changed shape at drop');
   await page.screenshot({path:'artifacts/pipe-after-2d.png'});
+
+  const geometry=await browserPipes(),valve=app.state().project.equipment.find(e=>e.id==='V-01')!;
+  const opening=Object.values(app.state().project.signals).find(signal=>signal.id==='V-01.opening')!;
+  const command=async(value:number)=>{
+    const response=await fetch(new URL('/api/command',app.server.url),{method:'POST',headers:{'Content-Type':'application/json','X-Saturn-Key':app.state().key},body:JSON.stringify({signal:opening.id,value})});
+    assert(response.ok,await response.text());
+  };
+  assert(valve&&opening);
+  await command(0);
+  await until(async()=>await page.locator('[data-pipe="discharge"] .flow').evaluate(node=>(node as SVGPathElement).style.opacity==='0'),'closed valve still shows moving pipe flow');
+  assert.deepEqual(await browserPipes(),geometry,'closing the valve moved a route');
+  await page.screenshot({path:'artifacts/pipe-closed-2d.png'});
+  await command(75);
+  await until(async()=>await page.locator('[data-pipe="discharge"] .flow').evaluate(node=>(node as SVGPathElement).style.opacity!== '0'),'reopened valve did not resume flow');
+  const flow=app.state().project.pipes.find(edge=>edge.id==='discharge')!.flow;
+  await app.runtime.observe([{signal:flow.id,quality:'stale'}]);
+  await until(async()=>await page.locator('[data-pipe="discharge"] .pipe-fluid').evaluate(node=>(node as SVGPathElement).style.stroke==='var(--pipe-stale)'),'stale pipe has no quality indication');
+  assert.deepEqual(await browserPipes(),geometry,'stale quality moved a route');
+  await page.screenshot({path:'artifacts/pipe-stale-2d.png'});
 
   await page.getByRole('button',{name:'3D',exact:true}).click();const scene=page.locator('.scene3d');await scene.waitFor();
   await until(async()=>Number(await scene.getAttribute('data-frames'))>8,'3D did not render');

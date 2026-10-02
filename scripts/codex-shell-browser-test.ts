@@ -1,3 +1,5 @@
+import { chooseExplorerMode } from './helpers/explorer-mode';
+import { prepareInterface, setInterfaceTheme } from './helpers/interface-preferences';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { chromium, expect } from 'playwright/test';
@@ -12,15 +14,16 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 960 
 const page = await context.newPage();
 const errors: string[] = [];
 page.on('pageerror', error => errors.push(error.message));
-const mode = page.getByRole('button', { name: 'Режим проводника' });
+const heading=page.locator('.explorer-heading .context-heading');
+const mode = page.getByRole('button', { name: 'Действия проводника' });
 const tree = page.getByRole('tree', { name: 'Структура проекта' });
-const choose = async (name: 'Код' | 'Объекты') => {
-  await mode.click();
-  await page.getByRole('menuitemcheckbox', { name, exact: true }).click();
-};
+const choose = async (name: 'Код' | 'Объекты') => { await chooseExplorerMode(page,name); };
 try {
+  await prepareInterface(context);
   await page.goto(app.server.url.toString());
-  await expect(mode).toContainText('Объекты');
+  await page.locator('[data-rail-section="home"]').click();
+
+  await expect(heading).toContainText('Объект');
   await expect(tree.locator('[data-tree-id="source"]')).toBeVisible();
   assert.ok(await page.locator('[data-anatomy="saturn-pump"] circle').count() >= 10, 'authored pump SVG changed');
   assert.equal(await page.locator('[data-cable]').count(), 2, 'authored cables changed');
@@ -30,22 +33,22 @@ try {
   await page.screenshot({ path: 'artifacts/codex-shell-3d.png' });
   await page.getByRole('button', { name: '2D', exact: true }).click();
   await mode.click();
-  await expect(page.getByRole('menuitemcheckbox', { name: 'Объекты', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('menuitemcheckbox', { name: 'Список', exact: true })).toHaveAttribute('aria-checked', 'true');
   await page.screenshot({ path: 'artifacts/codex-shell-menu.png' });
-  await page.getByRole('menuitemcheckbox', { name: 'Код', exact: true }).click();
-  await expect(mode).toContainText('Код');
+  await page.keyboard.press('Escape');await choose('Код');
+  await expect(heading).toContainText('Код');
   await expect(page.locator('.code-pane')).toBeVisible();
-  await expect(tree.locator('[data-tree-id="files"]')).toBeVisible();
+  await expect(tree.locator('[data-tree-id="files"]')).toHaveCount(0);
   await tree.locator('[data-tree-id="file:equipment/P-01.device.ts"]').click();
   await expect(page.locator('.code-pane .pane-heading')).toContainText('P-01.device.ts');
   await page.screenshot({ path: 'artifacts/codex-shell-code.png' });
   await choose('Объекты');
   await expect(page.locator('svg.scene')).toBeVisible();
   await expect(tree.locator('[data-tree-id^="object:"][data-resource-id="P-01"]')).toBeVisible();
-  await page.getByRole('button', { name: 'Тёмная тема' }).click();
+  await setInterfaceTheme(page,'dark');
   await page.screenshot({ path: 'artifacts/codex-shell-dark.png' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator('.workbench-rail')).toBeVisible();
+  await expect(page.locator('.workbench-rail')).toBeHidden();await expect(page.getByRole('navigation',{name:'Мобильная навигация'})).toBeVisible();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile horizontal overflow');
   await page.getByRole('button', { name: 'Открыть навигацию' }).click();
   await expect(mode).toBeVisible();
@@ -54,10 +57,10 @@ try {
   await page.keyboard.press('Escape');
   await expect(tree).toBeHidden();
   await app.close();
-  await expect(page.locator('.sim-badge')).toHaveText('ОФЛАЙН');
+  await expect(page.locator('.environment-chip')).toHaveClass(/offline/);
   await page.screenshot({ path: 'artifacts/codex-shell-offline.png' });
   assert.deepEqual(errors, []);
-  console.log('PASS Codex-like mode menu, source and object navigation, authored SVG, light/dark/mobile/offline frames, and no page errors');
+  console.log('PASS central destination navigation and one explorer menu, source and object navigation, authored SVG, light/dark/mobile/offline frames, and no page errors');
 } finally {
   await context.close();
   await browser.close();

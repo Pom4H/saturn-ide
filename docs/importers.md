@@ -24,7 +24,7 @@ import { defineImporter } from '@saturn/core';
 
 export default defineImporter({
   id: 'example-format',
-  label: { en: 'Example format', ru: 'Пример формата' },
+  label: 'Пример формата',
   accepts: ['.zip'],
   detect(source) {
     return source.files.some(file => file.path === 'PROJECT.JSON') ? 100 : 0;

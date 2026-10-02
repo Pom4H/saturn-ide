@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import type { DslChange, DslTarget } from '../core/feedback';
+import { asDeviceCall } from './ast';
 interface Target extends DslTarget {from:number;to:number}
 const prop=(node:ts.ObjectLiteralExpression,name:string)=>{
   if(node.properties.some(p=>ts.isSpreadAssignment(p)))return undefined;
@@ -22,14 +23,16 @@ function targets(path:string,source:string):Target[]{
   for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&ts.isStringLiteral(statement.moduleSpecifier)&&['@saturn/core','saturn-ide/core'].includes(statement.moduleSpecifier.text)){
     const bindings=statement.importClause?.namedBindings;if(bindings&&ts.isNamedImports(bindings))for(const e of bindings.elements)imports.set(e.name.text,e.propertyName?.text??e.name.text);
   }
-  const add=(kind:DslTarget['kind'],id:string,node:ts.Node|undefined,locale?:'ru'|'en')=>{const value=literal(node);if(node&&value!==undefined)result.push({kind,id,path,locale,value,from:node.getStart(tree),to:node.end});};
+  const add=(kind:DslTarget['kind'],id:string,node:ts.Node|undefined,locale?:'ru'|'en')=>{const value=literal(node);if(node&&value!==undefined)result.push({kind,id,path,...(locale?{locale}:{}),value,from:node.getStart(tree),to:node.end});};
   const visit=(node:ts.Node)=>{
-    if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)){
+    if(ts.isCallExpression(node)){
       const [first,second]=node.arguments;
       if(first&&ts.isStringLiteral(first)&&second&&ts.isObjectLiteralExpression(second)){
-        if(imports.get(node.expression.text)==='alarm')add('alarm.above',first.text,prop(second,'above'));
-        else if(path.endsWith('.device.ts')&&typeof literal(prop(second,'semanticId'))==='string'&&String(literal(prop(second,'semanticId'))).startsWith('equipment:')){
-          const label=prop(second,'label');if(label&&ts.isObjectLiteralExpression(label))for(const locale of ['ru','en'] as const)add('equipment.label',first.text,prop(label,locale),locale);
+        if(ts.isIdentifier(node.expression)&&imports.get(node.expression.text)==='alarm')add('alarm.above',first.text,prop(second,'above'));
+        else if(path.endsWith('.device.ts')&&(asDeviceCall(node,tree)||typeof literal(prop(second,'semanticId'))==='string'&&String(literal(prop(second,'semanticId'))).startsWith('equipment:'))){
+          const label=prop(second,'label');
+          if(label&&ts.isStringLiteral(label))add('equipment.label',first.text,label);
+          else if(label&&ts.isObjectLiteralExpression(label))for(const locale of ['ru','en'] as const)add('equipment.label',first.text,prop(label,locale),locale);
           for(const field of second.properties)if(ts.isPropertyAssignment(field)&&ts.isIdentifier(field.name)){
             let initializer=field.initializer;
             // Protocol binding preserves the same owned signal; only change its literal initial value.

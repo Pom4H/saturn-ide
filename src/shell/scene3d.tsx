@@ -10,7 +10,7 @@ import { connectionHandleVisible } from './model/connection-picking';
 import { systemLayout, systemTitleLines } from '../core/system-layout';
 import { compatiblePorts } from './model/compatible-ports';
 import { advancePhase, flowOf, numeric, rpmOf } from '../motion';
-import { projectPanelCable, roundedRoute } from './route3d';
+import { roundedRoute } from './route3d';
 import { instrumentReading, instrumentStyle } from './instrument-style';
 import { instrumentMount } from './instrument-mount';
 import { Scene, type SceneProps } from './scene';
@@ -45,6 +45,8 @@ function paintInstrumentFace(canvas:HTMLCanvasElement,form:'dial'|'digital'|'inl
 }
 export default function Scene3D(props:SceneProps){
   const host=useRef<HTMLDivElement>(null),current=useRef(props);current.current=props;
+  const restoreCamera=useRef<()=>void>(()=>{});
+  useEffect(()=>restoreCamera.current(),[props.viewRestore?.version]);
   const [error,setError]=useState('');
   const [displayFailures,setDisplayFailures]=useState<Record<string,string>>({});
   const [dragPorts,setDragPorts]=useState<{count:number;target:string}|null>(null);
@@ -77,11 +79,12 @@ export default function Scene3D(props:SceneProps){
     const materials=[metal,paint,dark,water,casing,amber,wire,invalid,pending,pipeShell,pipeLiquid,pipeStale,pipeHighlight];
     const floor=new T.Mesh(new T.PlaneGeometry(60,60),new T.MeshStandardMaterial({color:0xdde5e8,roughness:.95}));floor.rotation.x=-Math.PI/2;floor.position.y=-.02;floor.receiveShadow=true;scene.add(floor);
     const grid=new T.GridHelper(24,48,0xabb9bf,0xcad3d7);grid.position.y=-.015;for(const material of Array.isArray(grid.material)?grid.material:[grid.material]){material.transparent=true;material.opacity=.24;material.depthWrite=false;}scene.add(grid);
+    const portHaloGeometry=new T.SphereGeometry(13,16,12),portHaloMaterial=new T.MeshBasicMaterial({color:0x258ebb,wireframe:true,depthTest:false}),portHalo=new T.Mesh(portHaloGeometry,portHaloMaterial);portHalo.visible=false;portHalo.renderOrder=10;world.add(portHalo);
     const phases=new Map<string,number>();
     const allocate=()=>({geometries:new Set<T.BufferGeometry>(),textures:new Set<T.Texture>(),materials:new Set<T.Material>(),updaters:[] as ((dt:number)=>void)[]});
-    const equipmentResources=allocate(),routeResources=allocate();let resources=equipmentResources;
+    const groupResources=allocate(),routeResources=allocate(),deviceResources=new Map<string,ReturnType<typeof allocate>>(),deviceRevisions=new Map<string,string>();let resources=groupResources;
     const dispose=(scope:ReturnType<typeof allocate>)=>{for(const geometry of scope.geometries)geometry.dispose();for(const texture of scope.textures)texture.dispose();for(const material of scope.materials)material.dispose();scope.geometries.clear();scope.textures.clear();scope.materials.clear();scope.updaters.length=0;};
-    const roots=new Map<string,T.Group>(),groupBorders=new Map<string,T.LineBasicMaterial>();let plugMeshes:T.Mesh[]=[],equipmentRevision='',routeRevision='',equipmentBuilds=0,routeBuilds=0,dirty=true,focusedSystem:string|null|undefined;
+    const roots=new Map<string,T.Group>(),groupBorders=new Map<string,T.LineBasicMaterial>();let plugMeshes:T.Mesh[]=[],equipmentRevision='',routeRevision='',equipmentBuilds=0,routeBuilds=0,groupRevision='',dirty=true,focusedSystem:string|null|undefined;
     const buttonDrivers=new Map<string,{refresh:(snapshot:SceneProps['snapshot'])=>void;press:(key:'up'|'down'|'left'|'right')=>void}>(),buttonScreens=new Map<string,T.CanvasTexture>(),buttonCanvases=new Map<string,HTMLCanvasElement>();
     const displayUnavailable=(id:string,canvas:HTMLCanvasElement,reason:unknown)=>{
       const message=reason instanceof Error?reason.message:String(reason);unavailableDisplay(canvas,current.current.locale);
@@ -293,14 +296,25 @@ export default function Scene3D(props:SceneProps){
     };
     const synchronize=()=>{
       dirty=false;const p=current.current;
-      const revision=geometryRevision(p.project,p.interaction)+JSON.stringify([p.inactive??[],p.project.systems??[],p.project.equipment.map(e=>[e.id,e.system]),p.locale]);
+      const revision=geometryRevision(p.project,p.interaction)+JSON.stringify([p.inactive??[],p.project.systems??[],p.project.equipment.map(e=>[e.id,e.system]),p.project.label,p.project.hmi,p.project.hmis,p.locale]);
       if(revision!==equipmentRevision){
-        equipmentRevision=revision;groupBorders.clear();focusedSystem=undefined;dispose(equipmentResources);equipmentWorld.clear();groupWorld.clear();roots.clear();buttonDrivers.clear();buttonScreens.clear();buttonCanvases.clear();node.dataset.screenUpdates='0';node.dataset.screenSource='loading';delete node.dataset.screenError;
-        setDisplayFailures(previous=>Object.keys(previous).length?{}:previous);
-        resources=equipmentResources;buildGroups();for(const e of p.project.equipment){buildEquipment(e);if(p.inactive?.includes(e.id))roots.get(e.id)?.traverse(object=>{if(object instanceof T.Mesh){const fade=(material:T.Material)=>{const clone=material.clone();clone.transparent=true;clone.opacity=.4;clone.depthWrite=false;equipmentResources.materials.add(clone);return clone;};object.material=Array.isArray(object.material)?object.material.map(fade):fade(object.material);}});}
+        equipmentRevision=revision;
+        const remove=(id:string)=>{const scope=deviceResources.get(id);if(scope)dispose(scope);roots.get(id)?.removeFromParent();roots.delete(id);deviceResources.delete(id);deviceRevisions.delete(id);buttonDrivers.delete(id);buttonScreens.delete(id);buttonCanvases.delete(id);};
+        const ids=new Set(p.project.equipment.map(e=>e.id));
+        for(const id of roots.keys())if(!ids.has(id)){remove(id);phases.delete(id);}
+        // One changed/new device cannot restart the meshes, displays or rotor phase of its neighbours.
+        for(const e of p.project.equipment){
+          const key=geometryRevision({...p.project,equipment:[e]},p.interaction)+JSON.stringify([p.inactive?.includes(e.id)??false,p.locale,e.capabilities.hmi?[p.project.label,p.project.hmi,p.project.hmis]:null]);
+          if(deviceRevisions.get(e.id)===key)continue;
+          remove(e.id);if(e.capabilities.hmi){node.dataset.screenSource='loading';delete node.dataset.screenError;}const scope=allocate();deviceResources.set(e.id,scope);resources=scope;buildEquipment(e);deviceRevisions.set(e.id,key);
+          if(p.inactive?.includes(e.id))roots.get(e.id)?.traverse(object=>{if(object instanceof T.Mesh){const fade=(material:T.Material)=>{const clone=material.clone();clone.transparent=true;clone.opacity=.4;clone.depthWrite=false;scope.materials.add(clone);return clone;};object.material=Array.isArray(object.material)?object.material.map(fade):fade(object.material);}});
+        }
+        setDisplayFailures(previous=>Object.fromEntries(Object.entries(previous).filter(([id])=>buttonCanvases.has(id)&&!buttonDrivers.has(id))));
+        node.dataset.equipmentObjects=JSON.stringify(Object.fromEntries([...roots].map(([id,root])=>[id,root.uuid])));
         node.dataset.equipmentBuilds=String(++equipmentBuilds);
         node.dataset.instrumentCount=String(p.project.equipment.filter(e=>!!e.capabilities.instrument).length);
       }
+      const nextGroups=JSON.stringify([systemLayout(p.project),p.locale]);if(nextGroups!==groupRevision){groupRevision=nextGroups;groupBorders.clear();focusedSystem=undefined;dispose(groupResources);groupWorld.clear();resources=groupResources;buildGroups();}
       // Pose-only edits retain equipment meshes, display drivers, textures and animation state.
       for(const e of p.project.equipment)roots.get(e.id)?.position.set(e.x,(e.z??0)+(e.capabilities.instrument?.mount?42:0),e.y);
       const nextRoutes=JSON.stringify([p.routes,p.project.pipes,p.project.cables,p.interaction,p.cablePreview?.id]);
@@ -312,8 +326,9 @@ export default function Scene3D(props:SceneProps){
       for(const route of routes){
         const pipe=route.kind==='pipe'?p.project.pipes.find(edge=>edge.id===route.id):undefined;
         const cable=route.kind==='cable'?p.project.cables?.find(edge=>edge.id===route.id):undefined;
-        const panelSide=(end:ConnectionEnd)=>{if(!isAttached(end))return null;const equipment=p.project.equipment.find(e=>e.id===end.device);return equipment?.capabilities.scene3d?.kind==='control-panel'?Object.entries(equipment.ports).find(([id])=>id===end.port)?.[1].terminal.side??null:null;};
-        const points=route.kind==='cable'&&route.valid?projectPanelCable(route.points.map(vector),cable?panelSide(cable.from):null,cable?panelSide(cable.to):null):route.points.map(vector);
+        // Routing already supplies outward terminal leads and height transitions.
+        // Raising all cable vertices here created diagonals and a second routing model.
+        const points=route.points.map(vector);
         const cableMaterial=cable?new T.MeshStandardMaterial({color:cableAppearance(cable.from.terminal.medium as 'control'|'power'|'bus',cable.from.terminal.family).color,roughness:.65}):wire;
         if(cable)resources.materials.add(cableMaterial);
         const m=route.valid?(route.kind==='pipe'?pipeShell:cableMaterial):route.id===p.cablePreview?.id?pending:invalid;
@@ -377,6 +392,8 @@ export default function Scene3D(props:SceneProps){
       distance*=1.08;
       controls.target.copy(center);controls.maxDistance=Math.max(40,distance*2);camera.position.copy(center).addScaledVector(direction,distance);camera.near=.01;camera.far=Math.max(200,distance+radius*5);camera.updateProjectionMatrix();controls.update();};
     synchronize();fit.current();
+    restoreCamera.current=()=>{const pose=current.current.viewRestore?.pose;if(!pose)return;camera.position.set(pose[0],pose[1],pose[2]);controls.target.set(pose[3],pose[4],pose[5]);controls.update();};restoreCamera.current();
+    let cameraTimer:ReturnType<typeof setTimeout>|undefined,lastCamera='';
     let fittedAspect=node.clientWidth&&node.clientHeight?node.clientWidth/node.clientHeight:1;
     const resize=new ResizeObserver(()=>{const w=node.clientWidth,h=node.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();const aspect=w/h;if(Math.abs(Math.log(aspect/fittedAspect))>.15){fittedAspect=aspect;fit.current();}});resize.observe(node);
     const ray=new T.Raycaster();let down=[0,0],gesture:{kind:'equipment';pointer:number;id:string;x:number;y:number;origin:T.Vector3;moved:boolean;started:boolean}|{kind:'plug';pointer:number;id:string;end:'from'|'to';moved:boolean;height:number;point:Point;offset:T.Vector3;lastY:number;vertical:boolean;targets:Endpoint[];target?:Endpoint}|null=null;
@@ -451,7 +468,9 @@ export default function Scene3D(props:SceneProps){
             best=score;plug.target=target;point.copy(world);
           }
         }
-        plug.point={x:Math.round(point.x*100),y:Math.round(point.z*100),z:Math.round(point.y*100)};
+        plug.point=plug.target?anchor(current.current.project,plug.target):{
+          x:e.shiftKey?plug.point.x:Math.round(point.x*100),
+          y:e.shiftKey?plug.point.y:Math.round(point.z*100),z:Math.round(point.y*100)};
         node.dataset.connectionTarget=plug.target?`${plug.target.device}.${plug.target.port}`:'';
         highlightTarget(plug.target);
         current.current.moveCable?.(plug.point.x,plug.point.y,plug.point.z);return;
@@ -516,12 +535,14 @@ export default function Scene3D(props:SceneProps){
       }
       return centers;
     };
-    const tick=(now:number)=>{const dt=Math.min(.1,(now-last)/1000);last=now;if(!document.hidden){if(gesture&&current.current.interaction!=='edit')pointerCancel();if(dirty)synchronize();if(focusedSystem!==current.current.systemFocus){focusedSystem=current.current.systemFocus;for(const [id,material] of groupBorders)material.color.set(id===focusedSystem?0x17879a:0xa8bec8);}const elapsed=reduced.matches?0:dt;for(const scope of [equipmentResources,routeResources])for(const update of scope.updaters)update(elapsed);
+    const tick=(now:number)=>{const dt=Math.min(.1,(now-last)/1000);last=now;if(!document.hidden){if(gesture&&current.current.interaction!=='edit')pointerCancel();if(dirty)synchronize();if(focusedSystem!==current.current.systemFocus){focusedSystem=current.current.systemFocus;for(const [id,material] of groupBorders)material.color.set(id===focusedSystem?0x17879a:0xa8bec8);}const elapsed=reduced.matches?0:dt;for(const scope of [...deviceResources.values(),routeResources])for(const update of scope.updaters)update(elapsed);
       const selected=new Set(current.current.selectedIds??[current.current.selected]);node.dataset.selectedEquipment=[...selected].join(',');for(const [id,helper] of selections)if(!selected.has(id)||!roots.has(id)){scene.remove(helper);helper.geometry.dispose();helper.material.dispose();selections.delete(id);}
       for(const id of selected){const chosen=roots.get(id);if(!chosen)continue;let helper=selections.get(id);if(!helper){helper=new T.BoxHelper(chosen,0x258ebb);scene.add(helper);selections.set(id,helper);}helper.setFromObject(chosen);}
+      const activePort=current.current.selectedPort,portAnchor=activePort?roots.get(current.current.selected)?.getObjectByName(`${current.current.selected}.${activePort}`):undefined;portHalo.visible=!!portAnchor;if(portAnchor){portAnchor.getWorldPosition(portHalo.position);world.worldToLocal(portHalo.position);}node.dataset.selectedPort=portAnchor?`${current.current.selected}.${activePort}`:'';
       if(!dragLine.parent)world.add(dragLine);const preview=current.current.cablePreview,route=preview&&current.current.routes.find(item=>item.id===preview.id),fixed=preview?.end==='from'?route?.points.at(-1):route?.points[0];dragLine.visible=!!preview&&!!fixed;if(preview&&fixed){dragCoordinates.set([fixed.x,fixed.z,fixed.y,preview.x,preview.z,preview.y]);dragGeometry.attributes.position!.needsUpdate=true;dragGeometry.computeBoundingSphere();}
       if(!gesture)controls.update();renderer.render(scene,camera);
-      node.dataset.cameraPose=JSON.stringify([...camera.position.toArray(),...controls.target.toArray()]);node.dataset.dragTip=JSON.stringify(current.current.cablePreview??null);node.dataset.frames=String(++count);
+      const pose:[number,number,number,number,number,number]=[camera.position.x,camera.position.y,camera.position.z,controls.target.x,controls.target.y,controls.target.z];
+      node.dataset.cameraPose=JSON.stringify(pose);if(lastCamera!==node.dataset.cameraPose){lastCamera=node.dataset.cameraPose;clearTimeout(cameraTimer);cameraTimer=setTimeout(()=>current.current.onCameraPose?.(pose),200);}node.dataset.dragTip=JSON.stringify(current.current.cablePreview??null);node.dataset.frames=String(++count);node.dataset.animationPhases=JSON.stringify(Object.fromEntries(phases));
       const nextScreens=JSON.stringify([node.dataset.cameraPose,equipmentRevision,routeRevision,[...roots].map(([id,root])=>[id,root.position.x,root.position.y,root.position.z]),node.clientWidth,node.clientHeight,current.current.selectedIds,current.current.selected,current.current.locale]);
       if(nextScreens!==screenRevision){
         screenRevision=nextScreens;
@@ -533,7 +554,7 @@ export default function Scene3D(props:SceneProps){
         node.dataset.equipmentScreens=JSON.stringify(updateLabels(rect,projectPoint));
       }
     }frame=requestAnimationFrame(tick);};frame=requestAnimationFrame(tick);
-    return()=>{pointerCancel();window.removeEventListener('blur',pointerCancel);cancelAnimationFrame(frame);resize.disconnect();theme.removeEventListener('change',applyTheme);renderer.domElement.removeEventListener('pointerdown',pointerDown,true);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerup',pointerUp);renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('lostpointercapture',pointerCancel);renderer.domElement.removeEventListener('dblclick',focusEquipment);controls.dispose();for(const helper of selections.values()){helper.geometry.dispose();helper.material.dispose();}targetGeometry.dispose();targetAvailable.dispose();targetSelected.dispose();dragGeometry.dispose();dragMaterial.dispose();environment.dispose();dispose(equipmentResources);dispose(routeResources);for(const m of materials)m.dispose();floor.geometry.dispose();floor.material.dispose();grid.geometry.dispose();for(const m of Array.isArray(grid.material)?grid.material:[grid.material])m.dispose();renderer.dispose();renderer.domElement.remove();labelLayer.remove();rebuild.current=()=>{};fit.current=()=>{};};
+    return()=>{pointerCancel();window.removeEventListener('blur',pointerCancel);cancelAnimationFrame(frame);resize.disconnect();theme.removeEventListener('change',applyTheme);renderer.domElement.removeEventListener('pointerdown',pointerDown,true);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerup',pointerUp);renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('lostpointercapture',pointerCancel);renderer.domElement.removeEventListener('dblclick',focusEquipment);clearTimeout(cameraTimer);restoreCamera.current=()=>{};controls.dispose();for(const helper of selections.values()){helper.geometry.dispose();helper.material.dispose();}portHaloGeometry.dispose();portHaloMaterial.dispose();targetGeometry.dispose();targetAvailable.dispose();targetSelected.dispose();dragGeometry.dispose();dragMaterial.dispose();environment.dispose();for(const scope of deviceResources.values())dispose(scope);dispose(groupResources);dispose(routeResources);for(const m of materials)m.dispose();floor.geometry.dispose();floor.material.dispose();grid.geometry.dispose();for(const m of Array.isArray(grid.material)?grid.material:[grid.material])m.dispose();renderer.dispose();renderer.domElement.remove();labelLayer.remove();rebuild.current=()=>{};fit.current=()=>{};};
   },[]);
   useEffect(()=>rebuild.current(),[props.project,props.routes,props.interaction,props.cablePreview?.id,props.locale]);useEffect(()=>fit.current(),[props.fit,props.systemFocus]);
   return error ? <div className="scene3d-fallback"><Scene {...props}/><p role="status">{props.locale==='ru'?'3D недоступна. Продолжаем в 2D.':'3D unavailable. Continuing in 2D.'}</p></div> : <div ref={host} className="scene3d" aria-label="3D process model">

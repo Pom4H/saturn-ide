@@ -76,7 +76,7 @@ Native TypeScript **7.0.2** установлен как `@typescript/native`; `t
 
 ```ts
 report('hourly-water', {
-  label: { ru: 'Почасовой расход воды', en: 'Hourly water balance' },
+  label: 'Почасовой расход воды',
   bucketMs: 3_600_000,
   columns: {
     volume: column(signals.flow, 'integral', { ru: 'Объём', en: 'Volume' }, 'm³'),

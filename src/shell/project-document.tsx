@@ -4,7 +4,7 @@ import { classHighlighter, highlightTree } from '@lezer/highlight';
 import dslGuide from '../../docs/dsl.md' with { type: 'text' };
 import './project-document.css';
 
-type MarkdownOptions = { idPrefix?: string; linkBase?: string };
+type MarkdownOptions = { idPrefix?: string; linkBase?: string; renderLink?:(target:string,label:string)=>ReactNode|undefined };
 const slug = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
 
 function linkTarget(target: string, { idPrefix = 'project', linkBase }: MarkdownOptions): string | undefined {
@@ -21,6 +21,7 @@ function inline(source: string, options: MarkdownOptions): ReactNode[] {
     if (part.startsWith('`') && part.endsWith('`')) return <code key={index}>{part.slice(1, -1)}</code>;
     const match = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (match) {
+      const custom=options.renderLink?.(match[2]!,match[1]!);if(custom!==undefined)return <span key={index}>{custom}</span>;
       const href = linkTarget(match[2]!, options);
       return href ? <a key={index} href={href} target={href.startsWith('#') ? undefined : '_blank'} rel={href.startsWith('#') ? undefined : 'noopener noreferrer'}>{match[1]}</a> : match[1];
     }
@@ -53,9 +54,9 @@ const fence = (line: string) => /^```/.test(line);
 const boundary = (line: string) => heading(line) || table(line) || list(line) || fence(line) || line.startsWith('> ');
 
 /** A deliberately small Markdown subset. Content and highlighted code stay React text nodes, never HTML. */
-export function MarkdownDocument({ markdown, idPrefix = 'project', linkBase }: { markdown: string } & MarkdownOptions) {
+export function MarkdownDocument({ markdown, idPrefix = 'project', linkBase, renderLink }: { markdown: string } & MarkdownOptions) {
   const lines = markdown.split(/\r?\n/), blocks: ReactNode[] = [], ids = new Map<string, number>();
-  const options = { idPrefix, linkBase }, renderInline = (value: string) => inline(value, options);
+  const options = { idPrefix, linkBase, renderLink }, renderInline = (value: string) => inline(value, options);
   for (let i = 0; i < lines.length;) {
     const line = lines[i]!.trim();
     if (!line) { i++; continue; }

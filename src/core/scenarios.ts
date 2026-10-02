@@ -1,4 +1,4 @@
-import { ProjectError, validateReading, validateValue, type Project, type Signal, type Text, type Value, type Sample } from '../core';
+import { ProjectError, validateReading, validateValue, type Project, type Signal, type SignalValue, type Text, type Value, type Sample } from '../core';
 import type { SimulationClockState } from './simulation';
 
 export interface ScenarioWaitStep { readonly kind: 'wait'; readonly durationMs: number }
@@ -20,18 +20,22 @@ export interface Scenario {
   readonly steps: readonly ScenarioStep[];
 }
 
-export function scenario(id: string, options: Omit<Scenario, 'id'>): Scenario {
+export function scenario<const O extends Omit<Scenario, 'id'>>(id: string, options: O): Scenario & O {
   return Object.freeze({ ...options, id, steps: Object.freeze(options.steps.map(step => Object.freeze({ ...step }))) });
 }
 export function wait(durationMs: number): ScenarioWaitStep { return Object.freeze({ kind: 'wait', durationMs }); }
 export function advance(steps: number): ScenarioAdvanceStep { return Object.freeze({ kind: 'advance', steps }); }
-export function set<T extends Value>(signal: Signal<T, string, true>, value: NoInfer<T>): ScenarioCommandStep {
+export function set<const S extends Signal<Value, string, true>>(signal: S, value: NoInfer<SignalValue<S>>): ScenarioCommandStep & {signal:S};
+export function set<T extends Value>(signal: Signal<T, string, true>, value: NoInfer<T>): ScenarioCommandStep;
+export function set(signal: Signal<Value, string, true>, value: Value): ScenarioCommandStep {
   return Object.freeze({ kind: 'command', signal, value });
 }
-export function expectValue<T extends Value>(signal: Signal<T>, value: NoInfer<T>, timeoutMs = 5000): ScenarioExpectStep {
+export function expectValue<const S extends Signal>(signal: S, value: NoInfer<SignalValue<S>>, timeoutMs?: number): ScenarioExpectStep & {signal:S};
+export function expectValue<T extends Value>(signal: Signal<T>, value: NoInfer<T>, timeoutMs?: number): ScenarioExpectStep;
+export function expectValue(signal: Signal, value: Value, timeoutMs = 5000): ScenarioExpectStep {
   return Object.freeze({ kind: 'expect', signal, value, timeoutMs });
 }
-export function expectRange(signal: Signal<number>, min: number, max: number, timeoutMs = 5000): ScenarioExpectRangeStep {
+export function expectRange<const S extends Signal<number>>(signal: S, min: number, max: number, timeoutMs = 5000): ScenarioExpectRangeStep & {signal:S} {
   return Object.freeze({ kind: 'expect-range', signal, min, max, timeoutMs });
 }
 

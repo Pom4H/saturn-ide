@@ -1,3 +1,4 @@
+import { prepareInterface } from './helpers/interface-preferences';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
@@ -13,16 +14,19 @@ const tree=page.getByRole('tree',{name:'Структура проекта'}),tab
 const rail=page.getByRole('navigation',{name:'Рабочие области'});
 const file=(name:string)=>tree.getByRole('treeitem',{name,exact:true});
 const openSurface=async(name:string)=>{
-  const sections:Record<string,string>={'Схема':'Объект','Сигналы':'Мониторинг','Отчёты':'Отчёты','Среда исполнения':'Среда','Git':'Изменения','HMI':'Объект','Документация':'Объект'};
+  const sections:Record<string,string>={'Схема':'Главная','Сигналы':'Мониторинг','Отчёты':'Отчёты','Среда исполнения':'Среда','Git':'Изменения','HMI':'Главная','Документация':'Главная'};
   const section=sections[name];if(!section)throw new Error(`Unknown surface ${name}`);
   await rail.getByRole('button',{name:section,exact:true}).click();
+  if(name==='Сигналы')await file('Сигналы').click();
+  if(name==='Схема')await file('Схема').click();
   if(name==='HMI'||name==='Документация')await file(name).click();
 };
 const tab=(name:string)=>tabs.getByRole('tab',{name,exact:false});
 const shot=async(name:string)=>page.screenshot({path:`artifacts/explorer-${name}.png`});
 const sourceIs=async(path:string)=>{await page.waitForFunction(path=>document.querySelector('.code-pane .pane-heading code')?.textContent===path,path);assert.equal(await page.locator('.diagram-workspace').count(),0);};
 try {
-  mkdirSync('artifacts',{recursive:true});await page.goto(app.server.url.toString());await page.locator('[data-equipment="P-01"]').waitFor();
+  await prepareInterface(context);
+  mkdirSync('artifacts',{recursive:true});await page.goto(app.server.url.toString()+'?page=diagram');await page.locator('[data-equipment="P-01"]').waitFor();
   assert.equal(await tab('Схема').count(),1);assert.equal(await page.getByRole('button',{name:'Код рядом',exact:true}).count(),0);
   for(const name of ['equipment','plugins','reports','project.ts','server.ts'])assert.equal(await file(name).count(),1,`Missing real path ${name}`);
   await file('P-01.device.ts').click();await sourceIs('equipment/P-01.device.ts');
@@ -44,7 +48,7 @@ try {
   await page.getByRole('button',{name:'Закрыть сообщение',exact:true}).click();
   await shot('source-light');await page.emulateMedia({colorScheme:'dark'});await shot('source-dark');
   // Tree keyboard navigation and filtered ancestors expose nested extension files.
-  await chooseExplorerMode(page,'Код');await page.getByRole('button',{name:'Режим проводника'}).waitFor();
+  await chooseExplorerMode(page,'Код');await page.locator('.explorer-heading .context-heading').waitFor();
   await file('plugins').focus();await page.keyboard.press('ArrowRight');await file('example-extension').waitFor();
   const filter=page.getByRole('textbox',{name:'Фильтр панели'});
   await filter.fill('views/panel.ts');await file('panel.ts').click();await sourceIs('plugins/example-extension/views/panel.ts');
@@ -54,7 +58,7 @@ try {
   await page.evaluate(()=>getSelection()?.removeAllRanges());const box=(await tree.boundingBox())!;await page.mouse.move(box.x+10,box.y+10);await page.mouse.down();await page.mouse.move(box.x+100,box.y+150,{steps:10});await page.mouse.up();assert.equal(await page.evaluate(()=>getSelection()?.toString()),'');
   await page.getByRole('button',{name:'Сохранить',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.resource-tabs .modified'));
   // Other existing project capabilities open in the same strip.
-  await chooseExplorerMode(page,'Объекты');await page.getByRole('button',{name:'Режим проводника'}).waitFor();
+  await chooseExplorerMode(page,'Объекты');await page.locator('.explorer-heading .context-heading').waitFor();
   for(const [name,selector] of [['Сигналы','.signals-surface'],['Отчёты','.reports-surface'],['HMI','.hmi-surface'],['Документация','.documentation-surface'],['Среда исполнения','.environment-surface'],['Git','.git-surface']] as const){await openSurface(name);await page.locator(selector).waitFor();assert.equal(await tab(name).count(),1);}
   await openSurface('Схема');await page.locator('.scene').waitFor();await shot('diagram-dark');
   await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Открыть навигацию',exact:true}).click();await tree.waitFor({state:'visible'});await shot('phone-tree');

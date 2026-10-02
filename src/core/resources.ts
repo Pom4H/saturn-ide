@@ -1,6 +1,6 @@
 /** File-like views of the existing project. This index is derived, never persisted as a second project. */
 export type ResourceKind = 'project' | 'device' | 'report' | 'plugin' | 'target' | 'hmi' | 'file';
-export type EditorId = 'diagram' | 'source' | 'signals' | 'reports' | 'hmi' | 'docs' | 'targets' | 'git' | 'dependencies' | 'performance' | 'scenarios';
+export type EditorId = 'diagram' | 'source' | 'signals' | 'reports' | 'hmi' | 'docs' | 'targets' | 'git' | 'dependencies' | 'performance' | 'scenarios' | 'equipment' | 'trash';
 export type ShellHost = 'browser' | 'terminal';
 export interface SourceLocation { path: string; from?: number; to?: number }
 export interface ProjectResource {
@@ -31,14 +31,18 @@ export const editorNames: Record<EditorId, { en: string; ru: string }> = {
   signals: { en: 'Signals', ru: 'Сигналы' }, reports: { en: 'Reports', ru: 'Отчёты' },
   performance: {en:'Asset status',ru:'Состояние объекта'},
   scenarios: {en:'Scenarios',ru:'Сценарии'},
-  dependencies:{en:'Dependencies',ru:'Зависимости'},
+  dependencies:{en:'Plugins',ru:'Плагины'},
+  equipment:{en:'Equipment catalog',ru:'Каталог оборудования'},trash:{en:'Trash',ru:'Корзина'},
   hmi: { en: 'HMI', ru: 'HMI' }, docs: { en: 'Documentation', ru: 'Документация' }, targets: { en: 'Runtime environment', ru: 'Среда исполнения' }, git: { en: 'Git', ru: 'Git' },
 };
 export const resourceUri = (project: string, kind: ResourceKind, id: string): string =>
   `saturn://${encodeURIComponent(project)}/${kind}/${encodeURIComponent(id)}`;
 /** Every UI delegates capability decisions here; lack of a renderer must not become a fake view. */
+export function supportsEditor(editor:EditorId, host:ShellHost):boolean {
+  return host !== 'terminal' || !(['hmi','performance','scenarios','equipment','trash'] as readonly EditorId[]).includes(editor);
+}
 export function availableEditors(resource: ProjectResource, host: ShellHost): EditorId[] {
-  return resource.editors.filter(editor => !(host === 'terminal' && (editor === 'hmi' || editor === 'performance' || editor === 'scenarios')) && (editor !== 'source' || !!resource.source));
+  return resource.editors.filter(editor => supportsEditor(editor,host) && (editor !== 'source' || !!resource.source));
 }
 export function findResources(catalog: ResourceCatalog, query: string, locale: ShellLocale): ProjectResource[] {
   const words = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);

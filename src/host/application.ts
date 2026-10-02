@@ -2,7 +2,7 @@ import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, statSync } from 'node:fs';
 const usage=`Usage:
-  saturn init <directory> [--template empty|pumping-station]
+  saturn init <directory> [--template empty|pumping-station|smart-home]
   saturn gui --project <directory> [--port 3000] [--manual] [--no-open]
   saturn serve --project <directory> [--port 3000] [--manual]
   saturn cli [--url http://127.0.0.1:3000] [command]
@@ -14,9 +14,9 @@ export async function application(argv:string[]) {
   if(mode==='help'||args[0]==='--help'){console.log(usage);return;}
   if(mode==='init'){
     const {createProject}=await import('../workspace/project-template');const destination=args.shift();
-    if(!destination||destination.startsWith('-'))throw new Error('Usage: saturn init <directory> [--template empty|pumping-station]');
-    let template:'empty'|'pumping-station'='empty';
-    while(args.length){const flag=args.shift();if(flag!=='--template')throw new Error('Unknown init option: '+flag);const value=args.shift();if(value!=='empty'&&value!=='pumping-station')throw new Error('Expected --template empty|pumping-station');template=value;}
+    if(!destination||destination.startsWith('-'))throw new Error('Usage: saturn init <directory> [--template empty|pumping-station|smart-home]');
+    let template:'empty'|'pumping-station'|'smart-home'='empty';
+    while(args.length){const flag=args.shift();if(flag!=='--template')throw new Error('Unknown init option: '+flag);const value=args.shift();if(value!=='empty'&&value!=='pumping-station'&&value!=='smart-home')throw new Error('Expected --template empty|pumping-station|smart-home');template=value;}
     console.log('Created project: '+createProject(destination,{template}));
     console.log('Next: from the new directory run `saturn gui --project .`, or from the Saturn IDE checkout run `bun start gui --project <directory>`.');
     if(template==='pumping-station')console.log('The station example imports React. Install its project dependencies after configuring Git access to the pinned core dependency.');

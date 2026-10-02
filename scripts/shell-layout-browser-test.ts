@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
+import { chromium, expect } from 'playwright/test';
+import { fixture } from '../tests/helpers';
+import { createApp } from '../src/host/dev';
+import { prepareInterface } from './helpers/interface-preferences';
+import { toggleShellDetails } from './helpers/shell-details';
+
+const evidence='artifacts/shell-layout';mkdirSync(evidence,{recursive:true});
+const work=fixture(),app=await createApp({projectDir:work.root,dataDir:work.dir,databaseUrl:':memory:',port:0,preview:'simulation'});
+const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
+const context=await browser.newContext({viewport:{width:1600,height:1000},locale:'ru-RU',recordVideo:{dir:evidence+'/recording'}});
+const page=await context.newPage(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+const shot=async(name:string)=>page.screenshot({path:`${evidence}/${name}.png`});
+const sidebar=page.locator('#shell-details');
+const slot=async(kind:'properties'|'review'|'catalog')=>{await toggleShellDetails(page,kind);await expect(sidebar).toHaveAttribute('data-slot',kind);await expect(sidebar).toBeVisible();assert.equal(await page.locator('.workbench .inspector,.artifact-drawer .inspector,.workbench .equipment-catalog-panel').count(),0);};
+try {
+  await prepareInterface(context);await page.goto(app.server.url.href+'?page=scenarios');
+  await expect(page.getByRole('heading',{name:'Сценарии симуляции'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Действия вкладки',exact:true})).toHaveCount(0);await expect(page.locator('.surface-toolbar')).toHaveCount(0);await expect(page.getByRole('button',{name:'Перейти',exact:true})).toHaveCount(0);
+  await expect(page.locator('.topbar .shell-details-controls')).toBeVisible();await shot('scenarios-clean');
+  await slot('properties');assert.ok(await sidebar.evaluate(node=>node.parentElement?.classList.contains('shell-body')));await shot('scenarios-properties');
+  await slot('review');await expect(page.locator('.resource-details:not(.review-pane)')).toHaveCount(0);await shot('scenarios-review');
+  await toggleShellDetails(page,'review');await expect(sidebar).toHaveCount(0);
+  await page.locator('[data-rail-section="source"]').click();const cm=page.locator('.cm-content');await expect(cm).toContainText('project');
+  await cm.click();await page.keyboard.press('ControlOrMeta+End');await page.keyboard.type('\n// shared shell draft');
+  await slot('catalog');await expect(cm).toContainText('shared shell draft');await shot('source-catalog');
+  const linked=await context.newPage();linked.on('pageerror',error=>errors.push(error.message));await linked.goto(page.url());await expect(linked.locator('#shell-details')).toHaveAttribute('data-slot','catalog');await expect(linked.locator('.cm-content')).toBeVisible();await linked.close();
+  await page.keyboard.press('ControlOrMeta+Shift+T');await expect(page.locator('.new-tool-tab')).toBeVisible();await expect(sidebar).toHaveCount(0);await shot('launcher');
+  await page.getByRole('textbox',{name:'Найти инструмент или ресурс'}).fill('TypeScript');await page.locator('.new-tool-tab .tool-list').getByRole('button',{name:/Код и файлы/}).click();await expect(cm).toContainText('shared shell draft');
+  await page.locator('[data-rail-section="threads"]').click();await expect(page.getByRole('region',{name:'Инженерная задача'})).toBeVisible();await expect(page.locator('#artifact-drawer')).toBeHidden();await expect(sidebar).toHaveCount(0);await shot('chat-closed');
+  await page.locator('.topbar').getByRole('button',{name:'Правая боковая панель',exact:true}).click();await expect(sidebar).toBeHidden();
+  await page.getByRole('button',{name:'Показать правую панель',exact:true}).click();await expect(sidebar).toBeVisible();await expect(cm).toContainText('shared shell draft');await shot('chat-single-sidebar');
+  await page.getByRole('button',{name:'Скрыть правую панель',exact:true}).click();await expect(sidebar).toBeHidden();
+  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Главное меню',exact:true}).click();await page.getByRole('dialog',{name:'Главное меню'}).getByRole('button',{name:'Код',exact:true}).click();await expect(cm).toContainText('shared shell draft');
+  await slot('catalog');await shot('mobile-catalog');await page.getByRole('button',{name:'Закрыть каталог',exact:true}).click();await expect(sidebar).toHaveCount(0);
+  await expect(page.locator('.mobile-shell-header .shell-details-controls button')).toHaveCount(1);
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'mobile shell overflow');await shot('mobile-source');
+  assert.deepEqual(errors,[]);console.log('PASS Shell layout: one chrome selector and slot; clean scenario/source views; real source draft retention; URL restore; launcher; chat closed/reopened; mobile catalog and no overflow; no page errors.');
+} catch(error){await shot('failure');console.error('Browser errors:',errors);throw error;} finally {await context.close();await browser.close();await app.close();work.clean();}

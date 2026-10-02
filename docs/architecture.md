@@ -248,6 +248,54 @@ CodeMirror использует семантические CSS-токены об
 показ draft рядом с applied live-моделью и операции release непосредственно в Shell ещё не завершены.
 Эти пункты — условия приёмки, а не необязательная полировка.
 
+### Browser shell: task and tools — 2026-09-30
+
+Инженерный shell по умолчанию открывает основной 2D-вид объекта с переключением
+в 3D. Рейка выбирает отдельную центральную страницу: объект, код, мониторинг,
+отчёты, Git, среда или плагины. «Код» всегда показывает файловую проекцию;
+«Объект» — предметную. Один MenuProvider обслуживает единое меню проводника.
+Чат и поддержка находятся внизу рейки; только эта страница показывает черновик
+задачи и соседний выезжающий workbench. Инспектор/review принадлежат одному
+правому слоту shell, соседнему с workspace, а не вложенному sidebar поверхности.
+
+Вкладки ресурсов по-прежнему принадлежат ShellSession; «Новая вкладка» — временный
+выбор инструмента над тем же workbench, без второго ResourceCatalog. Закрытие
+правой панели на странице чата делает её inert и скрывает компоновку, но не
+размонтирует поверхность, редактор, 3D canvas или единственную ShellPanel.
+При небольшом viewport инструменты и инспектор открываются поверх центра.
+Operator сохраняет полноразмерный workbench.
+
+URL сериализует навигационную проекцию: страницу/инструмент, URI ресурса/путь
+файла, выбранное устройство/сигнал/отчёт, 2D/3D и камеру, систему, режим рабочего
+места, вкладку нижней панели, inspector/review и стартовую вкладку инструментов.
+Reload и Back/Forward восстанавливают эту проекцию через тот же ShellSession;
+перемещение камеры заменяет текущую history entry. URL не содержит черновик
+исходника/запроса, данные исполнения, credentials и команды publish/apply.
+Локальные настройки внутри отдельных поверхностей, не перечисленные в этой
+проекции (например фильтры диагностики и период отчёта), пока не сериализуются.
+
+Плагины — центральный каталог исходников текущего проекта с поиском, добавлением
+из GitHub, закреплёнными ревизиями и проверкой обновлений через существующий
+workspace API. Источник подключается обычным import; перечень файлов строится
+из того же ResourceCatalog. Глобального lifecycle/реестра установки нет.
+
+Кнопки chrome открывают одну общую панель инструментов и отдельную краткую сводку.
+Сводка читает реальные Git/release данные и показывает отсутствие связи/ошибку,
+не создаёт applied identity. Меню задач используют существующий MenuProvider;
+меню файлов и вкладок продолжают выполнять команды того же ShellSession.
+
+Список инженерных задач — только временные UI-черновики текущего открытого shell:
+название, текст запроса, закрепление и обратимый архив в памяти. Это не история
+разговора агента, база проектов или новый авторский формат. Перезагрузка страницы
+сбрасывает эти черновики. Браузерный ACP transport подключает внешний процесс, явно заданный локальным
+host через SATURN_AGENT_COMMAND. UI передаёт ограниченный project context из
+общего CommandShell, показывает поток ответов/инструментов и стандартные запросы
+разрешения, позволяет остановить запрос и отключить процесс. Без конфигурации
+остаётся копирование запроса. CLI ACP также сохранён; модель, auth и tool loop
+принадлежат агенту. Текст ответа и connection handles хранятся только в памяти
+открытого Shell; долговременная история остаётся у внешнего harness.
+Share/Fork/schedules и произвольный браузер URL не имитируются стартовой вкладкой.
+
 ## Сильные решения, которые нельзя потерять
 
 Вывод типов из определения проекта; вычисляемые сигналы и проверка физических размерностей;
@@ -330,12 +378,27 @@ See [runtime scenarios](runtime-scenarios.md) for the API and interruption seman
 
 ### Operator feedback → authored DSL proposal
 
+Авторский `project()` допускает отсутствие пустых `equipment`, `pipes`, `alarms`.
+Конструктор материализует отдельные массивы до обычной валидации; checked/transported
+Project сохраняет прежний контракт. `null` и неверные коллекции не становятся defaults.
+Статически известные сигналы индексируются по собственному ID с сохранением value type
+и writable из оборудования, связей, тревог, отчётов, мониторинга, сценариев и HMI.
+Условные ветки и неизвестный состав коллекций требуют проверки наличия; никакой
+параллельный registry не добавляется. Helpers сохраняют типы переданных ссылок.
+Standalone starter всё ещё закреплён на предыдущей опубликованной core-ревизии и
+сохраняет совместимые пустые списки до отдельного обновления dependency pin.
+
 Feedback belongs to SaaS identity/Git integration. AI Gateway receives the operator request
 and a bounded catalog of existing DSL literals, never runtime/deployment credentials or a
 shell tool. It returns typed DslChange operations. Workspace owns AST targeting and literal
-serialization. Supported operations initially cover equipment localized labels, existing
+serialization. Supported operations initially cover equipment string labels (without a locale), existing
 signal initial values and existing alarm thresholds; unknown targets and computed/spread
 forms are rejected. This is an extensible operation contract, not another project DSL.
+Old locale-map labels remain explicit compatibility targets: a proposal must name the
+existing locale and cannot silently replace or merge translations. Structural device
+declarations use the same AST recognition as the source index; an explicit semanticId
+is not required merely to change a name. Authored names/descriptions are plain strings;
+Shell localization and system diagnostics do not impose translations on project source.
 The resulting draft PR is unverified authored source until ordinary project CI checks it.
 It cannot merge, publish, apply, flash, edit CI/permissions/dependencies or run generated code.
 Operator notes can be recorded as issues without generating source. Capability checks and
@@ -358,6 +421,15 @@ Saturn remains responsible only for engineering semantics: typed project source,
 inspection/impact, revision lifecycle and runtime authority. MCP is optional and only exposes
 existing derived Saturn semantics when that is more useful than reading source; it is not required
 for normal source editing. Do not implement a private JSON-RPC layer, agent registry or model gateway.
+
+The local browser adapter (`host/agent.ts`) uses the same official ACP SDK and standard
+stdio transport. The browser cannot supply an executable, cwd, environment or model.
+Local host configuration selects the command; each transient task connects an external
+session rooted at the existing workspace. Mutating transport endpoints require the
+existing same-origin/session-key checks. ACP permission choices are relayed explicitly;
+Saturn does not manufacture approvals. Cancellation, process failure and disconnect are
+visible; host shutdown closes agent processes. These are local transport boundaries,
+not authenticated remote agent access or runtime authorization.
 
 External agents may propose source edits, but check, review, Git, publish and apply remain distinct.
 An agent connection never implies runtime credentials, live commands, flashing or deployment
@@ -478,3 +550,265 @@ Project-owned `device()` может объявить `capabilities.instrument` �
 не создаёт второй topology model или соединение для физики. `inline` требует
 входной и выходной fluid-порты и устанавливается обычными `pipe()`.
 Старый `tap(line, instrument)` остаётся отдельной задачей миграции API.
+
+## Home, настройки и пресеты интерфейса — 2026-09-30
+
+Home — проекция существующего `ShellSession` и той же модели объекта. По умолчанию
+открывается реальный 3D renderer; 2D доступен рядом и как персональная настройка Home.
+Ресурсные страницы продолжают занимать центр, чат — отдельную страницу с соседними
+инструментами. Настройки используют sidebar Shell и центр, без вложенного explorer.
+Язык, системная/светлая/тёмная тема, акцент, иконка Home и домашний/деловой пресет
+сохраняются в браузере. Пресеты меняют меню и быстрые переходы, не тип Project и не
+права. Домашний проект может обслуживаться бизнес-командой.
+
+Навигация назад/вперёд использует native History с собственными индексами entries.
+Выбор страницы/ресурса записывает entry, движение камеры заменяет текущий. Кнопки
+не уводят на неизвестную внешнюю предыдущую страницу; browser Back остаётся нативным.
+Home и раздел настроек сохраняются в URL. Несохранённые source buffers остаются
+в Documents при переходе в Home/Settings. Перечитать изменённый файл можно в его
+локальном заголовке; глобальная нижняя statusbar убрана. Git, runtime authority,
+checked/published/applied, diagnostics и фоновые панельные возможности сохранены.
+
+Индикатор среды показывает подтверждённое состояние подключённого runtime. Live
+не переименовывается в production: необходима явная идентичность среды. Иконка
+подготовки версии показывается независимо от исполнения при несохранённых/Git
+изменениях или различии checked/applied. Сводка сохраняет раздельные идентичности.
+Одновременный обзор нескольких runtime требует отдельного gateway с актуальными
+наблюдениями каждого; текущий локальный host сообщает одну среду.
+
+Первое открытие предлагает домашний и деловой пресеты. Демопроекты принадлежат
+`saturn-examples/smart-home` и `saturn-examples/pumping-station`. Кнопка демо явно
+создаёт отдельную копию обычного TS-проекта под dataDir и открывает отдельный local
+host с declared simulator. Текущий проект не заменяется. У parent host ограничено
+два demo hosts, они закрываются вместе с ним; из demo host нельзя рекурсивно
+создавать новые hosts. Доступность определяется реальным наличием исходного примера
+(`SATURN_DEMO_ROOT`), а не фиктивной карточкой. Standalone binary без этих внешних
+примеров сообщает недоступность. CLI init/scaffold также принимает `smart-home`.
+
+## Site/Space, CAD и совместные представления — предложение, не реализация
+
+Один Project представляет инженерный объект; начальное пространство — абстрактный
+корень Project, который не требует создания комнаты, размеров здания или CAD.
+Home показывает объект целиком. Декомпозиция появляется по необходимости: площадка,
+сооружение, этаж, помещение, зона. Физическая принадлежность не должна менять ID
+оборудования, Signal или адреса протокола. Пользователь может одновременно видеть
+пространственное дерево и независимую технологическую/мониторинговую группировку.
+
+Существующие `System`, `project.systems` и `equipment.system` уже задают иерархию.
+Перед расширением требуется уточнить семантику физического containment и вторичных
+групп. Предлагается расширить этот же контракт типом пространства и пространственными
+метаданными, а не заводить альтернативные Project/Equipment/Topology. Удобный
+`space(id, options)` может возвращать расширенный System. Названия ниже — проект API,
+не доступные сейчас exports:
+
+```ts
+const kitchen = space('kitchen', {
+  label: 'Кухня', kind: 'room', parent: floor,
+  placement: { frame: floor, translation: [4, 0, 0], rotation: [0, 0, 0, 1] },
+  geometry: cad.entity('building-model', 'stable-external-element-id'),
+});
+```
+
+`frame`/`parent` в удобном API могут принимать типизированный объект с сохранением
+его ID в проверенной модели. Нужны проверки циклов, единиц, конечных transforms,
+существования ссылок и provenance. Геометрия — asset/reference того же authored
+проекта; runtime не загружает CAD source и не исполняет CAD SDK.
+
+Текущие x/y/z участвуют в SVG schematic layout и 3D rendering с его собственным
+масштабом. Их нельзя объявить миллиметрами задним числом. CAD integration требует
+явно отделить схематическое размещение от физического transform. Преобразование
+единиц и осей задаётся один раз на границе импорта; исходная система координат и
+оригинальный файл сохраняются. Большие геодезические координаты требуют локального
+origin и отдельной привязки, а не бесконтрольного масштабирования оборудования.
+
+Форматы/адаптеры: IFC для пространственной структуры и внешних ID; STEP для точной
+CAD-геометрии/сборок; glTF/GLB как производная визуализация для браузера. Наличие GLB
+не подтверждает электрические/физические порты, управляющие сигналы или геометрическую
+точность. Прямые коннекторы инженерного ПО, включая возможный Speckle adapter,
+принадлежат project-owned source kits с обычными imports. Выбор конкретного SDK
+и поддерживаемых версий требует проверки адаптером и его тестами.
+
+Повторная синхронизация должна иметь `preview → review → source edit` поверх
+workspace ownership. Текущий ScadaImportPlan создаёт новые TS-файлы и не умеет
+обновлять уже импортированные файлы; синхронизация/двоичные assets пока не реализованы.
+Нужен расширенный import plan с source revision/hash, стабильным ключом документа
+и external entity ID, таблицей сопоставления с существующими entity IDs и per-field
+ownership. Content hash версии не должен служить ID сущности. Сравнение трёх сторон:
+прошлый импорт, новый CAD, локальные изменения. Коллизии ручных override и CAD
+показываются явно. Удаление CAD-элемента оставляет диагностику привязки до review,
+а не удаляет оборудование и историю. CAS защищает source от изменений после preview.
+Импорт никогда не делает publish/apply или flashing. Assets и provenance хранятся
+рядом с обычным TS source, без скрытого глобального installation DB.
+
+Сценарий ЖК: одна площадка может ссылаться на самостоятельные Projects квартир,
+дома и общих инженерных систем. Такая ссылка сохраняет Project ID и доступную
+версию, не копирует сигнал в другую модель и не позволяет одному workspace
+незаметно редактировать другой. Агрегированный view получает данные через
+авторизованный server gateway; ссылки между проектами и multi-runtime federation
+требуют реализации, их текущая local IDE не предоставляет.
+
+Жилец и инженер открывают разрешённые представления одного объекта. Персональный
+пресет влияет на меню, иконки и тему. Общая ссылка задаёт view/space/device/camera;
+доступ определяется серверной identity и capabilities. Сам URL не выдаёт права и
+не содержит секретов. Нужны отдельные разрешения просмотра, управления, редактирования,
+публикации/деплоя и предоставления доступа. Operator mode не является авторизацией.
+До появления authenticated sharing API нельзя показывать работающий “Share access”.
+Скопировать ссылку на локальный вид уже можно, но это не удалённый общий доступ.
+
+Первичные источники для проектирования адаптеров:
+
+- IFC spatial decomposition/placement/GlobalId: https://standards.buildingsmart.org/IFC/DEV/IFC4_3/HTML/lexical/IfcSpatialStructureElement.html
+- glTF 2.0 coordinate/asset specification: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
+- Available engineering connector families, not a Saturn integration claim: https://docs.speckle.systems/connectors/manual-installation/introduction
+
+
+## Scheduled для объекта — предложение, не реализация страницы
+
+Один пункт «Расписание» открывает центральную страницу с ближайшими запусками,
+активными задачами и историей результатов. Создание начинает с выбора «Отчёт»,
+«Программа объекта» или «Развёртывание версии»; проект, timezone, следующая дата и
+среда исполнения показываются до сохранения. Настройки расписания принадлежат
+исходникам/проверенной версии проекта, а состояние запусков и результаты — runtime.
+Домашний пресет может показывать «Автоматизации», деловой — «Расписание», с теми же
+типизированными задачами и ID. Это разные подписи/быстрые фильтры одного view.
+
+Отчёты опираются на существующие typed report definitions и runtime scheduledReports:
+пропуски/coverage, timezone, dedup слотов и отсутствие неявного backfill сохраняются.
+Программа объекта должна ссылаться на проверенную программу/команду и ограниченный
+runtime contract, а не содержать свободный shell command из браузера. Существующий
+scenario worker предназначен для симуляции; это не доказательство поддержки
+периодической программы на физическом объекте. Нужны execution identity, запрет
+перекрывающихся запусков, timeout/cancellation, retry policy и журнал результата.
+
+Запланированный deploy привязывается к конкретной Published identity и целевой среде,
+а не к текущему Git HEAD на дату запуска. Окно обслуживания и серверное право на
+развёртывание проверяются при создании и повторно перед запуском. Ошибка/пропущенное
+окно, смена Applied после согласования, pause/resume/cancel и failed-after-commit
+должны быть видны в UI. Отсроченный deploy и общий scheduler этих программ пока
+не реализованы; существующие worker jobs не следует переименовывать в готовую функцию.
+
+Для общего интерфейса ЖК предлагаются разрешённые view definitions одного Project
+и серверная выдача доступа конкретным пользователям/командам. Отдельные API для
+создания/отзыва доступа должны отделять view, command, source edit и deploy rights.
+«Показать этот вид» копирует обычный адрес, «Предоставить доступ» меняет ACL на сервере.
+Пресет и факт нахождения дома внутри Site не должны сами предоставлять права.
+
+
+## Официальные UX references OpenAI — проверены 2026-09-30
+
+Референсы расположения кнопок/переходов — предоставленные скриншоты desktop app.
+Документация проверена отдельно; страницы ниже описывают продуктовые сценарии,
+а не спецификацию размеров или свидетельство визуальной parity Saturn.
+
+- [Projects and chats](https://learn.chatgpt.com/docs/projects?surface=app): проект
+  собирает связанный контекст, разговоры и файлы. В Saturn первичен инженерный
+  объект и его центральные представления; поддержка/чат остаются отдельным view.
+- [Settings](https://learn.chatgpt.com/docs/reference/settings?surface=app):
+  отдельные sections настроек и Appearance с light/dark/system и theme customization.
+  В Saturn реализованы язык, три режима темы, акцент, иконка Home и presets;
+  пользовательские шрифты/импорт произвольной темы пока не заявляются.
+- [Plugins](https://learn.chatgpt.com/docs/plugins?surface=app): отдельное место
+  поиска и просмотра reusable capabilities. В Saturn UI адаптирован к project-owned
+  source kits и существующим imports; глобальный lifecycle OpenAI не переносится.
+- [Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app): общий
+  список состояний задач и результатов запусков. В Saturn предложена центральная
+  страница отчётов/программ/deploy с runtime ownership; эти серверные задачи
+  не зависят от открытого browser tab или AI chat prompt.
+- [Code review](https://learn.chatgpt.com/docs/code-review?surface=app): scopes
+  Unstaged/Staged/Branch/Last turn и review pane. Git diff в Saturn отделён от
+  checked/published/applied и физических изменений на объекте.
+- [Work with files](https://learn.chatgpt.com/docs/artifacts-viewer): просмотр
+  результата рядом с разговором. В Saturn split drawer относится к странице чата,
+  в других разделах инженерный результат занимает центр shell.
+
+### Корзина, каталог рядом с редактором и мобильный shell — 2026-09-30
+
+Блок версии/выпусков убран из explorer; IDEUpdates остаётся в Settings → About.
+Внизу explorer находится только неброская SVG-кнопка корзины с доступным названием
+и tooltip. Каталог не занимает постоянную строку навигации: в TS/2D/3D он открывается
+иконкой в toolbar в правом слоте Shell, рядом с исходником или визуализацией.
+Каталог использует существующий ResourceCatalog для оборудования проекта и API
+scaffold для базовых и project-owned шаблонов. Создание сохраняет явный импорт
+в project.ts после предпросмотра. В 2D/3D остаётся тот же редактор и dimension;
+в TS открывается новый исходник, предыдущий draft сохраняется. Начальная позиция
+вычисляется из authored diagram bounds и настоящих трасс связей: справа от их
+границ с отступом. Preview возвращает координаты, apply использует именно их;
+исходное оборудование не перемещается. После добавления в 2D/3D камера вписывает
+новый состав. Пользователь может изменить позицию обычным drag/source editing. Файлы исходных
+наборов оборудования по-прежнему принадлежат проекту, не глобальной установке.
+`?page=equipment` — отдельный просмотр всего каталога; `details=catalog` — та же
+Shell-панель рядом с другим view. Корзина имеет `?page=trash`.
+
+WorkspaceTrash владеет удалёнными файлами в `<project>/.saturn/trash/<uuid>/`.
+Метаданные записываются до rename исходного файла; незавершённая запись без content
+не считается удалением. Версия исходника проверяется перед перемещением; Shell
+сначала запрещает удаление dirty/saving buffer. Восстановление использует exclusive
+create, проверяет hash, безопасные пути/parents и сохраняет байты/права оригинала.
+Оно не заменяет уже существующий файл. Backup удаляется только после успешного
+восстановления. Это file trash: удаления из Project arrays, исправление imports и
+обратное изменение физического оборудования не подразумеваются.
+
+Срок хранения — 30 × 24 часа от deletedAt, вне зависимости от часового пояса UI.
+Host очищает просроченные копии на старте, раз в час и при чтении корзины; восстановить
+просроченную копию нельзя. При выключенном host очистка догоняет срок при следующем
+запуске. Это не удалённый scheduler и не обещание выполнения на выключенном ноутбуке.
+Trash не попадает в authored resource index/build; runtime не импортирует workspace
+и не владеет этим хранилищем. Изменение исходников запускает обычный check, сохраняя
+различия source/checked/published/applied и существующее правило simulator-only preview.
+
+При ширине до 760 px, а также на touch-устройствах до 1024 px (включая
+ландшафтную ориентацию телефона), используется отдельный мобильный chrome: header с историей,
+именем проекта/страницы, runtime status и проводником; четыре нижних touch перехода;
+modal sheet главного меню. Desktop rail/header/tab strip скрыты. Центральный view
+использует полную ширину; project/settings/thread explorer открывается на всё тело
+экрана. Catalog и inspector являются отдельными Shell-панелями; на телефоне временно
+занимают тело экрана, с доступной кнопкой возврата. Footer/navigation учитывают safe
+area; кнопки основных переходов и toolbar имеют touch targets от 44 px. Native dialog
+управляет focus/Escape/backdrop. Тема, язык, preset, документы, URLs и права исполнения
+сохранены в существующих owners; отдельная мобильная модель Project не введена.
+Домашний preset ведёт вторым нижним переходом в HMI, бизнесовый — в performance.
+Поддержка/чат остаются в конце полного меню, не основной стартовой страницей.
+
+
+## Общая навигация и компоновка Shell — 30 сентября 2026
+
+Headless `shell/model/navigation-catalog.ts` задаёт метаданные существующих
+EditorId и UI visibility для rail, мобильного меню, New tab, поиска и быстрых
+переходов. Наличие renderer централизовано в core `supportsEditor`; labels
+контекстного действия «Показать в коде» не создают второй source view.
+Каталог не исполняет команды объекта и не является installation registry.
+
+Headless `shell/model/layout.ts` владеет только страницей и слотами Shell:
+tool/launcher, central/closed/split/full, единственной областью properties/review/catalog
+и сводкой. ShellSession по-прежнему владеет ресурсами/вкладками и Documents;
+нижняя панель использует существующий panel reducer. BrowserView adapter
+сохраняет текущие deep links, включая camera/viewBox и выбранный ресурс.
+Кнопки деталей находятся в chrome; содержимое деталей — в отдельном слоте
+Shell, не внутри конкретного view. Из view удалены общий список «Перейти» и
+дублирующее chrome; их capabilities доступны через общую навигацию и меню.
+
+Полное разложение на системные плагины, fork/PR и объединение режимов пока
+не выполнены; план и статус первого этапа — в `shell-extension-design.md`.
+
+## MCP Apps adapter
+
+`src/host/apps.ts` composes an HTTP MCP transport with the existing workspace host's
+`ShellClient`; it does not transfer workspace/runtime ownership to the model. The
+browser uses `AppsClient` as a transport for the same Shell and project browser entry.
+An immutable MCP HTML resource uses a temporary URL-navigation adapter, including
+Back/Forward, and shares the ordinary standalone URL with its host. This is view
+state, not another authoring format. Runtime/project data and credentials are not
+stored in a plugin manifest.
+
+Read/check/source-write tools and explicit publish/apply/control tools remain
+separate, preserving workspace versions and runtime identity fences. App-only
+updates carry full UI state through `_meta` and coalesce telemetry; the model gets
+compact project summaries and current view context. The UI bundle and resource URI
+are content-versioned. Source/model hot reload preserves the render instance and
+unchanged device resources. Browser-code changes require a rebuilt resource.
+
+The chosen local deployment binds to loopback and uses the official Secure MCP
+Tunnel for transport. It is a trusted local workspace adapter, not completed
+per-user OAuth/audit or independent dev-runtime isolation. Native ChatGPT account
+connection and public directory publication remain separate acceptance steps.
+See [the Apps runbook](chatgpt-apps.md).

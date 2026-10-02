@@ -143,3 +143,12 @@ test('same-workspace authored identity changes remap tabs and preserve drafts in
     assert.equal(session.getCatalog().workspace,'workspace-a');
   }
 });
+
+test('trash cleanup removes only clean source tabs and preserves a draft created during the request',async()=>{
+  const session=new ShellSession('browser',port());session.replaceCatalog(catalog);
+  await session.execute({type:'open',uri:resource.uri,editor:'diagram'});await session.execute({type:'open',uri:resource.uri,editor:'source'});
+  session.documents.edit(resource.source!.path,'late draft');assert.throws(()=>session.removeSource(resource.source!.path),/Save or discard/);
+  assert.equal(session.getSnapshot().tabs.length,2);assert.equal(session.documents.getSnapshot().get(resource.source!.path)?.draft,'late draft');
+  session.documents.edit(resource.source!.path,'original');session.removeSource(resource.source!.path);
+  assert.deepEqual(session.getSnapshot().tabs.map(tab=>tab.editor),['diagram']);assert.equal(session.documents.getSnapshot().has(resource.source!.path),false);
+});

@@ -78,7 +78,7 @@ SDK directives must be on their own lines because current discovery scans line p
 
 ```ts
 report('hourly-water', {
-  label: {ru:'Почасовой расход', en:'Hourly flow'},
+  label: 'Почасовой расход',
   columns: {flow: column(flow, 'mean', 'Flow')},
   bucketMs: 60_000,
   schedule: [{cron:'0 * * * *', timeZone:'Europe/Moscow', periodMs:3_600_000}],

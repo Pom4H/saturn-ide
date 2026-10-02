@@ -6,6 +6,7 @@ import { createApp } from '../src/host/dev';
 import type { IDEState } from '../src/protocol';
 import { connectionTip } from '../src/topology';
 import { fixture } from '../tests/helpers';
+import { prepareInterface } from './helpers/interface-preferences';
 
 const artifacts='artifacts/physical-editor';mkdirSync(artifacts,{recursive:true});
 // Exercise renderer and gestures, not an arbitrary frame-count/FPS benchmark.
@@ -14,7 +15,7 @@ if(display){process.env.DISPLAY=':99';await Bun.sleep(500);}
 const input=fixture();
 const app=await createApp({projectDir:input.root,dataDir:join(input.dir,'data'),databaseUrl:':memory:',port:0,preview:'simulation'});
 const browser=await chromium.launch({headless:!process.env.DISPLAY,channel:process.env.CI?'chrome':undefined,args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader']});
-const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage();
+const context=await browser.newContext({viewport:{width:1440,height:960},recordVideo:{dir:join(artifacts,'recordings')}}),page=await context.newPage();
 const errors:string[]=[],checks:string[]=[];
 page.setDefaultTimeout(15000);page.on('pageerror',error=>errors.push(error.message));
 const scene=page.locator('.scene3d');
@@ -25,6 +26,7 @@ const until=async(check:()=>Promise<boolean>,message:string)=>{
 };
 type XY={x:number;y:number};
 try{
+  await prepareInterface(context);
   await page.goto(app.server.url.toString());await page.bringToFront();
   await page.locator('[data-equipment="P-01"]').waitFor({timeout:30000});
   await page.getByRole('button',{name:'Правка',exact:true}).click();

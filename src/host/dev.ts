@@ -4,13 +4,15 @@ import { readAuthoredFiles } from '../core/authoring';
 import {ReportError} from '../runtime/report';
 import { compareRuns } from '../runtime/compare';
 import { IDEUpdates } from './updates';
-import { mkdirSync, watch } from 'node:fs';
+import { existsSync, mkdirSync, watch } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { browserAssets } from './browser-build';
 import { free, text, validateProject, type Driver, type Endpoint, type Problem, type Project } from '../core';
 import type { IDEState } from '../protocol';
 import { Workspace, HttpError, hash } from '../workspace/files';
+import { WorkspaceTrash } from '../workspace/trash';
 import { Builder, BuildError, type DraftBuild } from '../workspace/build';
+import { createProject } from '../workspace/project-template';
 import { indexResources } from '../workspace/resource-index';
 import { Git } from '../workspace/git';
 import { Store } from '../runtime/store';
@@ -32,19 +34,22 @@ import type { DeploymentPlan } from '../core/deployment';
 import { ProjectPlugins } from '../workspace/plugins';
 import { applyImportPlan } from '../workspace/importers';
 import type { ScadaImportPlan } from '../core/importer';
-import { deviceTemplates, previewDevice, previewHmi } from '../workspace/scaffold';
+import { deviceTemplates, previewDevice, previewHmi, suggestDevicePosition } from '../workspace/scaffold';
 import { previewCableDisconnect, previewCableEndpoint } from '../workspace/cable-edit';
 import { createWorkerHost } from './worker';
 import type { JobReceipt } from '../core/jobs';
+import { AgentHost, configuredAgent } from './agent';
 
 const defaultAppRoot = resolve(import.meta.dir, '../..');
 const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 'Проект не загружен' }, signals: {}, equipment: [], pipes: [], alarms: [] };
 /** Composition root for local development; runtime modules themselves know no workspace. */
-export async function createApp(options: { appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation'; decision?: Readonly<Record<string,string|undefined>> } = {}) {
+export interface DevelopmentApp {server:Bun.Server<undefined>;close:()=>Promise<void>;runtime:Runtime;workspace:Workspace;state:()=>IDEState;reload:()=>Promise<void>}
+export async function createApp(options: { appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation'; decision?: Readonly<Record<string,string|undefined>>; demoLauncher?:boolean; agentCommand?:readonly string[] } = {}):Promise<DevelopmentApp> {
   const appRoot=options.appRoot??defaultAppRoot;
   const decisions=new DecisionService(options.decision);
   const updates=new IDEUpdates(Bun.env.SATURN_IDE_VERSION??(await Bun.file(join(appRoot,'package.json')).json()).version);
   const workspace = new Workspace(options.projectDir ?? resolve(Bun.env.SATURN_PROJECT ?? './examples/reports'));
+  const agents=new AgentHost(options.agentCommand??configuredAgent(Bun.env.SATURN_AGENT_COMMAND),workspace.root);
   const dataDir = options.dataDir ?? join(appRoot, '.saturn', hash(workspace.root).slice(0, 12));
   mkdirSync(dataDir, { recursive: true });
   const database = options.databaseUrl ?? Bun.env.DATABASE_URL ?? `sqlite://${join(dataDir, 'history.sqlite')}`;
@@ -52,8 +57,12 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
   await store.init(); await store.prune();
   const revisions = new RevisionStore(store.sql); await revisions.init();
   const events = new Events(), builder = new Builder(workspace, appRoot, dataDir), git = new Git(workspace), push = new Push(store, dataDir);
-  const plugins=new ProjectPlugins(workspace);
+  const plugins=new ProjectPlugins(workspace),trash=new WorkspaceTrash(workspace);
+  trash.purgeExpired();
   const key = crypto.randomUUID();
+  const demos=new Map<string,Promise<{server:{url:URL};close:()=>Promise<void>}>>();
+  const demoRoot=resolve(Bun.env.SATURN_DEMO_ROOT??join(appRoot,'../saturn-examples'));
+  const demoTemplates={home:'smart-home',business:'pumping-station'} as const;
   let draft: DraftBuild | undefined, problems: Problem[] = [];
   let restoreProblem: Problem | undefined;
   const autoPreview = (options.preview ?? Bun.env.SATURN_PREVIEW ?? 'simulation') === 'simulation';
@@ -116,6 +125,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
   await reload();
   let browser = await browserAssets(appRoot, workspace.root, dataDir);
   const staleTimer = setInterval(() => { if (manager.phase === 'running') void runtime.stale().catch(reportError); }, 1000);
+  const trashRetention = setInterval(() => { try { trash.purgeExpired(); } catch(error) { console.error('Workspace trash retention:',error); } }, 3600_000);
   const retention = setInterval(() => void store.prune().catch(reportError), 3600_000);
   let debounce: ReturnType<typeof setTimeout>;
   const savedVersions = new Map<string, string>();
@@ -171,8 +181,10 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         if (request.method === 'GET') {
           if(path==='/' || path==='/hmi') return new Response(browser.html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
           const asset=browser.assets.get(path); if(asset)return new Response(asset,{headers:{'Cache-Control':'no-cache'}});
+          if(path==='/api/demos')return json((['home','business'] as const).map(preset=>({preset,available:options.demoLauncher!==false&&existsSync(join(demoRoot,demoTemplates[preset],'project.ts'))})));
           if (path === '/api/state') return json(state());
           if (path === '/api/decision') return json(decisions.status());
+          if (path === '/api/agent') return json(agents.status());
           if(path==='/api/scenarios'){
             const context=await runtimeSerial(async()=>{try{return scenarioState();}catch{return null;}});
             const jobs=workerAvailable?(await workerRequest('/api/jobs?project=workspace') as JobReceipt[]).filter(job=>job.kind==='scenario'):[];
@@ -194,6 +206,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
           if(path==='/api/plugins')return json(plugins.list());
           if(path==='/api/import/context')return json({projectVersion:workspace.read('project.ts').version});
           if(path==='/api/templates')return json(deviceTemplates.map(({signals,...item})=>item));
+          if(path==='/api/trash')return json(trash.list());
           if (path === '/api/files') return json(workspace.list());
           if (path === '/api/file') return json(workspace.read(url.searchParams.get('path') ?? 'project.ts'));
           if (path === '/api/ide') return json(updates.state);
@@ -220,6 +233,20 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         if (request.headers.get('X-Saturn-Key') !== key || !request.headers.get('content-type')?.includes('application/json')) throw new HttpError(403, 'Missing session key or JSON content type');
         const body: unknown = await request.json(); if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected an object'); const b = body as Record<string, unknown>;
         if (path === '/api/decision/evaluate') return json(await decisions.evaluate(b,request.signal));
+        if(path==='/api/agent/connect')return json(await agents.connect(request.signal));
+        if(path==='/api/agent/prompt'){
+          const prompt=field(b,'prompt');if(!prompt.trim()||prompt.length>64000)throw new HttpError(400,'Prompt must contain 1–64000 characters');
+          return agents.get(field(b,'id')).prompt(prompt,request.signal);
+        }
+        if(path==='/api/agent/permission'){const option=b.option;if(option!==null&&typeof option!=='string')throw new HttpError(400,'Expected permission option or null');agents.get(field(b,'id')).permission(field(b,'request'),option);return json({ok:true});}
+        if(path==='/api/agent/cancel'){await agents.get(field(b,'id')).cancel();return json({ok:true});}
+        if(path==='/api/agent/disconnect'){await agents.disconnect(field(b,'id'));return json({ok:true});}
+        if(path==='/api/demos/open'){
+          const preset=field(b,'preset');if(options.demoLauncher===false||preset!=='home'&&preset!=='business')throw new HttpError(400,'Demo preset unavailable');
+          const source=join(demoRoot,demoTemplates[preset]);if(!existsSync(join(source,'project.ts')))throw new HttpError(404,'Demo source project is unavailable');
+          let pending=demos.get(preset);if(!pending){pending=(async()=>{const root=join(dataDir,'demos',preset,'project'),demoData=join(dataDir,'demos',preset,'runtime');if(!existsSync(root))createProject(root,{template:demoTemplates[preset],example:source});return createApp({appRoot,projectDir:root,dataDir:demoData,port:0,preview:'simulation',demoLauncher:false});})();demos.set(preset,pending);void pending.catch(()=>demos.delete(preset));}
+          const demo=await pending;return json({url:String(demo.server.url)+'?page=home&preset='+preset,project:demoTemplates[preset]});
+        }
         if(path==='/api/scenarios/start'){
           const context=await runtimeSerial(async()=>scenarioState());
           if(b.expectedApplied!==context.applied||b.expectedRun!==context.run.id)throw new HttpError(409,'Simulation changed; refresh scenarios');
@@ -254,17 +281,28 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         }
         if(path==='/api/devices/create'){
           const id=field(b,'id');if(authoringProject().equipment.some(e=>e.id===id))throw new HttpError(409,'Device ID already exists');
-          const preview=previewDevice(workspace,field(b,'template'),id,field(b,'label'));
+          const position=b.x===undefined&&b.y===undefined?suggestDevicePosition(authoringProject()):{x:b.x as number,y:b.y as number};
+          const preview=previewDevice(workspace,field(b,'template'),id,field(b,'label'),position);
           if(b.apply!==true)return json(preview);
           if(field(b,'projectVersion')!==preview.projectVersion)throw new HttpError(409,'Project changed; preview again');
           const file=workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);
           savedVersions.set(file.path,file.version);savedVersions.set('project.ts',workspace.read('project.ts').version);await reload();return json({file,state:state()});
         }
         if(path==='/api/authoring/plan')return json(await planSourceOperation(workspace,draft?.authoring,b,appRoot,dataDir));
+        if(path==='/api/trash/move'){
+          const entry=trash.move(field(b,'path'),field(b,'version'));await reload();return json({entry,state:state()});
+        }
+        if(path==='/api/trash/restore'){
+          const file=trash.restore(field(b,'id'));savedVersions.set(file.path,file.version);await reload();return json({file,state:state()});
+        }
         if(path==='/api/files/save'){
           const files=workspace.saveMany(readAuthoredFiles(b.files));
           for(const file of files)savedVersions.set(file.path,file.version);
           await reload();return json({files,state:state()});
+        }
+        if(path==='/api/check'){await reload();return json({state:state(),checked:draft?.artifact.hash??null});}
+        if(path==='/api/files/create'){
+          const file=workspace.create(field(b,'path'),field(b,'source'));savedVersions.set(file.path,file.version);await reload();return json({file,state:state()});
         }
         if (path === '/api/file') { const file = workspace.save(field(b, 'path'), field(b, 'source'), field(b, 'version')); savedVersions.set(file.path, file.version); await reload(); return json({ file, state: state() }); }
         if (path === '/api/refactor/rename') {
@@ -342,8 +380,10 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
     },
   });
   const close = async () => {
-    if (closed) return; closed = true; decisions.close(); watcher.close(); clearTimeout(debounce); clearInterval(staleTimer); clearInterval(retention);
+    await agents.close();
+    if (closed) return; closed = true; decisions.close(); watcher.close(); clearTimeout(debounce); clearInterval(staleTimer); clearInterval(retention); clearInterval(trashRetention);
     active()?.abortPending();
+    for(const pending of demos.values()){try{await(await pending).close();}catch{}}
     await (await scenarioWorker)?.close();await server.stop(true); await reloadQueue; await manager.close(); events.close(); builder.close(); await store.close();
   };
   return { server, close, runtime, workspace, state, reload };

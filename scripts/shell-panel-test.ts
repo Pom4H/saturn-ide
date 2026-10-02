@@ -1,3 +1,4 @@
+import { prepareInterface } from './helpers/interface-preferences';
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
@@ -17,14 +18,17 @@ const tab=(name:string)=>page.getByRole('tab',{name,exact:true});
 const shot=async(name:string)=>page.screenshot({path:`artifacts/shell-panel-${name}.png`});
 const onePanel=async()=>{assert.equal(await panel.count(),1);assert.equal(await page.locator('.runtime-dock,.diagram-dock').count(),0);assert.equal(await page.getByRole('tabpanel').count(),1);};
 try {
-  mkdirSync('artifacts',{recursive:true});await page.goto(app.server.url.toString());await page.locator('[data-equipment="P-01"]').waitFor();await chooseExplorerMode(page,'Код');
+  await prepareInterface(context);
+  mkdirSync('artifacts',{recursive:true});await page.goto(app.server.url.toString());
+  await page.locator('[data-rail-section="home"]').click();
+  await page.locator('[data-equipment="P-01"]').waitFor();await chooseExplorerMode(page,'Код');
   await tab('Терминал').click();const input=page.getByRole('combobox',{name:'Команда оболочки'});
   await input.fill('help');await input.press('Enter');await page.locator('.shell-terminal-log').getByText('set <signal> <value>',{exact:false}).waitFor();
   await input.fill('set P-01.run false');
   for(const name of ['Исходник','Отчёты','Документация','Схема']) {
     if(name==='Исходник'){await rail.getByRole('button',{name:'Объект',exact:true}).click();await chooseExplorerMode(page,'Код');await nav.getByRole('treeitem',{name:'P-01.device.ts',exact:true}).click();}
     else if(name==='Отчёты')await rail.getByRole('button',{name:'Отчёты',exact:true}).click();
-    else {await rail.getByRole('button',{name:'Объект',exact:true}).click();if(name==='Документация'){await chooseExplorerMode(page,'Объекты');await nav.getByRole('treeitem',{name:'Документация',exact:true}).click();}}
+    else {await rail.getByRole('button',{name:'Главная',exact:true}).click();if(name==='Документация'){await chooseExplorerMode(page,'Объекты');await nav.getByRole('treeitem',{name:'Документация',exact:true}).click();}}
     await bell.click();await bell.click();await onePanel();
     assert.equal(await panel.getAttribute('data-tab'),'notifications');
   }
@@ -49,14 +53,14 @@ try {
   await bell.click();await onePanel();
   await page.getByRole('button',{name:'Скрыть панель',exact:true}).click();await shot('collapsed');await bell.click();
   await page.getByRole('button',{name:'Свойства',exact:true}).click();
-  const inspector=(await page.locator('.inspector').boundingBox())!,panelBox=(await panel.boundingBox())!;assert.ok(inspector.y+inspector.height<=panelBox.y+1,'Inspector overlaps the panel');await shot('inspector');
+  const inspector=(await page.locator('.inspector').boundingBox())!,panelBox=(await panel.boundingBox())!;assert.ok(inspector.x>=panelBox.x+panelBox.width-1||inspector.y+inspector.height<=panelBox.y+1,'Shell sidebar overlaps the panel');assert.equal(await page.locator('.workbench .inspector').count(),0,'Inspector must belong to Shell');await shot('inspector');
   await page.getByRole('button',{name:'Закрыть свойства',exact:true}).click();
   await page.keyboard.press('Control+k');await page.getByRole('textbox',{name:'Поиск',exact:true}).fill('P-01');await shot('palette');await page.keyboard.press('Escape');
   await page.setViewportSize({width:390,height:844});await bell.click();await onePanel();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await shot('phone');await page.setViewportSize({width:1440,height:960});
   const path=`${work.root}/equipment/P-01.device.ts`,source=await Bun.file(path).text(),revision=app.state().revision;
   await Bun.write(path,source+'\nconst broken = ;\n');await app.reload();await page.locator('.shell-alert').waitFor();await bell.click();await page.locator('.panel-notifications .notification-message.error').first().waitFor();assert.equal(app.state().revision,revision);await shot('build-error');
   await Bun.write(path,source);await app.reload();await until(async()=>await page.locator('.shell-alert').count()===0,'Build error did not clear');
-  await app.close();await until(async()=>(await page.locator('.sim-badge').innerText())==='ОФЛАЙН','Disconnected state not shown');await bell.click();await page.locator('.panel-notifications [role=status]').waitFor();await shot('offline');
+  await app.close();await until(async()=>(await page.locator('.environment-chip').getAttribute('class'))?.includes('offline')===true,'Disconnected state not shown');await bell.click();await page.locator('.panel-notifications [role=status]').waitFor();await shot('offline');
   await tab('Оборудование').click();await page.locator('.panel-equipment-identity').getByText('Нет связи',{exact:false}).first().waitFor();assert.equal(await page.locator('.panel-equipment-values strong').filter({hasText:'—'}).count(),await page.locator('.panel-equipment-values strong').count());await shot('stale-readings');
   assert.deepEqual(errors,[]);console.log('PASS single persistent panel, tab keyboard, resize/expand/collapse, terminal draft/log, runtime alarm + ack/retry, inspector bounds, themes/mobile, failed build preserves applied, offline/stale; no page errors');
 } finally {await context.close();await page.video()?.saveAs('artifacts/shell-panel.webm');await browser.close();await app.close();work.clean();}

@@ -1,0 +1,32 @@
+import { useEffect, useRef, type ReactNode } from 'react';
+import type { Locale } from '../core';
+import { type EditorId } from '../core/resources';
+import { ResourceIcon } from './icons';
+import './mobile-shell.css';
+import { navigationCatalog, navigationViews, quickViews } from './model/navigation-catalog';
+export const mobileShellQuery='(max-width:760px), (pointer:coarse) and (max-width:1024px)';
+
+export function MobileHeader({locale,project,title,back,forward,goBack,goForward,environment,environmentIcon,environmentTone,summary,explorer,explorerOpen,details}:{locale:Locale;project:string;title:string;back:boolean;forward:boolean;goBack:()=>void;goForward:()=>void;environment:string;environmentIcon:string;environmentTone:string;summary:()=>void;explorer:()=>void;explorerOpen:boolean;details?:ReactNode}) {
+  const ru=locale==='ru';
+  return <header className="mobile-shell-header"><div role="group" aria-label={ru?'История навигации':'Navigation history'}><button disabled={!back} aria-label={ru?'Назад':'Back'} onClick={goBack}><ResourceIcon icon="back"/></button><button disabled={!forward} aria-label={ru?'Вперёд':'Forward'} onClick={goForward}><ResourceIcon icon="forward"/></button></div><div className="mobile-project-heading"><strong>{project}</strong><small>{title}</small></div><button className={`mobile-environment ${environmentTone}`} aria-label={ru?'Состояние подключённой среды':'Connected environment status'} title={environment} onClick={summary}><ResourceIcon icon={environmentIcon}/><i/></button>{details}<button aria-label={explorerOpen?(ru?'Закрыть навигацию':'Close navigation'):(ru?'Открыть навигацию':'Open navigation')} aria-expanded={explorerOpen} aria-controls="mobile-project-explorer" onClick={explorer}><ResourceIcon icon="sidebar"/></button></header>;
+}
+export function MobileNavigation({locale,homeIcon,preset,homeActive,primaryActive,toolsActive,menuOpen,home,primary,tools,menu}:{locale:Locale;homeIcon:string;preset:'home'|'business';homeActive:boolean;primaryActive:boolean;toolsActive:boolean;menuOpen:boolean;home:()=>void;primary:()=>void;tools:()=>void;menu:()=>void}) {
+  const ru=locale==='ru',primaryView=quickViews(preset)[0];
+  return <nav className="mobile-shell-navigation" aria-label={ru?'Мобильная навигация':'Mobile navigation'}><button aria-current={homeActive?'page':undefined} onClick={home}><ResourceIcon icon={homeIcon}/><span>{ru?'Главная':'Home'}</span></button><button aria-current={primaryActive?'page':undefined} onClick={primary}><ResourceIcon icon={primaryView.icon}/><span>{preset==='home'?(ru?'Управление':'Controls'):(ru?'Мониторинг':'Monitor')}</span></button><button aria-current={toolsActive?'page':undefined} onClick={tools}><ResourceIcon icon="tools"/><span>{ru?'Инструменты':'Tools'}</span></button><button aria-label={ru?'Главное меню':'Main menu'} aria-expanded={menuOpen} aria-controls="mobile-main-menu" onClick={menu}><ResourceIcon icon="menu"/><span>{ru?'Меню':'Menu'}</span></button></nav>;
+}
+export function MobileMenu({locale,open,close,preset,operator,current,select,home,settings,chat,notifications,explorer,changes,changed}:{locale:Locale;open:boolean;close:()=>void;preset:'home'|'business';operator:boolean;current:string;select:(editor:EditorId)=>void;home:()=>void;settings:()=>void;chat?:()=>void;notifications:()=>void;explorer:()=>void;changes:()=>void;changed:boolean}) {
+  const ru=locale==='ru',dialog=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{const node=dialog.current!;if(open&&!node.open)node.showModal();else if(!open&&node.open)node.close();},[open]);
+  useEffect(()=>{const media=matchMedia(mobileShellQuery),resize=()=>{if(!media.matches)close();};media.addEventListener('change',resize);return()=>media.removeEventListener('change',resize);},[close]);
+  const run=(action:()=>void)=>{close();action();};
+  const row=(id:string,label:string,icon:string,action:()=>void,extra?:ReactNode)=><button key={id} aria-current={current===id?'page':undefined} onClick={()=>run(action)}><ResourceIcon icon={icon}/><span>{label}</span>{extra??<ResourceIcon icon="chevron-right" size={16}/>}</button>;
+  const pages=navigationViews({host:'browser',operator,preset},'mobile');
+  return <dialog id="mobile-main-menu" ref={dialog} className="mobile-main-menu" aria-label={ru?'Главное меню':'Main menu'} onKeyDown={event=>{if(event.key!=='Tab')return;const buttons=[...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')].filter(button=>!button.disabled&&button.getClientRects().length),first=buttons[0],last=buttons.at(-1);if(!first||!last)return;if(event.shiftKey&&(document.activeElement===first||!event.currentTarget.contains(document.activeElement))){event.preventDefault();last.focus();}else if(!event.shiftKey&&(document.activeElement===last||!event.currentTarget.contains(document.activeElement))){event.preventDefault();first.focus();}}} onCancel={event=>{event.preventDefault();close();}} onClick={event=>{if(event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientY<box.top||event.clientX<box.left||event.clientX>box.right)close();}}}><header><h2>{ru?'Меню':'Menu'}</h2><button aria-label={ru?'Закрыть меню':'Close menu'} onClick={close}><ResourceIcon icon="close"/></button></header><div className="mobile-menu-scroll">
+    {row('home',ru?'Главная':'Home','home',home)}{row('explorer',ru?'Проводник проекта':'Project explorer','project',explorer)}
+    <p>{preset==='home'?(ru?'Дом':'Home'):(ru?'Инженерное рабочее место':'Engineering workspace')}</p>
+    {pages.map(page=>row(page,navigationCatalog[page].title[locale],navigationCatalog[page].icon,()=>select(page)))}
+    {changed&&row('changes',ru?'Изменения новой версии':'New version changes','source',changes,<span className="mobile-change-dot"/>)}
+    <p>{ru?'Интерфейс и поддержка':'Interface and support'}</p>
+    {row('notifications',ru?'Уведомления':'Notifications','bell',notifications)}{row('settings',ru?'Настройки':'Settings','settings',settings)}{!operator&&chat&&row('chat',ru?'Чат и поддержка':'Chat and support','assistant',chat)}{!operator&&<button className="mobile-quiet-trash" aria-label={ru?'Корзина':'Trash'} title={ru?'Корзина':'Trash'} onClick={()=>run(()=>select('trash'))}><ResourceIcon icon="trash" size={16}/></button>}
+  </div></dialog>;
+}

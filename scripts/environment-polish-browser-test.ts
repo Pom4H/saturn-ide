@@ -1,3 +1,4 @@
+import { toggleShellDetails } from './helpers/shell-details';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {chromium,expect} from 'playwright/test';
@@ -22,7 +23,7 @@ try{
   const environment=page.locator('.environment-surface');await expect(environment).toBeVisible();
   await expect(panel).toHaveAttribute('data-open','false');
   await expect(environment.locator('.environment-summary')).toContainText('ещё не применена');
-  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  await toggleShellDetails(page,'review');
   const review=page.locator('.review-pane');await expect(review).toBeVisible();await expect(review).not.toHaveAttribute('data-review-state','loading');
   await expect(review.locator('.review-identity-details')).not.toHaveAttribute('open','');
   await expect(review.locator('[data-release-phase]')).toBeVisible();

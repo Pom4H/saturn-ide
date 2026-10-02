@@ -1,0 +1,10 @@
+{
+  "name": "saturn-local",
+  "interface": {"displayName": "Saturn local development"},
+  "plugins": [{
+    "name": "saturn",
+    "source": {"source": "local", "path": "./saturn"},
+    "policy": {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
+    "category": "Productivity"
+  }]
+}

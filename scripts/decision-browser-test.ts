@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createApp } from '../src/host/dev';
 import { readDecisionRequest } from '../src/core/decision';
 import { fixture, appRoot } from '../tests/helpers';
+import { prepareInterface } from './helpers/interface-preferences';
 
 const f=fixture(),out=join(appRoot,'artifacts','decision');mkdirSync(out,{recursive:true});
 let broken=false,clarify=false,requests=0;
@@ -37,6 +38,7 @@ async function visibleConfirmation(){
 try{
   const config=await (await fetch(new URL('/api/decision',app.server.url))).text();assert(!config.includes('test-provider-secret'));
   const refused=await fetch(new URL('/api/decision/evaluate',app.server.url),{method:'POST',headers:{'content-type':'application/json'},body:'{}'});assert.equal(refused.status,403);assert.equal(requests,0);
+  await prepareInterface(page);
   await page.goto(app.server.url.toString());
   await page.getByRole('tab',{name:'Терминал',exact:true}).click();
   await page.getByRole('button',{name:'Текст',exact:true}).click();

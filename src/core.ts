@@ -5,6 +5,8 @@ import {validateScenarios,type Scenario} from './core/scenarios';
 export type {SimulationClock,SimulationClockState} from './core/simulation';
 export {scenario,wait,set,expectValue,expectRange,advance,validateScenarios,type Scenario,type ScenarioStep,type ScenarioWaitStep,type ScenarioCommandStep,type ScenarioExpectStep,type ScenarioAdvanceStep,type ScenarioExpectRangeStep} from './core/scenarios';
 export type Locale = 'en' | 'ru';
+/** Authored names and descriptions use ordinary strings. The locale map is accepted
+ * only for compatibility with existing projects; UI language is a Shell concern. */
 export type Text = string | Readonly<Record<Locale, string>>;
 export const text = (value: Text, locale: Locale): string => typeof value === 'string' ? value : value[locale];
 export type Value = number | boolean | string;
@@ -53,12 +55,12 @@ export type SignalSpec<T extends Value = Value, W extends boolean = boolean> =
  * Явный ID остаётся для проектных/интеграционных сигналов и обратной совместимости.
  * @en A signal may be declared without a string ID inside its owner. The owner materializes a path such as P-101.rpm.
  * Explicit IDs remain available for project/integration signals and compatibility. */
-export function signal<const W extends boolean = false>(options: SignalSpec<number,W>): SignalSpec<number,W>;
-export function signal<const W extends boolean = false>(options: SignalSpec<boolean,W>): SignalSpec<boolean,W>;
-export function signal<const W extends boolean = false>(options: SignalSpec<string,W>): SignalSpec<string,W>;
-export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<number,I,W>, 'id'>): Signal<number,I,W>;
-export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<boolean,I,W>, 'id'>): Signal<boolean,I,W>;
-export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<string,I,W>, 'id'>): Signal<string,I,W>;
+export function signal<const W extends boolean = false>(options: SignalSpec<number,W>): SignalSpec<number,NoInfer<W>>;
+export function signal<const W extends boolean = false>(options: SignalSpec<boolean,W>): SignalSpec<boolean,NoInfer<W>>;
+export function signal<const W extends boolean = false>(options: SignalSpec<string,W>): SignalSpec<string,NoInfer<W>>;
+export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<number,I,W>, 'id'>): Signal<number,I,NoInfer<W>>;
+export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<boolean,I,W>, 'id'>): Signal<boolean,I,NoInfer<W>>;
+export function signal<const I extends string, const W extends boolean = false>(id: I, options: Omit<Signal<string,I,W>, 'id'>): Signal<string,I,NoInfer<W>>;
 export function signal(idOrOptions:string|SignalSpec, options?:Omit<Signal,'id'>):Signal|SignalSpec {
   return typeof idOrOptions==='string' ? { ...options, id:idOrOptions } as Signal : { ...idOrOptions };
 }
@@ -254,7 +256,7 @@ type FluidFrom<F extends string=string> = ConnectionEnd<'fluid',F,'source'|'pass
 type FluidTo<F extends string=string> = ConnectionEnd<'fluid',F,'sink'|'passive'>;
 /** @ru Труба с жидкостью. Соединяет совместимые порты; source/sink задают направление оборудования, passive допускает явные fitting-узлы вроде tee().
  * @en Liquid pipe. Connect compatible ports; equipment source/sink keep direction while passive ends allow explicit fittings such as tee(). */
-export function pipe<const F extends string>(id:string, options:{from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:Signal<number>;via?:Connection['via']}):Pipe {
+export function pipe<const F extends string,const S extends Signal<number>=Signal<number>>(id:string, options:{from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:Connection['via']}):Pipe & {flow:S} {
   return {...options,id,kind:'pipe'};
 }
 /** @ru Кабель управления, питания или шины. Не труба и не зависимость вычисляемого сигнала.
@@ -266,12 +268,12 @@ export function migrateLegacyConnection<T extends {from:ConnectionEnd;to:Connect
   if((unplugged!=='from'&&unplugged!=='to')||!looseEnd)throw new Error('Both unplugged and looseEnd are required for legacy cable migration');
   return {...rest,[unplugged]:free(rest[unplugged],looseEnd)};
 }
-export function cable<const M extends Exclude<Medium,'fluid'>, const F extends string>(id:string, options:{from:ConnectionEnd<M,F,'source'|'passive'>;to:ConnectionEnd<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:Signal;via?:Connection['via'];unplugged?:'from'|'to';looseEnd?:Point}):Cable {
+export function cable<const M extends Exclude<Medium,'fluid'>, const F extends string,const S extends Signal=Signal>(id:string, options:{from:ConnectionEnd<M,F,'source'|'passive'>;to:ConnectionEnd<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:S;via?:Connection['via'];unplugged?:'from'|'to';looseEnd?:Point}):Cable & {signal?:S} {
   return {...migrateLegacyConnection(options),id,kind:'cable'};
 }
 export interface Alarm { id:string; label:Text; signal:Signal<number>; above:number; hysteresis?:number }
 /** @ru Пороговая тревога с гистерезисом и квитированием. @en High-limit alarm with hysteresis and acknowledgement. */
-export const alarm = (id:string, options:Omit<Alarm,'id'>):Alarm => ({...options,id});
+export const alarm = <const S extends Signal<number>>(id:string, options:Omit<Alarm,'id'|'signal'>&{signal:S}):Alarm & {signal:S} => ({...options,id});
 export type Aggregate = 'mean' | 'min' | 'max' | 'integral' | 'last';
 export interface Column { label:Text; signal:Signal; aggregate:Aggregate; unit?:string }
 /** @ru Числовая колонка отчёта. integral интегрирует по времени, а не суммирует расход.
@@ -286,7 +288,7 @@ export const reportSignals=(r:Report):readonly Signal[]=>'sql' in r?r.signals:Ob
 /** @ru Отчёт по истории с типизированными ссылками на сигналы. Окна времени — [from,to), UTC.
  * @en Historical report with typed signal references. Time windows are [from,to), UTC. */
 export function report<const C extends Record<string,Column>>(id:string,options:Omit<AggregateReport<C>,'id'>):AggregateReport<C>;
-export function report<const S extends ReportSchema>(id:string,options:Omit<QueryReport<S>,'id'|'columns'>&{columns:readonly import('./core/reporting').ReportColumn<keyof NoInfer<S> & string>[]}):QueryReport<S>;
+export function report<const S extends ReportSchema,const T extends readonly Signal[]=readonly Signal[]>(id:string,options:Omit<QueryReport<S>,'id'|'columns'|'signals'>&{signals:T;columns:readonly import('./core/reporting').ReportColumn<keyof NoInfer<S> & string>[]}):QueryReport<S> & {signals:T};
 export function report(id:string,options:Omit<AggregateReport,'id'>|Omit<QueryReport,'id'>):Report{return {...options,id};}
 /** @ru Декларативное условие мониторинга над уже объявленным числовым сигналом.
  * @en Declarative monitoring condition over an existing numeric signal. */
@@ -305,12 +307,12 @@ export function system(id:string,label:Text,parent?:string):System {return {id,l
 export function monitorMetric<const S extends Signal<number>>(id:string,source:S,options:Omit<MonitoringMetric,'id'|'signal'>={}):MonitoringMetric & {signal:S} {
   return {id,signal:source,...options};
 }
-export function monitor(id:string,options:Omit<MonitoringGroup,'id'>):MonitoringGroup {return {id,...options};}
+export function monitor<const O extends Omit<MonitoringGroup,'id'>>(id:string,options:O):MonitoringGroup & O {return {id,...options};}
 export interface Project {
   id:string; label:Text; signals:Record<string,Signal>; equipment:Equipment[]; pipes:Pipe[]; cables?:Cable[];
   alarms:Alarm[]; hmi?:Hmi; hmis?:HmiInterface[]; reports?:Report[]; monitoring?:readonly MonitoringGroup[]; systems?:readonly System[]; enclosures?:readonly Enclosure[]; scenarios?:readonly Scenario[];
 }
-export type ProjectDefinition = Omit<Project,'signals'|'hmi'|'hmis'|'alarms'> & {signals?:Record<string,Signal>;hmi?:Hmi|AutoHmi;hmis?:HmiIntent[];alarms?:Alarm[]};
+export type ProjectDefinition = Omit<Project,'signals'|'equipment'|'pipes'|'hmi'|'hmis'|'alarms'> & {signals?:Record<string,Signal>;equipment?:Equipment[];pipes?:Pipe[];hmi?:Hmi|AutoHmi;hmis?:HmiIntent[];alarms?:Alarm[]};
 export type MountCheck = {readonly valid:true} | {readonly valid:false;readonly code:string;readonly message:Record<Locale,string>};
 const mountFailure=(code:string,en:string,ru:string):MountCheck=>({valid:false,code,message:{en,ru}});
 /** One authoritative fit/collision check is shared by project validation and source-first mounting UI. */
@@ -352,8 +354,8 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
     found.set(item.id,item);
   };
   for(const item of Object.values(definition.signals??{}))add(item);
-  for(const equipment of definition.equipment)for(const value of Object.values(equipment))add(value);
-  for(const edge of [...definition.pipes,...definition.cables??[]])add(edge.kind==='pipe'?edge.flow:edge.signal);
+  for(const equipment of definition.equipment??[])for(const value of Object.values(equipment))add(value);
+  for(const edge of [...definition.pipes??[],...definition.cables??[]])add(edge.kind==='pipe'?edge.flow:edge.signal);
   for(const alarm of definition.alarms??[])add(alarm.signal);
   for(const report of definition.reports??[])for(const signal of reportSignals(report))add(signal);
   for(const group of definition.monitoring??[])for(const metric of group.metrics)add(metric.signal);
@@ -363,12 +365,60 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
 }
 /** @ru Единая модель. Сигналы выводятся из владельцев и ссылок; явный registry — только совместимый escape hatch.
  * @en One model. Signals are derived from owners/references; an explicit registry is only a compatibility escape hatch. */
-type ProjectSignals<P extends ProjectDefinition> = P extends {signals:infer S extends Record<string,Signal>} ? S : Record<string,Signal>;
-export function project<const P extends ProjectDefinition>(definition:P):Omit<P,'signals'|'hmi'|'hmis'|'alarms'> & {signals:ProjectSignals<P>;hmi?:Hmi;hmis?:HmiInterface[];alarms:Alarm[]} {
+type Field<T,K extends PropertyKey> = T extends unknown ? K extends keyof T ? T[K] : never : never;
+type Items<T> = T extends readonly (infer I)[] ? I : never;
+type Values<T> = T extends object ? T[keyof T] : never;
+// Remove a generated string index before inspecting statically declared equipment fields.
+type SignalMembers<T> = T extends object ? Extract<Values<{[K in keyof T as string extends K ? never : number extends K ? never : K]:T[K]}>,Signal> : never;
+type ReportSignals<R> = Items<Field<R,'signals'>> | Field<Values<Field<R,'columns'>>,'signal'>;
+type ScreenSignals<H> = Field<Items<Field<H,'elements'>>,'signal'>;
+type ReferencedSignals<P> = Extract<
+  Values<Field<P,'signals'>> | SignalMembers<Items<Field<P,'equipment'>>> |
+  Field<Items<Field<P,'pipes'>>,'flow'> | Field<Items<Field<P,'cables'>>,'signal'> |
+  Field<Items<Field<P,'alarms'>>,'signal'> | ReportSignals<Items<Field<P,'reports'>>> |
+  Field<Items<Field<Items<Field<P,'monitoring'>>,'metrics'>>,'signal'> |
+  Field<Items<Field<Items<Field<P,'scenarios'>>,'steps'>>,'signal'> |
+  ScreenSignals<Field<P,'hmi'>> | ScreenSignals<Items<Field<P,'hmis'>>>, Signal>;
+type ConcreteSignal<S> = S extends Signal ? string extends S['id'] ? never : S : never;
+type UnboundedEquipment<E> = E extends unknown ? string extends keyof E ? true : Equipment extends E ? true : never : never;
+type IsUnion<T,Whole=T> = [T] extends [never] ? false : T extends unknown ? [Whole] extends [T] ? false : true : never;
+type UncertainSignal<S> = true extends IsUnion<S> | IsUnion<Field<S,'id'>> ? true : false;
+type UncertainMembers<T> = T extends object ? true extends Values<{
+  [K in keyof T as string extends K ? never : number extends K ? never : K]:UncertainSignal<Extract<T[K],Signal>>
+}> ? true : false : false;
+type UncertainItem<T> = true extends IsUnion<T> | UncertainMembers<T> |
+  UncertainSignal<Extract<Field<T,'signal'> | Field<T,'flow'>,Signal>> ? true : false;
+type UncertainArray<A> = A extends readonly unknown[] ? number extends A['length'] ? true :
+  true extends IsUnion<A> | {[K in keyof A]:UncertainItem<A[K]>}[number] ? true : false : false;
+// Conditional branches and non-tuple collections may omit a referenced ID at runtime.
+// Keep their concrete value types, but require a presence check instead of inventing certainty.
+type UncertainProject<P> = true extends IsUnion<P> | UncertainMembers<Field<P,'signals'>> |
+  UncertainArray<Field<P,'equipment'>> | UncertainArray<Field<P,'pipes'>> | UncertainArray<Field<P,'cables'>> |
+  UncertainArray<Field<P,'alarms'>> | UncertainArray<Field<P,'reports'>> |
+  UncertainArray<Field<Items<Field<P,'reports'>>,'signals'>> |
+  UncertainMembers<Values<Field<Items<Field<P,'reports'>>,'columns'>>> |
+  UncertainArray<Field<P,'monitoring'>> | UncertainArray<Field<Items<Field<P,'monitoring'>>,'metrics'>> |
+  UncertainArray<Field<P,'scenarios'>> | UncertainArray<Field<Items<Field<P,'scenarios'>>,'steps'>> |
+  UncertainArray<Field<Field<P,'hmi'>,'elements'>> | UncertainArray<Field<P,'hmis'>> |
+  UncertainArray<Field<Items<Field<P,'hmis'>>,'elements'>> ? true : false;
+type KnownProjectSignals<P> = {[S in ConcreteSignal<ReferencedSignals<P>> as S['id']]:S};
+type ProjectSignals<P> = UncertainProject<P> extends true ? Partial<KnownProjectSignals<P>> & Record<string,Signal> : KnownProjectSignals<P> & (
+  string extends ReferencedSignals<P>['id'] ? Record<string,Signal> :
+  true extends UnboundedEquipment<Items<Field<P,'equipment'>>> ? Record<string,Signal> : unknown
+);
+type ProjectResult<P> = Omit<P,'signals'|'equipment'|'pipes'|'hmi'|'hmis'|'alarms'> & {
+  equipment:P extends {equipment:infer E extends Equipment[]} ? E : [];
+  pipes:P extends {pipes:infer E extends Pipe[]} ? E : [];
+  signals:ProjectSignals<P>;hmi?:Hmi;hmis?:HmiInterface[];alarms:Alarm[];
+};
+export function project<const P extends ProjectDefinition>(definition:P):ProjectResult<P> {
+  const equipment=definition.equipment===undefined?[]:definition.equipment,pipes=definition.pipes===undefined?[]:definition.pipes;
+  const declaredAlarms=definition.alarms===undefined?[]:definition.alarms;
+  requireThat(Array.isArray(equipment)&&Array.isArray(pipes)&&Array.isArray(declaredAlarms),'PROJECT_SHAPE','Invalid project collections','Неверные коллекции проекта');
   const hmi=definition.hmi&&'mode' in definition.hmi&&definition.hmi.mode==='topology'?resolveAutoHmi(definition,definition.hmi):definition.hmi;
   const hmis=definition.hmis?.map(screen=>({...('mode' in screen&&screen.mode==='topology'?resolveAutoHmi(definition,screen):screen),id:screen.id,label:screen.label}));
-  const alarms=[...(definition.alarms??[]),...definition.equipment.flatMap(e=>e.alarms??[])];
-  const model={...definition,hmi,hmis,alarms,signals:collectSignals(definition)} as unknown as Omit<P,'signals'|'hmi'|'hmis'|'alarms'> & {signals:ProjectSignals<P>;hmi?:Hmi;hmis?:HmiInterface[];alarms:Alarm[]};
+  const alarms=[...declaredAlarms,...equipment.flatMap(e=>e.alarms??[])];
+  const model={...definition,equipment,pipes,hmi,hmis,alarms,signals:collectSignals(definition)} as unknown as ProjectResult<P>;
   validateProject(model as Project);return model;
 }
 export interface Problem { code:string; message:Record<Locale,string>; path?:string; from?:number; to?:number }
@@ -560,7 +610,7 @@ export interface Hmi {width:number;height:number;equipment:readonly Equipment[];
 export interface HmiInterface extends Hmi {id:string;label?:Text}
 export type HmiIntent=(Hmi|AutoHmi)&{id:string;label?:Text};
 /** A named operator interface authored in TS and backed by the same equipment references. */
-export function hmi(id:string,options:(Hmi|AutoHmi)&{label?:Text}):HmiIntent{return {...options,id};}
+export function hmi<const O extends (Hmi|AutoHmi)&{label?:Text}>(id:string,options:O):O & {id:string}{return {...options,id};}
 export interface AutoHmi {readonly mode:'topology';readonly controller:string;readonly width:number;readonly height:number}
 /** @ru HMI выводится из физической топологии контроллера, а не поддерживает второй список вручную.
  * @en HMI is derived from controller topology instead of maintaining a second authored equipment list. */
@@ -569,10 +619,11 @@ export function autoHmi(controller:Equipment,options:{width?:number;height?:numb
   return {mode:'topology',controller:controller.id,width:options.width??profile?.width??320,height:options.height??profile?.height??240};
 }
 function resolveAutoHmi(definition:ProjectDefinition,intent:AutoHmi):Hmi {
-  requireThat(definition.equipment.some(e=>e.id===intent.controller),'HMI_CONTROLLER',`Unknown HMI controller ${intent.controller}`,`Неизвестный HMI-контроллер ${intent.controller}`);
-  const reached=new Set([intent.controller]),edges=[...definition.pipes,...definition.cables??[]];
+  const equipment=definition.equipment??[];
+  requireThat(equipment.some(e=>e.id===intent.controller),'HMI_CONTROLLER',`Unknown HMI controller ${intent.controller}`,`Неизвестный HMI-контроллер ${intent.controller}`);
+  const reached=new Set([intent.controller]),edges=[...definition.pipes??[],...definition.cables??[]];
   let changed=true;while(changed){changed=false;for(const edge of edges){if(!isAttached(edge.from)||!isAttached(edge.to))continue;if(reached.has(edge.from.device)&&!reached.has(edge.to.device)){reached.add(edge.to.device);changed=true;}if(reached.has(edge.to.device)&&!reached.has(edge.from.device)){reached.add(edge.from.device);changed=true;}}}
-  return {width:intent.width,height:intent.height,controller:intent.controller,source:'topology',equipment:definition.equipment.filter(e=>e.id!==intent.controller&&reached.has(e.id))};
+  return {width:intent.width,height:intent.height,controller:intent.controller,source:'topology',equipment:equipment.filter(e=>e.id!==intent.controller&&reached.has(e.id))};
 }
 export interface FirmwareContext {outDir:string;run:(argv:string[])=>Promise<void>}
 export interface FirmwareTarget<L extends string=string> {readonly id:string;readonly languages:readonly L[];build(context:FirmwareContext):Promise<void>}

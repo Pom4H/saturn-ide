@@ -3,10 +3,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { validateProject, type Project } from '../src/core';
+import { text, validateProject, type Project } from '../src/core';
 import { Language } from '../src/workspace/language';
 import { Workspace } from '../src/workspace/files';
 import { MarkdownDocument, ProjectDocument } from '../src/shell/project-document';
+import { defineImporter } from '../src/core/importer';
 
 const appRoot = resolve(import.meta.dir, '..');
 const markdown = readFileSync(join(appRoot, 'docs/dsl.md'), 'utf8');
@@ -46,6 +47,8 @@ test('the first Markdown example executes as one model with shared signal refere
     const model = loaded.default;
     validateProject(model);
     expect(model.id).toBe('pumping-station');
+    expect(model.label).toBe('Насосная станция');
+    expect(text(model.label,'en')).toBe(text(model.label,'ru'));
     expect(model.equipment).toHaveLength(3);
     expect(Object.keys(model.signals)).toHaveLength(5);
     expect(model.signals['P-01.run']?.initial).toBe(false);
@@ -57,6 +60,15 @@ test('the first Markdown example executes as one model with shared signal refere
     expect(model.signals['P-01.run']).toBe(model.cables?.[0]?.signal);
     expect(model.hmi?.equipment.map(item => item.id)).toEqual(['T-01', 'P-01']);
   } finally { f.clean(); }
+});
+
+test('project-owned importer metadata accepts plain strings and legacy translations',()=>{
+  const importer=defineImporter({id:'plain',label:'Формат объекта',accepts:['.zip'],detect:()=>0,import:()=>{throw new Error('Not invoked by metadata rendering');}});
+  for(const locale of ['ru','en'] as const){
+    expect(text(importer.label,locale)).toBe('Формат объекта');
+  }
+  for(const label of ['', '   '])expect(()=>defineImporter({...importer,label})).toThrow('Importer label is required');
+  expect(defineImporter({...importer,label:{ru:'Старое имя',en:'Legacy name'}}).label.en).toBe('Legacy name');
 });
 
 test('the documentation surface exposes the bundled guide without replacing object documentation', () => {

@@ -1,14 +1,58 @@
 import { test, expect } from 'bun:test';
 import { fixture } from './helpers';
 import { Workspace } from '../src/workspace/files';
-import { previewDevice, previewHmi } from '../src/workspace/scaffold';
+import { previewDevice, previewHmi, suggestDevicePosition } from '../src/workspace/scaffold';
+import { routeConnections } from '../src/topology';
 import { Builder } from '../src/workspace/build';
 import { moveLayout } from '../src/shell/model/layout-edits';
-import { project, tank, hmi } from '../src/core';
+import { equipmentSignal, project, tank, hmi } from '../src/core';
 import { join, resolve } from 'node:path';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { createProject } from '../src/workspace/project-template';
 import { indexResources } from '../src/workspace/resource-index';
+
+test('compact project source builds normally and the language service completes inferred signal IDs',async()=>{
+ const base=mkdtempSync(join(resolve('.saturn'),'compact-project-')),root=createProject(join(base,'plant'));
+ const workspace=new Workspace(root),builder=new Builder(workspace,resolve('.'),join(base,'data'));
+ try{
+  const original=workspace.read('project.ts');
+  const source=`import { project, pump } from '@saturn/core';
+const feed = pump('P-01', { label: 'Насос', x: 100, y: 100 });
+const station = project({ id: 'compact', label: 'Станция', equipment: [feed] });
+const id: 'P-01.rpm' = station.signals['P-01.rpm'].id;
+export default station;
+`;
+  workspace.save('project.ts',source,original.version);
+  const checked=await builder.build();
+  expect(checked.project.pipes).toEqual([]);expect(checked.project.alarms).toEqual([]);
+  expect(checked.project.signals['P-01.rpm']).toBe(equipmentSignal<number>(checked.project.equipment[0]!,'rpm','number'));
+  const completionSource=source+'\nstation.signals.';
+  const completions=builder.language.complete('project.ts',completionSource,completionSource.length);
+  expect(completions.map(entry=>entry.label)).toContain('P-01.rpm');
+  expect(completions.map(entry=>entry.label)).toContain('P-01.run');
+  expect(completions.map(entry=>entry.label)).not.toContain('missing');
+ }finally{builder.close();rmSync(base,{recursive:true,force:true});}
+},15000);
+
+test('catalog placement preserves existing geometry and connection corridors in checked source',async()=>{
+ const work=fixture(),workspace=new Workspace(work.root),builder=new Builder(workspace,resolve('.'),work.dir);
+ try{
+  const original=(await builder.build()).project,routes=routeConnections(original),position=suggestDevicePosition(original);
+  const right=Math.max(...original.equipment.map(e=>e.x+(e.capabilities.diagram?.width??160)),...routes.flatMap(route=>route.points.map(point=>point.x)));
+  expect(position.x).toBeGreaterThan(right+100);
+  const preview=previewDevice(workspace,'valve','V-CATALOG','Catalog valve',position);
+  expect(preview.position).toEqual(position);workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);
+  const checked=(await builder.build()).project,added=checked.equipment.find(e=>e.id==='V-CATALOG')!;
+  expect({x:added.x,y:added.y}).toEqual(position);
+  expect(checked.equipment.slice(0,-1).map(e=>({id:e.id,x:e.x,y:e.y}))).toEqual(original.equipment.map(e=>({id:e.id,x:e.x,y:e.y})));
+  expect(routeConnections(checked).map(route=>({id:route.id,valid:route.valid}))).toEqual(routes.map(route=>({id:route.id,valid:route.valid})));
+  const custom=previewDevice(workspace,'custom','CUSTOM','Custom',suggestDevicePosition(checked));
+  expect(custom.source).toContain(`x: ${custom.position.x}, y: ${custom.position.y}`);
+  expect(()=>previewDevice(workspace,'pump','BAD','Invalid',{x:NaN,y:0})).toThrow('Invalid device position');
+  expect(()=>previewDevice(workspace,'pump','BAD','Invalid',{x:0,y:1e7})).toThrow('Invalid device position');
+  expect(suggestDevicePosition(project({id:'empty',label:'Empty',equipment:[],pipes:[]}))).toEqual({x:80,y:80});
+ }finally{builder.close();work.clean();}
+},20000);
 
 test('device template creates real source + checked import; stale preview cannot overwrite project',async()=>{
  const work=fixture();try{const workspace=new Workspace(work.root),preview=previewDevice(workspace,'pump','P-02','Second pump');workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);

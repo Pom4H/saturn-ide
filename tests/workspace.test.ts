@@ -22,6 +22,7 @@ test('filesystem confines traversal, hidden files and external symlinks',()=>{
 test('scaffolding is project-owned and refuses overwrite',()=>{
   const f=fixture();try{scaffold('plc','plc-01',f.root);scaffold('plugin','sensor',f.root);const w=new Workspace(f.root);
     for(const path of ['equipment/plc-01/compiler.ts','equipment/plc-01/hmi.ts','plugins/sensor/index.ts'])expect(w.list()).toContain(path);
+    expect(w.read('equipment/plc-01/device.ts').source).toContain('label: "Контроллер"');
     expect(()=>scaffold('plc','plc-01',f.root)).toThrow('Already exists');expect(()=>scaffold('plc','../bad',f.root)).toThrow();
     const target=create(join(f.dir,'another'),{template:'pumping-station'});expect(existsSync(join(target,'project.ts'))).toBe(true);
     for(const path of ['src','scripts/scaffold.ts','scripts/architecture-check.mjs','.github'])expect(existsSync(join(target,path))).toBe(false);

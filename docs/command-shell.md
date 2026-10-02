@@ -110,6 +110,24 @@ SATURN_PROJECT=../saturn-examples/pumping-station bun agent -- npx -y @agentclie
 Агент запускается отдельно от runtime и использует собственные ACP permissions.
 Встроенный генеративный provider/API для ACP Assistant в workspace host отсутствует.
 Необязательный decision endpoint не предоставляет генерацию кода или native tools.
+Браузерный host может передавать стандартные ACP события тому же внешнему агенту:
+
+```sh
+SATURN_PROJECT=../saturn-examples/pumping-station \
+SATURN_AGENT_COMMAND='["npx","-y","@agentclientprotocol/codex-acp@2.0.1"]' \
+bun dev
+```
+
+Команда задаётся локально, а не из browser request; запускается в workspace root.
+Страница «Чат и поддержка» отправляет ограниченный `CommandShell.context()` вместе
+с задачей, показывает текст/инструменты/запросы разрешения и ошибки ACP. Несохранённые
+черновики обозначены путём/версией: агент читает файлы на диске, а не скрытую копию
+редактора. Stop отправляет ACP cancel; Disconnect и shutdown закрывают процессы.
+Локальный transcript временный; долговременная история и настройки принадлежат
+внешнему агенту. Перезагрузка UI не восстанавливает его прежний разговор. Browser
+reload закрывает transport запроса; некооперативная отмена внешнего инструмента
+не гарантирует отмену его эффекта. Это локальный host adapter, не SaaS auth.
+
 
 Для внешних агентов доступны тот же каталог, completion и структурированные результаты:
 

@@ -1,6 +1,8 @@
 import ts from 'typescript';
 import { deviceCalls } from './ast';
 import { HttpError, type Workspace } from './files';
+import type { Project } from '../core';
+import { routeConnections } from '../topology';
 export const deviceTemplates=[
   {id:'tank',label:{ru:'Резервуар',en:'Tank'},icon:'tank',signals:"level: signal({ initial: 0, unit: '%', min: 0, max: 100 })"},
   {id:'pump',label:{ru:'Насос',en:'Pump'},icon:'pump',signals:"rpm: signal({ initial: 0, unit: 'rpm' }),\n  run: signal({ initial: false, writable: true })"},
@@ -10,7 +12,15 @@ export const deviceTemplates=[
   {id:'custom',label:{ru:'Собственный тип оборудования',en:'Project-owned equipment'},icon:'diagram',signals:''},
 ];
 export interface ScaffoldPreview {path:string;source:string;projectSource:string;projectVersion:string;id:string}
-function projectOwnedDeviceSource(id:string,label:string):string {
+export interface DevicePosition {x:number;y:number}
+export interface DevicePreview extends ScaffoldPreview {position:DevicePosition}
+/** Suggest empty space from the same authored geometry and routed connections. */
+export function suggestDevicePosition(project:Project):DevicePosition {
+  if(!project.equipment.length)return {x:80,y:80};
+  const right=Math.max(...project.equipment.map(e=>e.x+(e.capabilities.diagram?.width??160)),...routeConnections(project).flatMap(route=>route.points.map(point=>point.x)));
+  return {x:Math.ceil((right+120)/20)*20,y:Math.min(...project.equipment.map(e=>e.y))};
+}
+function projectOwnedDeviceSource(id:string,label:string,position:DevicePosition):string {
   const svg='<svg xmlns="http://www.w3.org/2000/svg" width="180" height="120" viewBox="0 0 180 120"><rect x="2" y="2" width="176" height="116" rx="8" fill="#e9f1f4" stroke="#6c8996" stroke-width="2" stroke-dasharray="7 5"/><text x="90" y="65" text-anchor="middle" font-size="13" font-family="sans-serif" fill="#315466">2D placeholder</text></svg>';
   return `import { device, signal, terminal } from '@saturn/core';
 
@@ -33,7 +43,7 @@ export const defineEquipment = device({
 export default defineEquipment(${JSON.stringify(id)}, {
   semanticId: ${JSON.stringify('equipment:'+id)},
   label: ${JSON.stringify(label.trim())},
-  x: 80, y: 80,
+  x: ${position.x}, y: ${position.y},
 });
 `;
 }
@@ -52,22 +62,23 @@ export function addProjectArray(source:string,property:string,binding:string,imp
   }else{const at=object.end-1,last=object.properties.at(-1),comma=last&&!source.slice(last.end,at).includes(',')?',':'';changed=source.slice(0,at)+`${comma}\n  ${property}: [${binding}],\n`+source.slice(at);}
   return `import ${binding} from ${JSON.stringify(importPath)};\n`+changed;
 }
-export function previewDevice(workspace:Workspace,kind:string,id:string,label:string):ScaffoldPreview {
+export function previewDevice(workspace:Workspace,kind:string,id:string,label:string,position:DevicePosition={x:80,y:80}):DevicePreview {
   const template=deviceTemplates.find(t=>t.id===kind);if(!template)throw new HttpError(400,'Unknown device template');
   if(!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(id)||!label.trim()||label.length>160)throw new HttpError(400,'Invalid device ID or label');
+  if(![position.x,position.y].every(value=>typeof value==='number'&&Number.isFinite(value)&&Math.abs(value)<=1e6))throw new HttpError(400,'Invalid device position');
   const path=`equipment/${id}.device.ts`,signalImport=template.signals?', signal':'',signalFields=template.signals?`  ${template.signals},\n`:'';
-  const source=kind==='custom'?projectOwnedDeviceSource(id,label):`import { ${kind}${signalImport} } from '@saturn/core';
+  const source=kind==='custom'?projectOwnedDeviceSource(id,label,position):`import { ${kind}${signalImport} } from '@saturn/core';
 
 export default ${kind}(${JSON.stringify(id)}, {
   semanticId: ${JSON.stringify('equipment:'+id)},
   label: ${JSON.stringify(label.trim())},
-  x: 80, y: 80,
+  x: ${position.x}, y: ${position.y},
 ${signalFields}});
 `;
   if(workspace.list().includes(path))throw new HttpError(409,'Device file already exists');
   const root=workspace.read('project.ts'),binding='device_'+id.replaceAll('-','_');
   const tree=ts.createSourceFile(root.path,root.source,ts.ScriptTarget.Latest,true);let collision=false;const visit=(node:ts.Node)=>{if(ts.isIdentifier(node)&&node.text===binding)collision=true;ts.forEachChild(node,visit);};visit(tree);if(collision)throw new HttpError(409,'Import binding already exists');
-  return {path,source,id,projectVersion:root.version,projectSource:addProjectArray(root.source,'equipment',binding,'./'+path.slice(0,-3))};
+  return {path,source,id,position,projectVersion:root.version,projectSource:addProjectArray(root.source,'equipment',binding,'./'+path.slice(0,-3))};
 }
 
 export function previewHmi(workspace:Workspace,id:string,label:string,width:number,height:number,devices:{id:string;path:string}[]):ScaffoldPreview {

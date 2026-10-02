@@ -11,6 +11,7 @@ export async function chooseExplorerMode(page: Page, mode: 'Код' | 'Объе�
 
 export async function chooseExplorerLayout(page: Page, layout: 'Список' | 'Значки' | 'Папки' | 'Список файлов') {
   const trigger=page.getByRole('button',{name:/^(Вид навигатора|Вид проводника)$/});
-  await trigger.click();
+  if(await trigger.count())await trigger.click();
+  else await page.getByRole('button',{name:'Действия проводника',exact:true}).click();
   await page.getByRole('menuitemcheckbox', { name: layout, exact: true }).click();
 }

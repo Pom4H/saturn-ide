@@ -7,7 +7,7 @@ Pom4H/saturn `90da21a1885a72022b7a2d1b45cb36993bee1597`. Наличие реал
 | Возможность / старый источник | Владелец в новой структуре | Сейчас | Проверка завершения |
 | --- | --- | --- | --- |
 | Источник на TS; compileProject (`plant/compiler.ts`) | workspace/build | Bun build вынесен из runtime | Обычные imports, ошибки с диапазонами, проект вне каталога IDE; broken draft не меняет applied |
-| Конкретные сигналы/outputs (`plant/dsl.ts`) | core | Сохранены ID, value types, writability и project inference | Новый тип агрегата добавляется без редактирования core; имена/типы выходов выводятся |
+| Конкретные сигналы/outputs (`plant/dsl.ts`) | core | Сохранены ID, value types, writability; `project()` выводит точные типы статически известных сигналов из владельцев/потребителей без ручного registry. Условные и динамические источники требуют проверки наличия | Новый тип агрегата добавляется без редактирования core; имена/типы выходов выводятся |
 | Вычисляемые выражения и размерности (`plant/dsl.ts`, `plant/types.ts`) | core + runtime | **Не перенесено полностью** | Отвергать несовместимые размерности; вычисление и качество derived-сигналов; ошибки RU/EN |
 | Копируемые расширения (ADR-0008, ModelCatalog) | project/equipment, project/plugins | Драйверы — да, оборудование — **частично** | Скопировать второй тип оборудования, его виды/тесты и target без изменения приложения |
 | Физические порты/топология (`plant/ports.ts`, `plant/routing.ts`, `src/geometry.ts`, `src/view.ts`, `src/view3d.ts`) | core/topology + equipment + shell scenes | Трубы/кабели и XYZ routing есть; drag-коридор, старые визуальные слои трубы и rounded bends проверены. Явный `tee()` задаёт split/merge через три passive fluid-порта и имеет 2D/3D-проекции; пересечение маршрутов по-прежнему не создаёт связь. Project-owned приборы имеют общие формы и mount к существующей трубе в 2D/3D. **Полная parity не доказана**: старый API `tap(line, instrument)`, модели приборов и часть extension-defined профилей перенесены не полностью | Совместимость среды/семейства/направления; ветвления, занятость, bus reachability; приборы на трубе, все старые сценарии и визуальные кадры/состояния |
@@ -37,6 +37,18 @@ Pom4H/saturn `90da21a1885a72022b7a2d1b45cb36993bee1597`. Наличие реал
 определения сигналов/размерностей → общий Presentation/targets → отчёты/jobs/replay → остальные hosts.
 Визуальные и two-way regression tests сопровождают каждый этап, а не откладываются на конец.
 
+### 2026-10-02: аудит расширений и публичного плагина
+
+Сравнение с ChatGPT Plugins и проверка подачи записаны в
+[chatgpt-apps.md](chatgpt-apps.md#extension-flexibility-audit--2026-10-02).
+Project-owned TS extensions, source-copy/CAS и локальный MCP Apps проверены;
+полный Shell contribution SDK остаётся проектом контракта. Composer resource mentions,
+host file handlers/settings/forms и ChatGPT event subscriptions не реализованы.
+Portable plugin/MCP JSON проходят canonical schemas, но текущий loopback-пакет
+не готов к публичной подаче. HTTPS/auth/domain, publisher pages, реальный аккаунт,
+mobile acceptance и review/publication остаются отдельными незакрытыми критериями.
+Локальный `.app.json` для Tunnel нельзя выдавать за публичный submission package.
+
 ### 2026-09-28: расчётные модели и многоканальный HMI
 
 Общий previous-frame исполнитель доступен через `@saturn/core/calculations`.
@@ -45,3 +57,18 @@ Pom4H/saturn `90da21a1885a72022b7a2d1b45cb36993bee1597`. Наличие реал
 физической симуляции, PLC и checkpoint. HMI теперь предоставляет все writable
 сигналы выбранного оборудования и сохраняет авторский порядок экрана. Полный
 энергоблок, размерные балансы и project-owned геометрия/анимации остаются открытыми.
+
+### ChatGPT Apps / Secure MCP Tunnel
+
+Локальный MCP и стандартный MCP Apps UI реализованы поверх существующего Shell.
+Проверены: настоящий SVG/3D/source/HMI/report UI, typed XLSX, source CAS,
+Checked/Published/Applied fencing, точные ссылки на порты, сохранение camera/canvas
+и объектов неизменённого оборудования при добавлении устройства, failed/offline/closed
+состояния. Встроенный режим не монтирует собственный агентный чат.
+
+**Открытая приёмка:** tunnel_id/runtime key и подключение в конкретном ChatGPT
+workspace; реальные ограничения sandbox/latency в этом аккаунте; public directory
+review и multi-user OAuth/audit. Полный локальный AppBridge test не выдаётся за
+пройденную приёмку в ChatGPT. Web Push требует standalone-origin; browser.ts/код
+IDE требует пересборки HTML-ресурса. Требования к существующим runtime/driver,
+firmware и старым report Presentation этим адаптером не объявляются закрытыми.

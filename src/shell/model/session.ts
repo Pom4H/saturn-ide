@@ -1,4 +1,4 @@
-import { availableEditors, type EditorId, type ResourceCatalog, type ProjectResource, type ShellHost } from '../../core/resources';
+import { availableEditors, supportsEditor, type EditorId, type ResourceCatalog, type ProjectResource, type ShellHost } from '../../core/resources';
 import { Documents, type DocumentPort } from './documents';
 export interface ResourceTab { id: string; uri: string; editor: EditorId }
 export interface Navigation {
@@ -66,13 +66,21 @@ export class ShellSession {
     });
   }
   setSurface(editor: EditorId) {
-    if (this.host === 'terminal' && (editor === 'hmi' || editor === 'performance' || editor === 'scenarios')) throw new Error('This host has no renderer for this surface');
+    if (!supportsEditor(editor,this.host)) throw new Error('This host has no renderer for this surface');
     const source = this.catalog.resources.find(item => item.source?.path === this.navigation.source && availableEditors(item,this.host).includes('source'));
     const current = this.catalog.resources.find(item => item.uri === this.navigation.active?.uri);
     const root = this.catalog.resources.find(item => item.uri === this.catalog.project);
     const resource = editor === 'source' ? source ?? root : root ?? current;
     if (resource) this.activate(resource,editor);
     else this.update({ ...this.navigation, surface: editor });
+  }
+  /** Remove a clean file buffer and its source tabs after a workspace trash operation.
+   * Drafts created while a request was pending are retained and must be resolved explicitly. */
+  removeSource(path: string) {
+    this.documents.close(path);
+    const tabs=this.navigation.tabs.filter(tab=>tab.id!==`source:${path}`);
+    const active=tabs.find(tab=>tab.id===this.navigation.active?.id)??null;
+    this.update({...this.navigation,tabs,active,source:this.navigation.source===path?'project.ts':this.navigation.source});
   }
   selectEquipment(id: string) { this.update({ ...this.navigation, selected: id }); }
   selectSignal(id: string) { this.update({ ...this.navigation, signal: id }); this.setSurface('signals'); }

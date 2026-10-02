@@ -61,9 +61,18 @@ export class Workspace {
   }
   create(path:string,source:string):SourceFile {
     if(!/^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.(ts|tsx|md|json)$/.test(path)||path.split('/').some(part=>part.startsWith('.')||part==='node_modules'))throw new HttpError(400,'Unsupported project path');
-    if(Buffer.byteLength(source)>256_000)throw new HttpError(413,'File exceeds editor size limit');
+    return this.writeNew(path,source);
+  }
+  /** Restore the original supported filename, including spaces and Unicode, without replacing a file. */
+  restoreFile(path:string,content:Uint8Array,mode:number):SourceFile {
+    if(!path||path.includes('\\')||path.split('/').some(part=>!part||part.startsWith('.')||part==='node_modules')||!['.ts','.tsx','.md','.json'].includes(extname(path)))throw new HttpError(400,'Unsupported project path');
+    return this.writeNew(path,content,mode & 0o777);
+  }
+  private writeNew(path:string,content:string|Uint8Array,mode?:number):SourceFile {
+    if(Buffer.byteLength(content)>256_000)throw new HttpError(413,'File exceeds editor size limit');
     let parent=this.root;for(const part of path.split('/').slice(0,-1)){parent=join(parent,part);if(existsSync(parent)){if(lstatSync(parent).isSymbolicLink()||!lstatSync(parent).isDirectory())throw new HttpError(403,'Unsafe project directory');}else mkdirSync(parent);}
-    const full=join(this.root,path);try{writeFileSync(full,source,{flag:'wx'});}catch(error){if((error as NodeJS.ErrnoException).code==='EEXIST')throw new HttpError(409,'File already exists');throw error;}
+    const full=join(this.root,path);try{writeFileSync(full,content,{flag:'wx',mode});}catch(error){if((error as NodeJS.ErrnoException).code==='EEXIST')throw new HttpError(409,'File already exists');throw error;}
+    const source=typeof content==='string'?content:Buffer.from(content).toString('utf8');
     return {path,source,version:hash(source)};
   }
   createAndAttach(path:string,source:string,projectSource:string,projectVersion:string):SourceFile {

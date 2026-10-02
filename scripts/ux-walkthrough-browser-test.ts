@@ -1,3 +1,4 @@
+import { toggleShellDetails } from './helpers/shell-details';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -86,7 +87,7 @@ try {
       await page.keyboard.press('Escape');
       await expect(review).toHaveCount(0);
       await capture(width, 'diagram-after-review-escape');
-      await page.getByRole('button', { name: 'Ревью', exact: true }).click();
+      await toggleShellDetails(page,'review');
       await expect(review).toHaveAttribute('data-review-state', 'ready');
       await page.getByRole('button', { name: 'Открыть навигацию' }).click();
       await capture(width, 'navigation-drawer');
@@ -101,14 +102,14 @@ try {
   await capture(390, 'monitor-dark');
   await page.setViewportSize({ width: 1440, height: 960 });
   await section('object').click();
-  await page.getByRole('button', { name: 'Ревью', exact: true }).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toHaveAttribute('data-review-state', 'ready');
   await capture(1440, 'diagram-review-dark');
   await page.getByRole('button', { name: 'Светлая тема', exact: true }).click();
   await page.getByRole('button', { name: 'Закрыть ревью' }).click();
   const releases = await page.evaluate(async () => await (await fetch('/api/releases')).json()) as Record<string, unknown>;
   await page.route('**/api/releases', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...releases, phase: 'faulted', error: 'UX walkthrough: driver could not stop' }) }));
-  await page.getByRole('button', { name: 'Ревью', exact: true }).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toHaveAttribute('data-review-state', 'faulted');
   await expect(review).not.toContainText('Чтение изменений…');
   await expect(page.locator('.sim-badge')).toHaveClass(/faulted/);
@@ -118,7 +119,7 @@ try {
   await capture(1440, 'faulted-review');
   await page.unroute('**/api/releases');
   await page.getByRole('button', { name: 'Закрыть ревью' }).click();
-  await page.getByRole('button', { name: 'Ревью', exact: true }).click();
+  await toggleShellDetails(page,'review');
   await expect(review).toHaveAttribute('data-review-state', 'ready');
   await expect(review.locator('[data-release-phase]')).toHaveAttribute('data-release-phase', 'running');
   await app.close();

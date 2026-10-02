@@ -1,5 +1,4 @@
 import * as T from 'three';
-import type { Side } from '../core';
 
 /** Round the corners of an authored route without moving its terminal endpoints. */
 export function roundedRoute(points: readonly T.Vector3[], bend = 12): { path: T.CurvePath<T.Vector3>; bends: number } {
@@ -27,15 +26,4 @@ export function roundedRoute(points: readonly T.Vector3[], bend = 12): { path: T
   }
   line(points.at(-1)!);
   return { path, bends };
-}
-
-/** Leave an end-face socket along its normal before joining the authored route. */
-export function projectPanelCable(points: readonly T.Vector3[], fromSide: Side | null, toSide: Side | null): T.Vector3[] {
-  if (points.length < 2 || (!fromSide && !toSide)) return points.map(point => point.clone());
-  const high = Math.max(...points.map(point => point.y));
-  const first = points[0]!, last = points.at(-1)!;
-  const exit = (point: T.Vector3, side: Side) => point.clone().add(new T.Vector3(side==='left'?-12:side==='right'?12:0,0,side==='up'?-12:side==='down'?12:0));
-  return [first.clone(), ...(fromSide ? [exit(first,fromSide)] : []),
-    ...points.slice(1, -1).map(point => point.clone().setY(high)),
-    ...(toSide ? [exit(last,toSide)] : []), last.clone()];
 }

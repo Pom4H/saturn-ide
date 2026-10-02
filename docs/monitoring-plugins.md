@@ -16,7 +16,7 @@ export const pressure = signal('pump.pressure', {
 });
 
 export const pumpHealth = monitor('pump-health', {
-  label: { en: 'Pump health', ru: 'Состояние насоса' },
+  label: 'Состояние насоса',
   metrics: [monitorMetric('pressure', pressure, {
     warning: { below: 2, above: 6 },
     critical: { below: 1, above: 9 },

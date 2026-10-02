@@ -54,7 +54,7 @@ async function probe(size: number, profile: 'equipment' | 'signals-only') {
   started = performance.now();
   let model;
   try { model = project(authored); }
-  catch (error) { return { profile, size, equipment: authored.equipment.length, status: 'rejected', constructMs, validateMs: ms(started), error: failure(error) }; }
+  catch (error) { return { profile, size, equipment: authored.equipment?.length??0, status: 'rejected', constructMs, validateMs: ms(started), error: failure(error) }; }
   const validateMs = ms(started), count = Object.keys(model.signals).length;
   started = performance.now();
   const payload = canonical(model), canonicalMs = ms(started);

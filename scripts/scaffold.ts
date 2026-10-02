@@ -9,7 +9,7 @@ export function scaffold(kind: string, name: string, projectRoot = resolve(Bun.e
   if (kind === 'plugin') {
     writeFileSync(join(destination, 'index.ts'), `import { signal } from "@saturn/core";\nexport const enabled = signal("${name}.enabled", { initial: false });\n`);
   } else {
-    writeFileSync(join(destination, 'device.ts'), `import { plc, signal } from "@saturn/core";\nexport const online = signal("${name}.online", { initial: false });\nexport const controller = plc("${name}", { label: {en:"Controller",ru:"Контроллер"}, x:60, y:60, online });\n`);
+    writeFileSync(join(destination, 'device.ts'), `import { plc, signal } from "@saturn/core";\nexport const online = signal("${name}.online", { initial: false });\nexport const controller = plc("${name}", { label: "Контроллер", x:60, y:60, online });\n`);
     writeFileSync(join(destination, 'hmi.ts'), `import type { Hmi } from "@saturn/core";\nimport { controller } from "./device";\nexport default { width:320, height:240, equipment:[controller] } satisfies Hmi;\n`);
     writeFileSync(join(destination, 'compiler.ts'), `import type { FirmwareContext } from "@saturn/core";\n/** @ru Подключите реальный toolchain устройства. @en Configure the actual target toolchain. */\nexport default async function compile(context: FirmwareContext): Promise<void> {\n  // await context.run(["device-compiler", "firmware/main.c", "-o", context.outDir + "/firmware.bin"]);\n  throw new Error("Configure this PLC's real compiler before building firmware");\n}\n`);
     mkdirSync(join(destination, 'firmware'));
@@ -22,14 +22,14 @@ import {createProject} from '../src/workspace/project-template';
 if (import.meta.main) {
   try{
     const [kind,name,...options]=Bun.argv.slice(2);
-    const usage='Usage: bun run scaffold project <directory> [--template empty|pumping-station] | <plc|plugin> <name> [--project <directory>]';
+    const usage='Usage: bun run scaffold project <directory> [--template empty|pumping-station|smart-home] | <plc|plugin> <name> [--project <directory>]';
     if(kind==='--help')console.log(usage);
     else{
       if(!kind||!name)throw new Error(usage);
       let created:string;
       if(kind==='project'){
-        if(options.length&&!(options.length===2&&options[0]==='--template'&&['empty','pumping-station'].includes(options[1]!)))throw new Error('Use --template empty|pumping-station for a project');
-        created=createProject(name,{template:options[1] as 'empty'|'pumping-station'|undefined});
+        if(options.length&&!(options.length===2&&options[0]==='--template'&&['empty','pumping-station','smart-home'].includes(options[1]!)))throw new Error('Use --template empty|pumping-station|smart-home for a project');
+        created=createProject(name,{template:options[1] as 'empty'|'pumping-station'|'smart-home'|undefined});
       }else{
         if(options.length&&!(options.length===2&&options[0]==='--project'&&!!options[1]))throw new Error('Use --project <directory> for a PLC or plugin');
         created=scaffold(kind,name,options[1]);

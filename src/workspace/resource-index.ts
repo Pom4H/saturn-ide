@@ -31,7 +31,7 @@ export function indexResources(workspace: { list(): string[]; read(path: string)
   const root = uri('project', project.id);
   const resources: ProjectResource[] = [{ uri: root, kind: 'project', name: { en: text(project.label, 'en'), ru: text(project.label, 'ru') },
     icon: 'project', semanticId: `project:${project.id}`, source: files.includes('project.ts') ? { path: 'project.ts' } : undefined,
-    editors: ['diagram', 'source', 'signals', 'performance', 'scenarios', 'reports', 'hmi', 'docs', 'targets', 'git', 'dependencies'], related: [] }];
+    editors: ['diagram', 'source', 'signals', 'performance', 'scenarios', 'reports', 'hmi', 'docs', 'targets', 'git', 'dependencies', 'equipment', 'trash'], related: [] }];
   for (const equipment of project.equipment) {
     const values: unknown[] = Object.values(equipment);
     const signals = new Set(values.filter((v): v is { id: string; initial: unknown } =>

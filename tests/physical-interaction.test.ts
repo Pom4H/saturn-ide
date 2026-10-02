@@ -4,7 +4,7 @@ import { free, type Equipment, type Pipe, type Cable, type Point, type Project }
 import demo from '@saturn/example';
 import { canonical } from '../src/core/artifact';
 import { decodeProject } from '../src/runtime/decode-project';
-import { connectionTip, routeConnections, type PhysicalRoute } from '../src/topology';
+import { connectionTip, routeConnection, routeConnections, type PhysicalRoute } from '../src/topology';
 import { geometryRevision } from '../src/shell/model/geometry-revision';
 
 function fixture(kind:'pipe'|'cable'='pipe',y=-9):Project {
@@ -111,6 +111,23 @@ test('station pipe stays compact through a diagonal drag and after the saved dro
 test('a translated and elevated device exposes a world-space connection tip',()=>{
   const project=fixture('cable');project.equipment[0]={...project.equipment[0]!,x:1000,y:200,z:300};
   assert.deepEqual(connectionTip(project,project.cables![0]!,'from'),{x:1100,y:250,z:300});
+});
+
+test('a moving elevated outlet retires its obsolete riser corridor before it forms a long loop',()=>{
+  let previous:{project:Project;routes:PhysicalRoute[]}={project:demo,routes:routeConnections(demo)};
+  const length=(route:PhysicalRoute)=>route.points.slice(1).reduce((sum,p,i)=>sum+Math.hypot(p.x-route.points[i]!.x,p.y-route.points[i]!.y,p.z-route.points[i]!.z),0);
+  for(let frame=1;frame<=100;frame++){
+    const project={...demo,equipment:demo.equipment.map(e=>e.id==='P-01'?{...e,x:e.x+frame*3,y:e.y-frame}:e)};
+    const routes=routeConnections(project,previous),edge=project.pipes.find(edge=>edge.id==='discharge')!;
+    const retained=routes.find(route=>route.id===edge.id)!,fresh=routeConnection(project,edge);
+    assert.equal(retained.valid,true);
+    assert(length(retained)<=length(fresh)+28+1e-6,`obsolete detour at frame ${frame}`);
+    assert.deepEqual(retained.points.at(-1),connectionTip(project,edge,'to'));
+    assert.equal(noRetracing(retained.points),true);
+    const planar=retained.points.filter((point,index)=>!index||point.x!==retained.points[index-1]!.x||point.y!==retained.points[index-1]!.y).map(point=>({...point,z:0}));
+    assert.equal(noRetracing(planar),true,`projected pipe retraces at frame ${frame}`);
+    previous={project,routes};
+  }
 });
 test('a loose cable end keeps its authored world-space height and placement',()=>{
   const project=fixture('cable'),at={x:650,y:260,z:40};project.cables![0]={...project.cables![0]!,to:free(project.cables![0]!.to,at)};

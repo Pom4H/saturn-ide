@@ -1,0 +1,74 @@
+import { toggleShellDetails } from './helpers/shell-details';
+import assert from 'node:assert/strict';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { chromium, expect } from 'playwright/test';
+import { fixture } from '../tests/helpers';
+import { createApp } from '../src/host/dev';
+import { prepareInterface, setInterfaceTheme } from './helpers/interface-preferences';
+
+mkdirSync('artifacts/workspace-library/recordings',{recursive:true});
+const work=fixture();writeFileSync(join(work.root,'trash-note.md'),'# Note preserved through trash\n');
+const app=await createApp({projectDir:work.root,dataDir:work.dir,databaseUrl:':memory:',port:0,preview:'manual'});
+const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
+const context=await browser.newContext({viewport:{width:1440,height:960},locale:'ru-RU',recordVideo:{dir:'artifacts/workspace-library/recordings'}}),page=await context.newPage(),errors:string[]=[];
+page.on('pageerror',error=>errors.push(error.message));
+const footer=page.locator('.explorer-library-links');
+try {
+  await prepareInterface(context);await page.goto(app.server.url.href);
+  await expect(footer.getByRole('button',{name:'Корзина',exact:true})).toBeVisible();await expect(footer).toHaveText('');
+  await toggleShellDetails(page,'catalog');await expect(page.locator('.equipment-catalog-panel')).toBeVisible();await expect(page.locator('.scene')).toBeVisible();
+  await page.screenshot({path:'artifacts/workspace-library/catalog-beside-2d.png'});
+  await page.getByRole('button',{name:'Закрыть каталог',exact:true}).click();
+  await expect(page.locator('.unified-sidebar .ide-update')).toHaveCount(0);
+  await page.goto(new URL('?page=equipment',app.server.url).href);
+  await expect(page.locator('.equipment-catalog')).toBeVisible();await expect(page).toHaveURL(/page=equipment/);
+  await expect(page.locator('.equipment-catalog .catalog-item')).toHaveCount(4);
+  await expect(page.locator('.chat-region')).not.toBeVisible();
+  await page.screenshot({path:'artifacts/workspace-library/catalog-project.png'});
+  await page.reload();await expect(page.locator('.equipment-catalog')).toBeVisible();
+  await page.getByRole('tab',{name:'Шаблоны',exact:true}).click();
+  await expect(page.locator('.equipment-catalog .catalog-item')).toHaveCount(5);
+  await page.screenshot({path:'artifacts/workspace-library/catalog-templates.png'});
+  await page.getByRole('button',{name:'Добавить: Клапан',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Новое устройство'});
+  await expect(dialog.getByRole('combobox')).toHaveValue('valve');await dialog.getByLabel('ID',{exact:true}).fill('V-02');await dialog.getByLabel('Название',{exact:true}).fill('Проверочный клапан');
+  await dialog.getByRole('button',{name:'Предпросмотр',exact:true}).click();await expect(dialog.locator('.creation-preview')).toContainText('equipment/V-02.device.ts');
+  assert.equal(existsSync(join(work.root,'equipment/V-02.device.ts')),false,'Preview wrote source');
+  await dialog.getByRole('button',{name:'Создать устройство',exact:true}).click();await expect(dialog).not.toBeVisible();
+  await expect(page.locator('.code-pane .pane-heading')).toContainText('V-02.device.ts');
+  assert.match(readFileSync(join(work.root,'equipment/V-02.device.ts'),'utf8'),/export default valve/);
+  assert.match(readFileSync(join(work.root,'project.ts'),'utf8'),/import device_V_02 from/);
+  await page.locator('[data-rail-section="source"]').click();
+  const note=page.locator('[data-tree-id="file:trash-note.md"]');await expect(note).toBeVisible();
+  await note.click();await expect(page.locator('.code-pane .pane-heading')).toContainText('trash-note.md');
+  await note.click({button:'right'});await page.getByRole('menuitem',{name:'В корзину',exact:true}).click();
+  await expect(page.locator('.trash-surface')).toBeVisible();await expect(page).toHaveURL(/page=trash/);
+  assert.equal(existsSync(join(work.root,'trash-note.md')),false);
+  await expect(page.locator('.trash-file')).toContainText('trash-note.md');
+  await page.screenshot({path:'artifacts/workspace-library/trash.png'});
+  await page.reload();await expect(page.locator('.trash-file')).toContainText('trash-note.md');
+  // Restore conflict must retain both the new active file and the deleted original.
+  writeFileSync(join(work.root,'trash-note.md'),'New active note\n');
+  await page.getByRole('button',{name:'Восстановить trash-note.md',exact:true}).click();await expect(page.locator('.trash-surface [role=alert]')).toContainText('File already exists');
+  assert.equal(readFileSync(join(work.root,'trash-note.md'),'utf8'),'New active note\n');await expect(page.locator('.trash-file')).toHaveCount(1);
+  await page.reload();await expect(page.locator('.trash-file')).toHaveCount(1);
+  // Remove the replacement through the same UI; two backups of one path have distinct identities.
+  await page.locator('[data-rail-section="source"]').click();await note.click({button:'right'});await page.getByRole('menuitem',{name:'В корзину',exact:true}).click();
+  await expect(page.locator('.trash-file')).toHaveCount(2);
+  await page.locator('.trash-file').last().getByRole('button').click();await expect(page.locator('.trash-file')).toHaveCount(1);
+  assert.equal(readFileSync(join(work.root,'trash-note.md'),'utf8'),'# Note preserved through trash\n');
+  await page.goto(new URL('?page=equipment',app.server.url).href);await expect(page.locator('.equipment-catalog .catalog-item')).toHaveCount(5);
+  await setInterfaceTheme(page,'dark');await page.screenshot({path:'artifacts/workspace-library/catalog-dark.png'});
+  await page.setViewportSize({width:390,height:844});
+  await expect(page.locator('.equipment-catalog')).toBeVisible();
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Mobile overflow');
+  await page.screenshot({path:'artifacts/workspace-library/catalog-mobile.png'});
+  await page.getByRole('button',{name:'Открыть навигацию',exact:true}).click();await footer.getByRole('button',{name:'Корзина',exact:true}).click();
+  await expect(page.locator('.trash-surface')).toBeVisible();await expect(page.locator('.unified-sidebar')).not.toBeVisible();
+  await page.screenshot({path:'artifacts/workspace-library/trash-mobile.png'});
+  await page.setViewportSize({width:1440,height:960});
+  // About retains the only version/update component.
+  await page.locator('[data-rail-section="settings"]').click();await page.getByRole('button',{name:'О Saturn',exact:true}).click();await expect(page.locator('.interface-settings .ide-update')).toBeVisible();
+  assert.deepEqual(errors,[]);console.log('Workspace library browser acceptance passed: catalog source preview/create, file trash/restore/conflict, reload URLs, dark/mobile, About-only updates.');
+} finally {await context.close();await browser.close();await app.close();work.clean();}

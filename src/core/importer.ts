@@ -1,3 +1,4 @@
+import type { Text } from '../core';
 export type ImportSeverity = 'info' | 'warning' | 'blocker';
 
 export interface ImportLabel {
@@ -41,12 +42,12 @@ export interface ScadaImportPlan {
   readonly files: readonly ImportGeneratedFile[];
   readonly diagnostics: readonly ImportDiagnostic[];
   readonly stats?: Readonly<Record<string, number>>;
-  readonly summary?: ImportLabel;
+  readonly summary?: Text;
 }
 
 export interface ScadaImporter {
   readonly id: string;
-  readonly label: ImportLabel;
+  readonly label: Text;
   /** Browser file-picker hints such as .zip or .lm2. Detection remains authoritative. */
   readonly accepts: readonly string[];
   /** 0 means not recognized. Higher scores win when several installed importers match. */
@@ -57,7 +58,8 @@ export interface ScadaImporter {
 /** Importers are ordinary project-owned source. This validates metadata only; no global registry is created. */
 export function defineImporter<const I extends ScadaImporter>(importer: I): I {
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(importer.id)) throw new Error('Invalid importer id');
-  if (!importer.label.en.trim() || !importer.label.ru.trim()) throw new Error('Importer label is required');
+  const label:unknown=importer.label;
+  if (!(typeof label==='string'?label.trim():label&&typeof label==='object'&&!Array.isArray(label)&&'en'in label&&typeof label.en==='string'&&label.en.trim()&&'ru'in label&&typeof label.ru==='string'&&label.ru.trim())) throw new Error('Importer label is required');
   if (!importer.accepts.length || importer.accepts.some(value => !/^\.[a-z0-9]+$/i.test(value))) throw new Error('Importer accepts must contain file extensions');
   return importer;
 }

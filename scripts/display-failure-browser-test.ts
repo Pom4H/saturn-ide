@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import {chromium} from 'playwright';
 import {fixture} from '../tests/helpers';
 import {createApp} from '../src/host/dev';
+import {prepareInterface} from './helpers/interface-preferences';
 
 mkdirSync('artifacts/display-failure-recording',{recursive:true});
 const work=fixture(),sourcePath=join(work.root,'project.ts');
@@ -19,6 +20,7 @@ const context=await browser.newContext({viewport:{width:1440,height:960},recordV
 const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
 try{
   assert.equal(app.state().project.hmi?.equipment.length,0,'fixture must have no reachable HMI equipment');
+  await prepareInterface(context);
   await page.goto(app.server.url.toString());
   const unavailable=page.locator('.scene [data-hmi-equipment="PLC-01"][data-screen-source="unavailable"]');
   await unavailable.waitFor();
@@ -31,6 +33,8 @@ try{
   await unavailable.getByRole('button',{name:'Открыть исходник',exact:true}).click();
   await page.locator('.cm-editor').waitFor();
   assert.match(await page.locator('.code-pane').innerText(),/PLC-01\.device\.ts/);
+  assert(await page.getByRole('complementary',{name:'Исходник объекта',exact:true}).isVisible(),'object source must open in the context dock');
+  assert(await page.locator('.scene').isVisible(),'opening object source must retain the diagram');
   await page.getByRole('tree',{name:'Структура проекта'}).locator('[data-tree-id^="object:"][data-resource-id="PLC-01"]').click();
   await page.locator('.scene').waitFor();
 
@@ -46,7 +50,7 @@ try{
   await page.screenshot({path:'artifacts/display-unavailable-3d.png'});
 
   await app.close();
-  await page.waitForFunction(()=>document.querySelector('.sim-badge')?.textContent==='ОФЛАЙН');
+  await page.locator('.environment-chip.offline').waitFor();
   assert.equal(await page.locator('.scene3d canvas').count(),1,'closing the host removed the last known 3D scene');
   assert.equal(await scene3d.getAttribute('data-screen-source'),'unavailable');
   await page.screenshot({path:'artifacts/display-unavailable-closed.png'});

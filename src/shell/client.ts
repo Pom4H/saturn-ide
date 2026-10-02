@@ -7,6 +7,12 @@ import type { DocumentPort, SourceFile } from './model/documents';
 export class ShellClient implements DocumentPort {
   private key = '';
   constructor(readonly base: string) {}
+  get embedded(){return false;}
+  viewUrl(search:string){return new URL('/'+search,this.base).href;}
+  async exportReport(artifact:string,format:'xlsx'|'html',locale:'ru'|'en'){
+    const response=await fetch(new URL('/api/report?'+new URLSearchParams({artifact,format,locale}),this.base));
+    if(!response.ok)throw new Error(await response.text());return response.blob();
+  }
   async requestText(path:string,signal?:AbortSignal):Promise<string> {
     const response=await fetch(new URL(`/api/${path}`,this.base),{signal});
     if(!response.ok){let message=`HTTP ${response.status}`;try{const value=await response.json() as {error?:string};message=value.error??message;}catch{}throw new Error(message);}

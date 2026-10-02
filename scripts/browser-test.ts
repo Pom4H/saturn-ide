@@ -1,3 +1,5 @@
+import { toggleShellDetails } from './helpers/shell-details';
+import { prepareInterface } from './helpers/interface-preferences';
 import { chromium, type Page } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { fixture } from '../tests/helpers';
@@ -23,7 +25,7 @@ try{
   await until(async()=>(await fetch(`${base}/api/state`)).ok,'bun dev did not start');
   assert((await state()).problems.length===0,JSON.stringify((await state()).problems));checks.push('actual bun dev starts with the typed demo project');
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
-  const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(e.message));await page.goto(base);await chooseExplorerMode(page,'Код');await page.getByRole('navigation',{name:'Рабочие области'}).getByRole('button',{name:'Объект',exact:true}).click();
+  const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(e.message));await prepareInterface(page);await page.goto(base);await page.locator('[data-rail-section="home"]').click();await chooseExplorerMode(page,'Код');await page.getByRole('navigation',{name:'Рабочие области'}).getByRole('button',{name:'Главная',exact:true}).click();
   await page.locator('[data-equipment="P-01"] [data-rpm="1450"]').waitFor({timeout:30000});
   const activityNav=page.getByRole('tree',{name:'Структура проекта'}),rail=page.getByRole('navigation',{name:'Рабочие области'});
   const openSurface=async(name:string)=>{
@@ -76,9 +78,9 @@ try{
   assert(await rotorCenterError()<.5,'pump impeller must rotate around its center independent of host CSS');
   await page.setViewportSize({width:1040,height:720});assert(await rotorCenterError()<.5,'pump impeller center drifted at embedded-hero viewport scale');await page.setViewportSize({width:1440,height:900});
   await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(50);const still=await rotor.getAttribute('data-phase');await page.waitForTimeout(100);assert(await rotor.getAttribute('data-phase')===still,'reduced motion must freeze phase');await page.emulateMedia({reducedMotion:'no-preference'});
-  await page.getByRole('button',{name:'Свойства',exact:true}).click();
+  await toggleShellDetails(page,'properties');
   await page.getByRole('button',{name:'Стоп',exact:true}).click();await page.locator('[data-rpm="0"]').waitFor();await page.getByRole('button',{name:'Пуск',exact:true}).click();await page.locator('[data-rpm="1450"]').waitFor();
-  await page.getByRole('button',{name:'Закрыть свойства',exact:true}).click();await page.locator('[data-equipment="V-01"]').click();await page.getByRole('button',{name:'Свойства',exact:true}).click();await page.getByRole('spinbutton',{name:'V-01.opening'}).fill('0');await page.getByRole('button',{name:'Отправить',exact:true}).click();await until(async()=>!!(await state()).snapshot.alarms['high-pressure']?.active,'alarm not activated');
+  await page.getByRole('button',{name:'Закрыть свойства',exact:true}).click();await page.locator('[data-equipment="V-01"]').click();await toggleShellDetails(page,'properties');await page.getByRole('spinbutton',{name:'V-01.opening'}).fill('0');await page.getByRole('button',{name:'Отправить',exact:true}).click();await until(async()=>!!(await state()).snapshot.alarms['high-pressure']?.active,'alarm not activated');
   await page.getByRole('button',{name:'Уведомления',exact:true}).click({force:true});await page.getByRole('button',{name:'Квитировать',exact:true}).click();await until(async()=>!!(await state()).snapshot.alarms['high-pressure']?.acknowledged,'ack not persisted');
   await page.getByRole('spinbutton',{name:'V-01.opening'}).fill('75');await page.getByRole('button',{name:'Отправить',exact:true}).click();await page.getByRole('button',{name:'Скрыть панель'}).click();checks.push('commands, measured SVG motion, reduced-motion and alarm acknowledgement use the actual runtime');
   await openSurface('Отчёты');await page.getByRole('button',{name:'Сформировать',exact:true}).click();await page.locator('.report-table tbody tr').first().waitFor();

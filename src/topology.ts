@@ -97,9 +97,15 @@ function retargetRoute(project:Project,edge:Pipe|Cable,old:PhysicalRoute,boxes:r
       const candidate={...old,points};
       const score=pathLength(points)+points.length*4-retained,trim=left+right;
       const worse=score>bestScore+1e-7||(Math.abs(score-bestScore)<=1e-7&&trim>=bestTrim);
-      if(worse||retraces(points)||!routeClear(candidate,boxes,edge)||!keepsWaypoints(points,edge.via))continue;
+      if(worse||retraces(points)||retraces(compactPoints(points.map(point=>({...point,z:0}))))||!routeClear(candidate,boxes,edge)||!keepsWaypoints(points,edge.via))continue;
       best=candidate;bestScore=score;bestTrim=trim;
     }
+  }
+  if(best){
+    // Retain small drag repairs, but retire a corridor once it becomes a detour.
+    // In particular, a stale riser can pull the new end back past its own bend.
+    const fresh=routeConnection(project,edge),slack=edge.kind==='pipe'?28:18;
+    if(fresh.valid&&pathLength(best.points)>pathLength(fresh.points)+slack)return fresh;
   }
   return best;
 }

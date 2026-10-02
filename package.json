@@ -23,7 +23,13 @@
     "ide:build": "bun scripts/build-ide.ts",
     "pages:build": "bun scripts/build-pages.ts",
     "start": "bun src/host/application.ts",
-    "agent": "bun src/host/acp.ts"
+    "agent": "bun src/host/acp.ts",
+    "apps": "bun src/host/apps.ts",
+    "test:apps:browser": "bun scripts/apps-browser-test.ts",
+    "apps:tunnel": "bun scripts/apps-tunnel.ts",
+    "apps:register": "bun scripts/register-app-plugin.ts",
+    "apps:validate": "bun scripts/validate-app-plugin.ts",
+    "apps:validate:public": "bun scripts/validate-app-plugin.ts --public"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.5.0",
@@ -35,6 +41,8 @@
     "@codemirror/state": "6.6.0",
     "@codemirror/view": "6.41.0",
     "@lezer/highlight": "1.2.4",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "@opentui/core": "0.5.12",
     "@opentui/react": "0.5.12",
     "@types/web-push": "^3.6.4",

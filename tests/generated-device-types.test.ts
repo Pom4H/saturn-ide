@@ -30,6 +30,14 @@ test('static defaults and explicitly authored dynamic-bank overrides keep signal
     channel0: signal({ initial: 2, writable: true }), note: 'metadata',
   });
   const writable: Signal<number, 'OVERRIDE.channel0', true> = overridden.channel0;
+  const modeled=project({id:'dynamic',label:'Dynamic',equipment:[overridden]});
+  const indexed:Signal<number,'OVERRIDE.channel0',true>=modeled.signals['OVERRIDE.channel0'];
+  expect(indexed).toBe(writable);
+  if(false){
+    // @ts-expect-error Uninspected generated keys are not guaranteed to exist in the project index.
+    const fabricated:Signal<number>=modeled.signals['OVERRIDE.absent'];
+    void fabricated;
+  }
   expect(command(writable, 3)).toEqual({ signal: 'OVERRIDE.channel0', value: 3 });
   expect(overridden.note).toBe('metadata');
   expect(command(staticBank.enabled, true)).toEqual({ signal: 'STATIC.enabled', value: true });

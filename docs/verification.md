@@ -1,5 +1,109 @@
 # Verification
 
+## Pre-push verification — 2026-10-02
+
+Executed on macOS arm64, Bun 1.4.2, against the complete accumulated working tree:
+`bun test tests` — **377 passed, 3 skipped, 0 failed, 2518 assertions**, 45.76 s,
+81 files. Log: `artifacts/pre-push-tests.log`. PostgreSQL storage/report and real
+Modbus RTU serial/PTY acceptance remain skipped; those environments are not verified.
+The latest TypeScript 7/6 and architecture check passed as recorded immediately below.
+Fetched origin before committing: main and origin/main both pointed to `0917d5e`.
+`git diff --cached --check` passed; ignored runtime data, recordings and tunnel
+binary are excluded from the commit.
+
+## Plugin flexibility and submission audit — 2026-10-02
+
+Executed on **macOS arm64, Bun 1.4.2 (744846f84)**. Compared current implementation
+with the supplied ChatGPT Plugins article and the current official packaging,
+extensions, authentication, guidelines and submission documentation.
+
+- `bun run check` — PASS: TypeScript 7/6 and architecture guard, **198 modules**.
+  Log: `artifacts/plugin-audit-check.log`.
+- `bun test tests/app-plugin-package.test.ts tests/apps.test.ts tests/plugins.test.ts tests/importer-extension.test.ts tests/monitoring-extension.test.ts tests/generated-device-types.test.ts tests/project-authoring.test.ts`
+  — **27 passed, 0 failed, 407 assertions, 8.54 s**. Includes actual Git source-kit
+  install/update/local-edit fencing, custom equipment build/types, browser importer
+  composition, monitoring, official MCP client and source CAS/runtime separation.
+  Log: `artifacts/plugin-audit-tests.log`.
+- Fetched canonical Agent Plugins **1.0.0** plugin/MCP JSON Schemas from the schema
+  URLs declared in the package; validated both actual JSON files with AJV's
+  draft-2020 validator — both PASS, no validation errors.
+  Evidence: `artifacts/plugin-schema-validation.json`. OpenAI-specific extension
+  contents and portal/skill review are outside those portable schema checks.
+- `bun run apps:validate` — PASS for the documented local subset.
+  `bun run apps:validate:public` — expected **exit 1**, six current blockers:
+  remote HTTPS, four publisher pages and accessible recording URL. The report
+  separately lists unchecked identity/auth/domain/account/review gates.
+  Evidence: `artifacts/plugin-{local,public}-preflight.json`.
+- Restarted only the Apps adapter; actual MCP discovery on **127.0.0.1:3100/mcp**
+  reported 17 tools and corrected destructive annotations for source overwrites,
+  while new-file creation remains additive. Evidence: `artifacts/plugin-live-metadata.json`.
+- `git diff --check` — PASS.
+
+Corrected the 40-character listing subtitle to 29 characters and the 32×32 SVG
+viewBox to 64×64, preserving its artwork. Prepared five positive and three
+negative review cases; they have not been run as conversational prompts in a
+real ChatGPT reviewer account. No UI renderer changes or new browser recordings
+in this audit; prior Apps browser evidence remains separately recorded below.
+No tunnel connection, OAuth rollout, upload, review, public publication or
+OpenAI Verified status is claimed.
+
+## Integration with origin/main 0917d5e — 2026-10-02
+
+Fast-forwarded main from 4f86375 to 0917d5e (71 commits), then restored the
+existing tracked and untracked local work from the retained stash named
+`codex: preserve local work before origin/main sync 2026-10-02`. Resolved the
+14 conflicting files by combining upstream object-first navigation, source
+context, decision service, tee/mounting contracts with local DSL inference,
+agent host, mobile/chat/catalog layout and pipe/cable fixes. All 110 paths from
+the saved local changes remain present. HEAD and origin/main have no divergence;
+the combined local changes remain uncommitted and unstaged.
+
+Executed on macOS arm64, Bun 1.4.2, actual Chromium through Playwright with software WebGL:
+
+- `bun run check` — PASS: TypeScript 7/6 and architecture boundaries, 190 modules.
+- `bun test tests` — PASS: 370 tests, 3 skipped, 0 failed, 2455 expect calls, 69.71 s. PostgreSQL storage/report and serial Modbus RTU/PTY acceptance were skipped. Includes upstream tee, enclosure mounting and decision contracts and the local DSL/positioning regressions.
+- `bun scripts/pipe-visual-browser-test.ts` — PASS: actual 2D/3D preview/drop, closed/stale states, orthogonal SVG segments and explicit invalid-route diagnostics, zero page errors.
+- `bun scripts/physical-interaction-browser-test.ts` — PASS: retained meshes/camera, Escape/capture cancellation, world-space cable picking and fractional X/Y preserved during Shift elevation. `artifacts/physical-editor/report.json` records three checks and zero errors.
+- `bun scripts/explorer-git-browser-test.ts` — PASS: object/icons/flat/folder navigator, persisted layout, keyboard navigation, real AST Git review, restore preview and desktop/dark/mobile states. Object navigator screenshot was visually inspected.
+- `bun scripts/decision-browser-test.ts` — final PASS: guarded text proposal and confirmation, existing source surface, desktop/mobile hit testing, invalid responses/arguments and credential/context privacy. Provider is a deterministic fixture, not a live provider evaluation.
+- `bun scripts/display-failure-browser-test.ts` — final PASS: failed project HMI remains local in 2D/3D, source opens in the context dock while the diagram remains visible, closed host preserves last known scene, zero page errors. Source dock/3D screenshot was visually inspected.
+- `git diff --check` — PASS; no unresolved merge entries.
+
+Initial decision browser run stopped at the first-start preset dialog; the test
+now uses the supported returning-user setup. Initial display-failure run reached
+the source dock and 3D assertions but timed out on the removed `.sim-badge`
+selector; the closed-state assertion now targets the current offline environment
+chip. Both scenarios passed after these harness updates. Enclosure mounting is
+covered here by the passed test suite, not a new browser mounting-parity claim.
+
+## Logical pipe/cable positioning regressions — 2026-10-02
+
+Fixed the SVG projection dropping a planar corner next to a height transition,
+retained drag corridors growing into unnecessary detours/projected reversals,
+and the 3D panel-only cable transform raising intermediate vertices independently
+of the shared router. Shift elevation now preserves fractional X/Y; snapping uses
+the exact authored port anchor. Explicit free endpoints remain authored free ends.
+This is schematic positioning verification, not a physical installation claim.
+
+Executed on macOS arm64, Bun 1.4.2, actual Chromium through Playwright with software WebGL:
+
+- `bun run check` — final PASS: TypeScript 7/6 and architecture boundaries, 185 modules.
+- `bun test tests/pipe-path.test.ts tests/route3d.test.ts tests/physical-interaction.test.ts tests/domain-contracts.test.ts` — PASS: 30 tests, 118 expect calls plus node:assert checks. Covers height projection, endpoint preservation, 100 drag frames, bounded detours, unchanged clear corridors, waypoints and obstacles.
+- `bun test tests` — PASS: 354 tests, 3 skipped, 0 failed, 2310 expect calls, 51.60 s. PostgreSQL storage/report acceptance and serial Modbus RTU/PTY acceptance were skipped.
+- `bun scripts/pipe-visual-browser-test.ts` — final PASS: actual 2D/3D drag and saved drop, orthogonal SVG straight segments before/during/after drag, preserved geometry with a closed/reopened valve and stale observations, intentional blocked-route diagnostics, zero page errors. Frames: `artifacts/pipe-{before,during,after}-{2d,3d}.png`, `pipe-closed-2d.png`, `pipe-stale-2d.png`, `pipe-blocked-{2d,3d}.png`; routes: `artifacts/pipe-visual-routes.json`; recording: `artifacts/pipe-visual-recording/`.
+- `bun scripts/physical-interaction-browser-test.ts` — final PASS: retained equipment meshes/camera, Escape and capture-loss cancellation, world-space cable picking and Shift height with exact fractional X/Y. Report: `artifacts/physical-editor/report.json`; frames/recording in the same directory.
+- `git diff --check` — PASS.
+
+Initial TypeScript checks exposed two new test typing errors, corrected without
+weakening assertions. The first physical interaction run exposed the fractional
+coordinate rounding bug; the product was fixed and the same assertion passed.
+Browser scripts now use the supported returning-user setup rather than getting
+blocked by the first-start preset dialog. Before/after, stale, closed and failed
+route frames were visually inspected. A loose end moved under equipment remains
+an explicit invalid route; the test does not silently reconnect it. Existing PLC
+display failure is unrelated and remains visible. Global crossing minimization,
+automatic equipment packing and complete old-Saturn visual parity are not claimed.
+
 ## GitHub Pages engineering showcase — 2026-09-28
 
 Executed on macOS arm64, Bun 1.4.2:
@@ -1018,3 +1122,416 @@ highlight 3 px. В 3D до правки была одна бледная тру�
 проверены. Browser drag подтвердил движение подложки и сохранение прямого
 числового литерала; вычисленные позиции и конфликт внешнего изменения остаются
 в общей приёмке two-way editing.
+
+### Центральные страницы shell, URL и каталог плагинов — 2026-09-30
+
+На macOS arm64, Bun 1.4.2, Chromium/Playwright выполнены:
+
+- `bun run check` — **PASS**, TypeScript 7/6 и architecture guard **170 modules**.
+- `bun test tests/browser-view.test.ts tests/shell-model.test.ts tests/panel-layout.test.ts tests/command-shell.test.ts tests/shell-boundaries.test.mjs`
+  — **28 PASS, 0 FAIL, 62 expect**. Проверены round-trip URL, отбрасывание
+  неизвестных страниц/некорректных координат, общие буферы/команды и границы shell.
+- `bun scripts/central-shell-browser-test.ts` — **PASS** на настоящем Bun host
+  и драйвере симуляции: первоначальный 2D и реальный 3D, центральные Code/Monitor/
+  Plugins, один пункт рейки на рабочую область и одно меню проводника, правый
+  inspector вне workbench, reload ссылки на файл и ракурс 2D/3D, Back/Forward,
+  копирование URL, сохранение локальных черновиков, каталог проектных расширений,
+  поиск/форма добавления/открытие реального исходника, light/dark и 390×844 без
+  горизонтального переполнения. Все **58 SVG-иконок** проверены в размерах
+  16/20/24 на ненулевую геометрию и границы viewBox; light/dark gallery просмотрена.
+  Ошибок страницы — 0.
+- `bun scripts/engineering-shell-browser-test.ts` — **PASS**: отдельная страница
+  чата, копирование запроса, закрытие/открытие инструментов без замены SVG,
+  3D canvas, несохранённого редактора и ввода терминала; New tab с поиском реальных
+  ресурсов, сводка checked/published/applied, меню/архив, focus/Escape/resize/full
+  view, dark/mobile/reduced-motion, failed build и offline. Ошибок страницы — 0.
+- `bun scripts/codex-shell-browser-test.ts` и
+  `bun scripts/sidebar-source-browser-test.ts` — **PASS**: явные центральные
+  направления Object/Code, настоящие исходники и SVG, объектный/плиточный/
+  файловый проводник, единое меню, закрытие мобильной навигации, light/dark/offline.
+  В мобильной компоновке открытый проводник оставляет рейку доступной.
+- `bun scripts/review-pane-browser-test.ts` — **PASS**: настоящий Git diff после
+  2D drag, выбор файла в review, retained 3D/editor, отличимые идентичности и
+  несохранённый черновик, mobile/failed/offline, 0 ошибок страницы.
+- `bun scripts/shell-panel-test.ts` — **PASS**: единственная постоянная нижняя
+  панель, keyboard/resize/expand/collapse, retained terminal draft/log, настоящие
+  тревоги и ack/retry, shell inspector не пересекает панель, themes/mobile,
+  failed сохраняет Applied, offline/stale, 0 ошибок страницы.
+- `SATURN_CAPTURE_ARTIFACTS=1 bun run test:browser` — **PASS**: настоящий `bun dev`
+  и типизированный проект, live editor values, реальные TS JSDoc, SVG anatomy,
+  drag с записью исходника, runtime-команды/движение/тревоги и квитирование,
+  SQL-отчёт с missing-data/coverage, общий ShellSession/история/Git commit,
+  palette, настоящий WebGL, desktop/tablet/phone/HMI кадры.
+- `git diff --check` — **PASS**.
+
+Итоговые кадры: `artifacts/central-shell/object-2d.png`, `object-3d.png`,
+`code.png`, `monitor.png`, `environment-sidebar.png`, `plugins.png`,
+`plugins-add.png`, `object-dark.png`, `object-mobile.png`, `plugins-mobile.png`,
+`icons-light.png`, `icons-dark.png`. Кадры объекта, каталога, shell sidebar,
+мобильного каталога и иконок визуально просмотрены. Реальные видео находятся
+в `artifacts/central-shell/recording/` и `artifacts/engineering-shell/recording/`.
+Кадры тестового host также сохраняют штатное состояние отсутствующего
+подключения factory экрана PLC; этот прогон не заявляет полную визуальную
+приёмку project-owned HMI или всего старого каталога оборудования.
+
+Существующие сценарии обновлены под явный переход через рейку и одно меню;
+проверки исходников/геометрии/runtime не сняты. Чат содержит только временные
+черновики в памяти; browser agent transport и канал удалённой поддержки ещё
+не подключены. URL адресует перечисленную shell-проекцию и камеру; внутренние
+фильтры/периоды отдельных поверхностей пока не сериализуются. Создание/обновление
+проектного плагина использует существующие API и явные импорты; полноценный
+публичный marketplace и глобальный lifecycle не вводились.
+
+
+### Home, Settings, два пресета и демопроекты — 2026-09-30
+
+Выполнено на macOS arm64, Bun 1.4.2, установленном Chromium через Playwright.
+WebGL кадры тестовых сценариев используют software rendering, где включён
+`--enable-unsafe-swiftshader`; эта проверка не измеряет производительность GPU.
+
+- `bun run check` — **PASS**, TypeScript 7/6 и architecture guard **174 modules**.
+- `bun test tests/browser-view.test.ts tests/shell-model.test.ts tests/panel-layout.test.ts tests/command-shell.test.ts tests/shell-boundaries.test.mjs`
+  — **29 PASS, 0 FAIL, 66 expect**.
+- `bun test tests/project-template.test.ts tests/project-authoring.test.ts`
+  — **6 PASS, 0 FAIL, 29 expect**: пустой авторский проект, отсутствие IDE infrastructure
+  в scaffold, обычные imports, project-owned equipment/HMI и source CAS.
+- `bun scripts/home-settings-browser-test.ts` — **PASS**: первый запуск с реальным
+  выбором пресета, default 3D Home, отсутствие footer/старых переключателей,
+  Settings в shell sidebar/центре, native Back/Forward и keyboard/history/reload,
+  сохранение темы/языка/иконки/акцента/пресета, реакция системной темы на media change,
+  переходы Alt 1/2/3, сохранение source draft через Settings, раздельная сводка
+  исполнения/версии, Home/Settings 390×844 без overflow. Реальные отдельные копии
+  smart-home и pumping-station открываются через parent host; smart-home имеет
+  mode simulation, корректный Project и пустую problems. Через настоящий терминал
+  проверены выключение обоих светильников, обратное включение, target температуры
+  и рост наблюдаемой температуры, возникновение/снятие leak alarm. Это toy dynamics,
+  а не приёмка оборудования/протоколов или геометрии реального дома. Page errors — 0.
+- Повторно **PASS**: `central-shell-browser-test`, `engineering-shell-browser-test`,
+  `codex-shell-browser-test`, `sidebar-source-browser-test`, `review-pane-browser-test`,
+  `shell-panel-test`, `explorer-git-browser-test`, `shell-navigation-test` (все через
+  `bun scripts/<name>.ts`). Реальные source/tab/draft, SVG/3D/camera URL, one explorer
+  menu, sidebar ownership, Git AST/restore review, commands, alarm ack/retry,
+  failed/offline/stale, drawer retention и mobile проверки сохранены. Старые
+  2D сценарии задают preference возвращающегося пользователя; первоначальный 3D
+  независимо проверяет home-settings. Theme assertions проходят через настоящий
+  Settings UI и native history, а не через инъекцию CSS. Все **63 SVG definitions**
+  проверены на ненулевую геометрию/границы 24×24 при размерах 16/20/24.
+- `SATURN_CAPTURE_ARTIFACTS=1 bun run test:browser` — **PASS**: настоящий `bun dev`,
+  live source values/TS JSDoc, исходные SVG anatomy/кабели, source persistence после
+  drag, реальные команды/движение/тревоги/ack, SQL report coverage, archive/Git commit,
+  palette, WebGL routes и desktop/tablet/phone/HMI frames.
+- `git diff --check` — **PASS**.
+
+Home/settings evidence: `artifacts/home-settings/first-start.png`,
+`business-home.png`, `appearance-light.png`, `appearance-dark.png`, `home-preset.png`,
+`environment-version.png`, `home-mobile.png`, `settings-mobile.png`,
+`home-demo-3d.png`, `home-demo-controls.png`, `home-demo-leak.png`,
+`business-demo-3d.png`, видео в `artifacts/home-settings/recording/`.
+Первый запуск, Settings desktop/mobile, реальный Home 3D/HMI и SVG gallery
+визуально просмотрены. Остальные browser tests сохраняют собственные reference
+frames и видео; эти артефакты не заменяют приёмку большого legacy project.
+
+Удалены оставшиеся CSS правила нижней statusbar, дублирующего runtime/operations
+footer, старых theme/language buttons и декоративных native window dots.
+Функциональная нижняя панель оборудования/графиков/терминала/уведомлений сохранена.
+Одновременные runtime среды, shared ACL/federation, физическая Space/CAD модель,
+CAD sync и общий Scheduled UI остаются явно документированными предложениями.
+Ни один из этих будущих contracts не заявлен пройденной capability.
+
+
+### Упрощение проводника кода — 2026-09-30
+
+Удалены технический корень «Файловая система», дублирующий переход назад и иконка
+в заголовке проводника. Файлы/папки раздела Code начинаются с aria-level 1; активная
+область обозначена в главной рейке. Collapse удаляет expansion только текущего
+дерева, не сбрасывая группы других разделов. Реальные paths, resource IDs, исходники
+и entity/view actions сохранены.
+
+На macOS arm64, Bun 1.4.2 / Chromium через Playwright выполнены:
+
+- `bun run check` — **PASS**, TypeScript 7/6, architecture guard **174 modules**.
+- `bun scripts/sidebar-source-browser-test.ts` — **PASS**: folder/file root уровни,
+  отсутствие прежнего wrapper/back/icon, active Code rail, collapse + keyboard
+  expansion и переход в другие разделы; настоящие source/object/tile projections,
+  плоский список, мобильное закрытие проводника, 0 page errors.
+- `bun scripts/shell-navigation-test.ts` — **PASS**: nested search/keyboard,
+  реальные исходники/вкладки, сохранение и защита черновика, все поверхности,
+  mobile и close all/reopen; 0 page errors.
+- `bun scripts/codex-shell-browser-test.ts` — **PASS**: navigation/menu, настоящие
+  SVG/3D и source, light/dark/mobile/offline; 0 page errors.
+- `git diff --check` — **PASS**.
+
+Кадр `artifacts/sidebar-source-folders.png` визуально просмотрен; записи браузера
+в `artifacts/sidebar-source-recording/`. Новых domain/runtime возможностей эта
+косметическая правка не вводит.
+
+### Codex через браузерный ACP transport — 2026-09-30
+
+macOS arm64, Bun 1.4.2, Node 26.4.0, настоящий Chromium/Playwright.
+Внешний `@agentclientprotocol/codex-acp@2.0.1` с bundled Codex; фактические
+session config options подтвердили `gpt-6.1-sol`, mode `agent`.
+Модель/auth не переопределялись Saturn. Подробный разбор:
+[codex-evaluation-2026-09-30.md](codex-evaluation-2026-09-30.md).
+
+Фактически выполнено:
+
+- `bun run check` — PASS: TypeScript 7/6, architecture guard **182 modules**.
+  Это общая рабочая копия с параллельными изменениями Shell/library/mobile;
+  число модулей не относится только к агентному transport.
+- `bun test tests/agent-host.test.ts tests/command-integration.test.ts tests/command-shell.test.ts tests/server.test.ts tests/shell-boundaries.test.mjs`
+  — **20 PASS, 0 FAIL, 142 assertions**. Настоящий SDK/stdio child process:
+  поток, permission validation/decline, duplicate gate, cancel/reuse, child exit,
+  missing executable и закрытый host; текущие draft/CAS/runtime/manual-preview
+  проверки сохранены. После idle cleanup и cancellation handling отдельно
+  `bun test tests/agent-host.test.ts` — **4 PASS, 14 assertions**.
+- `bun scripts/agent-browser-test.ts` — PASS: отдельный детерминированный ACP
+  процесс, реальный HTTP host/браузер, поток, permission allow/deny, отмена и
+  следующий запрос, падение процесса, session-key gate, неизменный Applied,
+  source link в общем редакторе, inert script text, light/dark/390 px;
+  page errors 0. Кадры/записи `artifacts/agent-browser/` просмотрены.
+  Ответы fixture не считаются проверкой качества LLM.
+- `bun scripts/engineering-shell-browser-test.ts` — финальный PASS: copy
+  fallback без configured agent, настоящие SVG/3D, сохранение CodeMirror draft
+  и ввода терминала, close/reopen, New tab, summary, themes, failed/offline и
+  mobile. Page errors 0. Повторные промежуточные запуски не прошли на прежних
+  mobile chrome selectors и ожидании CSS-анимации после параллельного введения
+  MobileHeader. Финальный сценарий использует настоящее mobile меню/действия
+  и `screenshot({animations:'disabled'})`; предметные проверки не сняты.
+- `.saturn/codex-live-browser.ts` — реальный Codex через browser chat: три
+  задания (топология, диагностика, точная подпись тревоги), 0 page errors.
+  Recorded turn times 58.930 / 33.292 / 29.355 с. Первый agent TypeScript check
+  **FAIL** из-за отсутствующего @saturn/core в копии. После обычного локального
+  подключения зависимости `.saturn/codex-recheck.ts` — реальный agent check
+  **PASS** (18.824 с). Независимый `bun run --cwd .saturn/test-AZquBL/project check`
+  — PASS. Сравнение всех исходных project files: изменён только project.ts,
+  одна RU подпись плюс конечный newline; above/hysteresis/EN сохранены.
+  Watcher/Builder создал Checked без problems; Published/Applied null.
+- `.saturn/codex-final-browser.ts` — финальный PASS на настоящем Codex:
+  formatted response, file link → общий editor, dark mobile, graceful
+  Disconnect; 0 page errors. Первую пробу агент не выполнил из-за буквального
+  запрета всех команд чтения в запросе и отказа его попытке UI inspection;
+  финальная проба явно разрешала только обычное чтение source. Отказ не
+  маскируется как успешный ответ. Последний mobile кадр снят с закрытым drawer;
+  desktop/source/mobile кадры визуально просмотрены. Evidence:
+  `artifacts/codex-evaluation/`, включая JSON ответов/config, PNG и WebM.
+- `git diff --check` — PASS. Полная unit suite и другие платформы не запускались.
+
+Нет заявления о visual parity старого Saturn, live/hardware execution,
+удалённой авторизации, сложных refactor/report/PLC задачах или полной надёжности
+LLM. Browser отображает transient transcript; durable agent sessions остаются
+внешними. Несохранённый draft обозначается в context, но агент читает сохранённые
+файлы. Подключение внешнего процесса не выдаёт runtime credentials.
+
+### Quiet trash, contextual equipment catalog and mobile Shell — 2026-09-30
+
+Executed on macOS arm64, Bun 1.4.2; actual Chromium through Playwright, software
+WebGL where needed. Returning-user fixtures and a separate touch viewport were used.
+
+- `bun run check` — PASS: TypeScript 7/6 and architecture guard, **182 modules**.
+- `bun test tests/workspace-trash.test.ts tests/trash-api.test.ts tests/browser-view.test.ts tests/shell-model.test.ts tests/resource-index.test.ts` — **36 passed**, 0 failed,
+  **63 expect calls**, plus node:assert checks in the shared Shell tests. Covers exact
+  30-day expiration (injected clock, not a 30-day wall-clock wait), startup catch-up,
+  exclusive restore conflicts, CAS deletion, path/symlink rejection, tampered content,
+  interrupted metadata, Unicode/space filenames, original bytes/mode, clean-tab cleanup
+  and late draft retention. An actual host rejects unauthenticated writes and retains
+  its last valid model while an imported equipment source is temporarily missing.
+- `bun scripts/workspace-library-browser-test.ts` — PASS: About-only version block,
+  quiet icon-only trash, source preview/create, catalog route/reload, real file deletion,
+  two distinct backups of one path, restore conflict/no overwrite, successful restore,
+  dark/mobile screenshots and zero page errors.
+- `bun test tests/project-authoring.test.ts tests/project-template.test.ts tests/project-diagnostics.test.ts` — **8 passed**, 0 failed, **57 expect calls**. Checked-source
+  insertion uses suggested coordinates, preserves original equipment positions and
+  route validity, including project-owned templates; invalid coordinates are rejected.
+- `bun scripts/catalog-authoring-browser-test.ts` — PASS: new valve stays in 2D;
+  new tank stays in 3D; custom project-owned device is created from TS; the previous
+  equipment draft survives; another browser tab restores the linked Shell catalog
+  panel. Real source files/imports and rendered SVG/WebGL were exercised. The final
+  rerun also compares route validity before/after insertion. Earlier visual inspection
+  exposed fixed-position overlap; free-space placement corrected it before acceptance.
+- `bun scripts/mobile-shell-browser-test.ts` — PASS: actual touch context at 390 × 844
+  and 844 × 390; full-width 3D, four destinations with 44 px targets, tools, modal
+  focus containment through 24 Tab presses and Escape, retained TS drafts across
+  catalog sheets, dark settings, home HMI shortcut, support, quiet trash, native
+  history and no horizontal overflow/page errors. The phone retains mobile chrome
+  in landscape. Frames and recordings are in `artifacts/mobile-shell/`.
+- `bun scripts/sidebar-source-browser-test.ts` — PASS: existing object/tile/source
+  projections, flat/folder trees, keyboard/collapse, clean root levels, mobile source
+  navigation and no page errors, using the new mobile destination navigation.
+- `bun scripts/home-settings-browser-test.ts` — PASS: actual 3D Home, settings/preset,
+  language/theme/accent/icon persistence, native history, retained source draft,
+  separate home/business demo projects and simulated device commands; mobile frames
+  and no page errors. Mobile navigation uses its own bottom menu.
+- `bun scripts/codex-shell-browser-test.ts` — PASS: central views and one explorer
+  action menu, real SVG/3D, light/dark/mobile/offline and no page errors. The mobile
+  assertion now requires the desktop rail to be hidden and the bottom navigation
+  to be visible.
+
+The 3D browser assertions allow actual lazy bundle/WebGL startup up to 20–30 seconds;
+concurrent host builds previously exceeded the default five-second test wait. Old
+mobile rail assertions and test-only selectors were updated for the separate chrome.
+No placeholder or syntax-only visual acceptance was substituted. The strengthened
+mobile Tab-cycle assertion initially exposed focus moving to the document body;
+explicit boundary focus handling corrected it. A later mobile run timed out while
+clicking native Forward. The final passing script disables Playwright’s implicit
+navigation wait for the two history buttons, uses explicit surface assertions,
+and verifies that internal navigation causes no unload dialog.
+
+Visually inspected frames include `artifacts/catalog-authoring/ts-with-catalog.png`,
+`artifacts/catalog-authoring/2d-insert.png`, `artifacts/catalog-authoring/3d-insert.png`,
+`artifacts/workspace-library/trash.png`, and `artifacts/mobile-shell/home-3d.png`.
+Recordings are in corresponding `recordings/` directories. The example's existing
+PLC display error remains visible and is not presented as a healthy hardware display.
+This verifies IDE navigation/source retention, not physical catalog fidelity, a hardware
+installation, CAD synchronization or a globally installed equipment registry.
+
+
+### Компактный DSL без обязательного i18n — 2026-09-30
+
+Авторские подписи/описания используют строки; старые locale maps сохранены только
+для совместимости. DSL proposal редактирует строковую подпись без locale и без
+обязательного semanticId, используя общий structural AST matcher. Предложения
+для legacy maps по-прежнему требуют явного locale; computed/spread/ambiguous
+цели не разрешены. PLC scaffold и примеры документации не создают переводные
+словари. Project-owned importer принимает строковые label/summary; локализация
+Shell и стандартных диагностик сохранена. Аудит остальных contracts записан
+в docs/dsl.md; их семантика исполнения не менялась.
+
+На macOS arm64, Bun 1.4.2 выполнены:
+
+- bun run check — PASS: TypeScript 7/6 и architecture guard, 182 modules.
+- bun test tests/dsl-proposal.test.ts tests/dsl-guide.test.tsx tests/workspace.test.ts tests/importer-extension.test.ts tests/generated-device-types.test.ts tests/universal-signals.test.ts — финальный PASS: 25 tests, 389 assertions. Первый запуск имел 17 PASS и ошибку импорта browser-only api (location) в предложенном SSR-тесте; проверка UI перенесена в настоящий браузер, metadata test не импортирует browser binding.
+- bun scripts/importer-browser-test.ts — PASS: настоящий Chromium, строковое название в RU/EN UI, строковый summary, preview и запись импортированного TS-проекта с проверкой, source-only HMI не показан как Applied; 0 page errors. Прежний selector проводника заменён прямым поддерживаемым URL page=dependencies; проверка импорта сохранена.
+- git diff --check — PASS.
+
+Кадры artifacts/dsl-labels/importer-en.png и importer-preview-ru.png визуально
+просмотрены; реальная запись в artifacts/dsl-labels/recordings/. Внешние
+saturn-examples/saturn-plugins и сохранённые авторские переводы не переписывались.
+Проверка не заявляет размерностную/derived/визуальную parity.
+
+
+### Defaults коллекций и вывод типов канонического индекса — 2026-09-30
+
+project() допускает отсутствие equipment/pipes/alarms, материализует отдельные
+массивы и сохраняет прежний checked Project. null не нормализуется в пустую
+коллекцию. Канонический индекс использует реальные Signal.id (не aliases
+входного signals object); статически известные ID/value/writable сохраняются
+из оборудования, pipe/cable, alarm, aggregate/SQL report, monitor, scenario и HMI.
+Условные источники и неизвестный состав массивов получают консервативный
+nullable-by-presence доступ; generated банки не получают выдуманных channel keys.
+Helpers сохраняют типы ссылок; signal() не расширяет отсутствующий writable
+до boolean под влиянием контекста. Старые явные generic вызовы set/expectValue
+сохраняются. Runtime command authority и transport model не менялись.
+
+Фактически выполнено на macOS arm64 / Bun 1.4.2:
+
+- bun run check — финальный PASS: TypeScript 7/6 и architecture guard, 185 modules в общей рабочей копии. Compile-negative assertions сохранены: неизвестные статические ключи, read-only команды, неверный value type, условные/динамические источники.
+- bun test tests/project-inference.test.ts tests/project-authoring.test.ts tests/domain-contracts.test.ts tests/generated-device-types.test.ts tests/dsl-guide.test.tsx tests/core.test.ts tests/universal-signals.test.ts tests/scenarios.test.ts tests/scenario-runner.test.ts tests/monitoring-extension.test.ts tests/system-grouping.test.ts tests/source-authoring.test.ts tests/server.test.ts — 78 PASS, 0 FAIL, 718 assertions, 18.64 s.
+- Компактный project.ts проверен настоящим Builder; TypeScript Language Service действительно завершает P-01.rpm/P-01.run. Все новые TS-примеры docs/dsl.md также прошли Language Service.
+- git diff --check — PASS.
+
+Промежуточные проверки обнаружили потерю readonly writable в contextual inference
+(исправлено через NoInfer), неверный timeout нового сценарного fixture
+(ожидание 5000 ms при общем 1000 ms; fixture исправлен), и попытку теста читать
+equipment.rpm из широкого checked Equipment (заменено штатным equipmentSignal).
+Первые итерации compile/test не считаются PASS. Две временные ошибки одновременно
+редактируемого Shell исчезли в его текущей рабочей версии; Shell не исправлялся
+в этой задаче. Browser/visual/hardware parity не заявляется.
+
+Standalone starter закреплён на core 7b0f33319e0c65b5a8b92b8f42e7d7819772cd98,
+в котором новые defaults отсутствуют; совместимые списки в scaffold сохранены.
+Pin не переписывался на несуществующий опубликованный commit. Новые defaults
+и inference доступны текущему core; standalone проекты требуют обновления
+зависимости на версию с этой реализацией после выпуска.
+
+
+## Общий каталог навигации и layout Shell — 2026-09-30
+
+Выполнены общий headless navigation catalog, explicit slot/page reducer,
+BrowserView adapter и единая область деталей Shell. На страницах view удалены
+общие «Перейти», повторная строка названия/ревью/свойств и отдельные три точки
+вкладок. Сохранены contextual resource actions, tab menu, source buffers,
+2D/3D/ports, command owner и нижний panel reducer.
+
+Проверено на macOS arm64, Bun 1.4.2, настоящий Chromium через Playwright:
+
+- `bun run check` — PASS: TypeScript 7/6 и architecture guard, 185 modules.
+- `bun test tests/shell-layout.test.ts tests/navigation-catalog.test.ts tests/browser-view.test.ts tests/shell-model.test.ts` — PASS: 28 tests. Включает последовательности reducer actions, URL roundtrip, единственный details slot, host capabilities, operator UI filtering, общие source buffers, dirty close и сохранение поздних drafts.
+- `bun test tests` — PASS: 348 tests, 3 skip, 0 fail; 2291 expect calls. Пропущены два PostgreSQL backend acceptance и Modbus RTU serial/PTY acceptance; в этом запуске они не проверены.
+- `bun scripts/shell-layout-browser-test.ts` — PASS: чистые реальные scenario/source views; chrome selector и один слот вне view; catalog/review/properties replacement; сохранение настоящего TS draft; URL reload с каталогом; New tab; закрытый/открытый chat drawer; 390px mobile slot и отсутствие горизонтального overflow/page errors.
+- `bun scripts/engineering-shell-browser-test.ts` — финальный PASS: реальные host/driver; закрытие и повторное открытие drawer сохраняют WebGL canvas, TS editor и терминал; launcher/search/menu/summary/focus/resize/full view; failed/offline, dark/mobile/reduced motion; 0 page errors.
+- `bun scripts/central-shell-browser-test.ts` — финальный PASS: default 2D/3D, source/monitor/plugins, Shell sidebar, camera/viewBox URL reload/back/forward/copy, сохранённые drafts, project plugin source/add/search, dark/mobile, SVG bounds при 16/20/24 px, 0 page errors.
+- `bun scripts/mobile-shell-browser-test.ts` — PASS: full-width 3D и touch destinations, keyboard focus/Escape, catalog sheet/drafts, settings/support/trash, browser back/forward и responsive transition.
+- `bun scripts/catalog-authoring-browser-test.ts` — PASS: настоящие TS-изменения при вставке в 2D/3D, project-owned custom equipment, сохранение draft, URL каталога рядом с TS/3D.
+- `git diff --check` — PASS.
+
+Браузерные проверки доступа к properties/review/catalog используют общий
+`helpers/shell-details.ts`, а не удалённые кнопки внутри toolbar view. Первый
+запуск нового layout test ошибочно считал общий CSS class `.resource-details`
+доказательством второй панели: ReviewPane использует этот же class. Проверка
+исправлена на один Shell slot и отсутствие вложенных деталей внутри workbench.
+Два запуска central acceptance дошли до mobile и остановились на скрытом
+десктопном rail; mobile переход заменён реальным меню, критерии сохранены.
+Промежуточные type-check failures затрагивали параллельно изменяемые domain
+contract/project authoring tests и scale benchmark; финальный общий check
+выполнен после их исправления, без ослабления inference acceptance.
+
+Кадры `artifacts/shell-layout/{scenarios-clean,source-catalog,scenarios-review,
+chat-closed,chat-single-sidebar,mobile-source,mobile-catalog}.png` визуально
+просмотрены; реальные записи — в `artifacts/shell-layout/recording/` и каталогах
+engineering-shell/central-shell/mobile-shell/catalog-authoring.
+Это проверка первого структурного этапа, а не доказательство полной plugin SDK,
+CAD, scheduler, remote permissions или hardware parity. Их критерии сохранены.
+
+## 2026-10-02 — local MCP Apps integration
+
+Executed on this Mac: **Bun 1.4.2 (744846f84), macOS arm64**; browser checks used real
+Playwright Chromium with SwiftShader, video recordings and PNG reference frames.
+The local project API and MCP transport ran as separate hosts; this does not claim
+isolation of runtime from the existing dev workspace.
+
+- `bun run check` — passed TypeScript 7, TypeScript 6 and the architecture guard
+  (**198 modules**). Log: `artifacts/apps-check.log`.
+- `bun test tests` — **373 passed, 3 skipped, 0 failed; 2495 assertions**, final run
+  45.33 s. The skips remain PostgreSQL storage/report checks and real Modbus RTU
+  over PTY; those environments were not tested. Log: `artifacts/apps-unit-tests.log`.
+- `bun test tests/apps.test.ts tests/browser-view.test.ts` — **9 passed, 0 failed,
+  62 assertions**. Actual official MCP client initialization/discovery/resource read,
+  source CAS, path confinement, credential redaction, real TS failure/restoration,
+  source/check versus publish/apply, applied identity fences, array results, and
+  exact port links. Log: `artifacts/apps-protocol-test.log`.
+- `bun run test:apps:browser` — passed using the **official AppBridge**, the actual
+  bundled Shell/project extensions and an immutable `about:srcdoc` resource with
+  CSP blocking direct connections and nested frames. Verified 2D/3D, source edits,
+  new-device import/placement, camera/canvas continuity, unchanged device mesh
+  identities, affected-display rebinding on HMI context change, view context/local
+  links, exact 2D/3D ports, shared HMI, typed report
+  in scoped DOM, and real XLSX download through app-only MCP transport. Failed TS,
+  workspace disconnection and app teardown retain honest states. No page errors.
+  Log: `artifacts/apps-browser-test.log`; recording, eight state reference frames
+  plus the port frame, workbook and machine-readable evidence are in
+  `artifacts/apps-recording/`.
+- `bun scripts/display-failure-browser-test.ts` — passed: disconnected
+  project-owned display fails locally in SVG/3D, remaining Shell/equipment/routes
+  stay visible and a closed host retains the last scene; no page errors.
+  Log: `artifacts/apps-display-regression.log`.
+- `bun scripts/physical-interaction-browser-test.ts` — completed with exit 0,
+  preserving the existing browser interaction acceptance after per-device resource
+  management. Log: `artifacts/apps-physical-regression.log`.
+- `bun scripts/hmi-multiple-commands-browser-test.ts` — passed: second/third
+  commands reach the actual Driver, read-only signals excluded, 390 px and short
+  panel scrolling. Log: `artifacts/apps-hmi-regression.log`.
+- Live smoke against the restarted workspace at **127.0.0.1:3000** and Apps at
+  **127.0.0.1:3100/mcp** — actual MCP client connected; `saturn_project` reported
+  pumping-station, simulation/running, zero problems; `saturn_open` returned the
+  real 3D P-01.outlet link. Log: `artifacts/apps-live-smoke.log`.
+- Official `tunnel-client` **v0.0.15 darwin-arm64** downloaded into ignored
+  `.saturn/tools/`, verified against the release's SHA256SUMS
+  (`b2cae3aa9df45b4c2fe9b1d700ebacce39f9feb6a6b46b86e6499f9a51bf72ff`), and its
+  `help quickstart`, `init --help`, `runtimes connect --help` executed successfully.
+  A real tunnel was **not** created or connected; no account tunnel ID/runtime key
+  was supplied. Native ChatGPT registration, real tunnel latency/account sandbox,
+  multi-user OAuth/audit and public publication remain unverified.
+
+An earlier browser run exposed immutable iframe URL incompatibility; the Shell URL
+adapter was corrected and the final srcdoc/AppBridge acceptance above passed.
+Earlier failed runs and their videos are not counted as passing evidence.

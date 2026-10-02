@@ -16,7 +16,7 @@ const source=(files:Record<string,Uint8Array>):ScadaImportSource=>({
 });
 const exampleImporter=defineImporter({
   id:'example',
-  label:{en:'Example format',ru:'Пример формата'},
+  label:'Example format',
   accepts:['.zip'],
   detect(input){return input.files.some(file=>file.path==='SYSTEM.JSON')?100:0;},
   import(input){

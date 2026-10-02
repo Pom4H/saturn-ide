@@ -12,7 +12,9 @@ import { compatiblePorts } from './model/compatible-ports';
 import { systemLayout, systemTitleLines } from '../core/system-layout';
 import { cablePurposeLabel, portInterfaceLabel, portRoleLabel } from './port-presentation';
 export interface SceneProps {
-  project:Project;displayProject?:Project;inactive?:readonly string[];routes:readonly PhysicalRoute[];snapshot:Snapshot;locale:Locale;selected:string;selectedIds?:readonly string[];interaction?:'select'|'edit';focus?:string;fit?:number;zoom?:{step:number;factor:number};ports?:boolean;
+  project:Project;displayProject?:Project;inactive?:readonly string[];routes:readonly PhysicalRoute[];snapshot:Snapshot;locale:Locale;selected:string;selectedPort?:string;selectedIds?:readonly string[];interaction?:'select'|'edit';focus?:string;fit?:number;zoom?:{step:number;factor:number};ports?:boolean;
+  viewRestore?:{version:number;box?:[number,number,number,number];pose?:[number,number,number,number,number,number]};
+  onViewBox?:(box:[number,number,number,number])=>void;onCameraPose?:(pose:[number,number,number,number,number,number])=>void;
   systemFocus?:string|null;focusSystem?:(id:string)=>void;
   select:(id:string,additive?:boolean)=>void;begin?:(id:string)=>boolean;move?:(id:string,x:number,y:number)=>void;end?:(cancel:boolean)=>void;
   openSource?:(id:string)=>void;canOpenSource?:(id:string)=>boolean;
@@ -68,6 +70,8 @@ export function Scene(props:SceneProps){
   const [box,setBox]=useState(bounds);
   useEffect(()=>setBox(bounds()),[props.fit,props.focus,props.systemFocus,props.project.id]);
   useEffect(()=>{if(!props.zoom||props.zoom.factor===1||props.focus)return;setBox(([x=0,y=0,w=850,h=460])=>[x+w*(1-props.zoom!.factor)/2,y+h*(1-props.zoom!.factor)/2,w*props.zoom!.factor,h*props.zoom!.factor]);},[props.zoom?.step]);
+  useEffect(()=>{if(props.viewRestore?.box&&!props.focus)setBox(props.viewRestore.box);},[props.viewRestore?.version]);
+  useEffect(()=>{if(!props.focus&&box.length===4)latest.current.onViewBox?.(box as [number,number,number,number]);},[box.join(',')]);
   const routes=props.routes;
   const [routesExpanded,setRoutesExpanded]=useState(true);
   const invalidRoutes=routes.filter(route=>!route.valid&&route.id!==props.cablePreview?.id);
@@ -106,8 +110,9 @@ export function Scene(props:SceneProps){
     {!props.focus&&routes.map(route=>{
       const edge=[...props.project.pipes,...props.project.cables??[]].find(e=>e.id===route.id)!;
       const isPipe=route.kind==='pipe',d=isPipe&&route.valid?roundedPipePath(route.points):routePath(route),preview=props.cablePreview?.id===route.id;
-      return <g key={route.id} data-pipe={isPipe?route.id:undefined} data-cable={!isPipe?route.id:undefined} data-route-valid={route.valid} data-route-preview={preview||undefined} data-inactive={props.inactive?.includes(route.id)||undefined} onClick={()=>props.select(route.id)} className={preview?'preview-route':route.valid?(isPipe?'pipe':'cable'):'invalid-route'}>
+      return <g key={route.id} data-pipe={isPipe?route.id:undefined} data-cable={!isPipe?route.id:undefined} data-route-valid={route.valid} data-selected={props.selected===route.id||undefined} data-route-preview={preview||undefined} data-inactive={props.inactive?.includes(route.id)||undefined} onClick={()=>props.select(route.id)} className={preview?'preview-route':route.valid?(isPipe?'pipe':'cable'):'invalid-route'}>
         <title>{route.id}: {endLabel(edge.from)} → {endLabel(edge.to)}{edge.kind==='cable'?` · ${cablePurposeLabel(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family,props.locale)}${edge.signal?.unit?` · ${edge.signal.unit}`:''}${!isConnected(edge)?props.locale==='ru'?' · свободный конец':' · disconnected':''}`:''}{preview?props.locale==='ru'?' · маршрут уточняется при отпускании':' · route resolves on release':route.error?` — ${routeIssueReason(route.error,props.locale)}`:''}</title>
+        {props.selected===route.id&&<path d={d} fill="none" stroke="var(--accent)" strokeOpacity={.35} strokeWidth={isPipe?30:11} strokeLinejoin="round" pointerEvents="none"/>}
         <path data-route-diagnostic={!route.valid&&!preview||undefined} d={d} fill="none" stroke={route.valid?(isPipe?'var(--pipe-rim)':cableAppearance(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family).color):preview?'var(--warn)':'var(--bad)'} strokeWidth={!route.valid?2:isPipe?22:3} strokeLinecap="butt" vectorEffect={!route.valid?'non-scaling-stroke':undefined} strokeLinejoin="round" strokeDasharray={!route.valid?'6 6':!isConnected(edge)?'8 5':undefined}/>
         {isPipe&&route.valid&&<><path d={d} fill="none" stroke="var(--pipe-shell)" strokeWidth={18} strokeLinecap="butt" strokeLinejoin="round" pointerEvents="none"/><path className="pipe-fluid" d={d} fill="none" stroke="var(--pipe-fill)" strokeWidth={14} strokeLinecap="butt" strokeLinejoin="round" pointerEvents="none"/><path className="flow" d={d} fill="none" stroke="var(--flow)" strokeWidth={5} strokeLinecap="round" strokeDasharray="18 30"/></>}
       </g>;
@@ -118,9 +123,10 @@ export function Scene(props:SceneProps){
       {e.capabilities.diagram?.svg?<g data-device-svg={e.kind} dangerouslySetInnerHTML={{__html:e.capabilities.diagram.svg}}/>:<Symbol equipment={e} snapshot={props.snapshot} locale={props.locale}/>} 
       {e.capabilities.scene3d?.kind==='control-panel'&&<PanelDisplay2D project={props.displayProject??props.project} controller={(props.displayProject??props.project).equipment.find(item=>item.id===e.id)??e} snapshot={props.snapshot} factory={props.displays?.[e.capabilities.hmi?.target??'']} locale={props.locale} inspect={()=>props.openSource&&(props.canOpenSource?.(e.id)??true)?props.openSource(e.id):props.select(e.id)} hasSource={!!props.openSource&&(props.canOpenSource?.(e.id)??true)}/>}
       <text className="equipment-name" x={g.width/2} y={g.height+24} textAnchor="middle">{text(e.label,props.locale)}</text>
-      {(props.ports||props.interaction==='edit')&&Object.values(e.ports).map((p:Endpoint)=>{const profile=p.terminal.interfaceId?interfaceProfile(p.terminal.interfaceId):undefined;
+      {(props.ports||props.interaction==='edit'||props.selected===e.id&&props.selectedPort)&&Object.values(e.ports).map((p:Endpoint)=>{const profile=p.terminal.interfaceId?interfaceProfile(p.terminal.interfaceId):undefined;
         const width=profile?.shape==='rect'?Math.max(14,Math.min(24,profile.width*.7)):0,height=profile?.shape==='rect'?Math.max(9,Math.min(14,profile.height*.9)):0;
-        return <g key={p.port} data-port={p.port} data-interface={p.terminal.interfaceId??p.terminal.family} transform={`translate(${p.terminal.x} ${p.terminal.y})`} className={`port ${p.terminal.medium}`}>
+        return <g key={p.port} data-port={p.port} data-selected={props.selected===e.id&&props.selectedPort===p.port||undefined} data-interface={p.terminal.interfaceId??p.terminal.family} transform={`translate(${p.terminal.x} ${p.terminal.y})`} className={`port ${p.terminal.medium}`}>
+          {props.selected===e.id&&props.selectedPort===p.port&&<circle r={16} fill="none" stroke="var(--accent)" strokeWidth={3}/>}
           <title>{e.id}.{p.port} · {portInterfaceLabel(p.terminal.interfaceId,props.locale)??p.terminal.family} · {portRoleLabel(p.terminal.role,props.locale)}{p.terminal.unit?` · ${p.terminal.unit}`:''}</title>
           {profile?.shape==='rect'?<><rect x={-width/2} y={-height/2} width={width} height={height} rx={1} fill="#273746" stroke="#9dc0d1" strokeWidth={2}/>{Array.from({length:profile.contacts},(_,i)=><rect key={i} x={-width/2+3+i*(width-6)/profile.contacts} y={-height/2+3} width={Math.max(1,(width-6)/profile.contacts*.55)} height={3} fill="#f2d682"/>)}</>:p.terminal.medium==='fluid'?<><circle r={8} fill="#e7f7fb" stroke="#4a93a7" strokeWidth={2}/><circle r={4} fill="#9bcbd7"/></>:<><circle r={p.terminal.medium==='power'?6:4} fill={p.terminal.medium==='power'?'#f0d4b4':'#c9e0e8'} stroke={p.terminal.medium==='power'?'#9b5851':'#4a8293'} strokeWidth={2}/>{p.terminal.medium==='power'&&<circle r={1.5} fill="#6d3330"/>}</>}
           {p.terminal.interfaceId==='rj45-ethernet'&&<text x={0} y={-11} textAnchor="middle" fontSize={8} fill="#214056">ETH</text>}

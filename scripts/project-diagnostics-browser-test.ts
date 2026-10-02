@@ -1,3 +1,4 @@
+import { toggleShellDetails } from './helpers/shell-details';
 import { chromium, expect } from 'playwright/test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -28,7 +29,7 @@ try{
   await expect.poll(()=>app.state().problems[0]?.code).toBe('POSITION');
   await expect(page.locator('.cm-lintRange-error')).toContainText('15001',{timeout:15_000});
   await page.screenshot({path:'artifacts/project-diagnostics-source.png'});
-  await page.getByRole('button',{name:'Ревью',exact:true}).click();
+  await toggleShellDetails(page,'review');
   const review=page.getByRole('complementary',{name:'Ревью проекта'});
   await expect(review.locator('.review-problem')).toContainText('POSITION');
   await expect(review.locator('.review-problem')).toContainText('equipment/SK-01.device.ts');

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { Vector3 } from 'three';
-import { projectPanelCable, roundedRoute } from '../src/shell/route3d';
+import { roundedRoute } from '../src/shell/route3d';
 
 test('rounded 3D pipe keeps terminal endpoints and joins every orthogonal turn', () => {
   const points = [new Vector3(0, 5, 0), new Vector3(40, 5, 0), new Vector3(40, 5, 30), new Vector3(40, 25, 30)];
@@ -15,14 +15,15 @@ test('rounded 3D pipe keeps terminal endpoints and joins every orthogonal turn',
   }
 });
 
-test('panel cable leaves end-face sockets along their outward normals', () => {
-  const authored = [new Vector3(10, 26, 5), new Vector3(10, 26, 20), new Vector3(10, 85, 20), new Vector3(80, 85, 20)];
-  const projected = projectPanelCable(authored, 'up', null);
-  expect(projected[0]).toEqual(authored[0]);
-  expect(projected[1]).toEqual(new Vector3(10, 26, -7));
-  expect(projected.at(-1)).toEqual(authored.at(-1));
-  expect(projected[2]?.y).toBe(85);
-  const incoming = projectPanelCable(authored, null, 'down');
-  expect(incoming.at(-2)).toEqual(new Vector3(80, 85, 32));
-  expect(incoming.at(-1)).toEqual(authored.at(-1));
+test('elevated panel cable retains its outward lead, riser and loose endpoint', () => {
+  const authored = [new Vector3(10, 26, 5), new Vector3(10, 26, -42), new Vector3(10, 85, -42), new Vector3(80, 85, -42)];
+  const {path,bends}=roundedRoute(authored,6);
+  expect(bends).toBe(2);
+  expect(path.getPointAt(0)).toEqual(authored[0]!);
+  expect(path.getPointAt(1)).toEqual(authored.at(-1)!);
+  const lead=path.curves[0]!;
+  expect(lead.getPoint(1).y).toBe(26);
+  expect(lead.getPoint(1).z).toBeLessThan(5);
+  expect(path.curves[2]!.getPoint(0).z).toBe(-42);
+  expect(path.curves[2]!.getPoint(1).z).toBe(-42);
 });

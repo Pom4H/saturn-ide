@@ -1,3 +1,4 @@
+import { toggleShellDetails } from './helpers/shell-details';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
@@ -68,7 +69,7 @@ try{
   await expect(page.locator('.report-preview h2')).toContainText('Расход');
   await page.screenshot({path:'artifacts/lifecycle-ux/report-new-checked.png'});
   assert.equal(reportRequests,0,'Selecting a Checked-only report requested an Applied report');
-  await page.getByRole('button',{name:'Свойства',exact:true}).click();
+  await toggleShellDetails(page,'properties');
   const reportInspector=page.getByRole('complementary',{name:'Свойства объекта'});
   await expect(reportInspector.locator('.detail-identity')).toContainText('Расход · типизированный отчёт');
   await expect(reportInspector.getByRole('status')).toContainText('Есть в Checked, но ещё нет в Applied');
@@ -80,7 +81,7 @@ try{
   await page.getByLabel('Отчёт',{exact:true}).selectOption('hourly-water');
   await expect(page.locator('.report-pending')).toContainText('другое определение с тем же ID');
   await expect(page.getByRole('button',{name:'Сформировать',exact:true})).toBeDisabled();
-  await page.getByRole('button',{name:'Свойства',exact:true}).click();
+  await toggleShellDetails(page,'properties');
   const changedReport=page.getByRole('complementary',{name:'Свойства объекта'});
   await expect(changedReport.locator('.detail-identity')).toContainText('Почасовой расход воды · новая версия');
   await expect(changedReport.getByRole('status')).toContainText('Checked ≠ Applied');
@@ -99,7 +100,7 @@ try{
   await dialog.getByRole('button',{name:'Закрыть'}).click();
 
   await tree.locator('[data-resource-id="P-02"]').first().click();
-  await page.getByRole('button',{name:'Свойства',exact:true}).click();
+  await toggleShellDetails(page,'properties');
   const inspector=page.getByRole('complementary',{name:'Свойства объекта'});
   await expect(inspector).toContainText('Дополнительный насос');
   await expect(inspector.getByRole('status')).toContainText('Есть в Checked, но ещё нет в Applied');
