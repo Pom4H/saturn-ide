@@ -22,7 +22,7 @@ try {
   await input.fill('help');await input.press('Enter');await page.locator('.shell-terminal-log').getByText('set <signal> <value>',{exact:false}).waitFor();
   await input.fill('set P-01.run false');
   for(const name of ['Исходник','Отчёты','Документация','Схема']) {
-    if(name==='Исходник'){await rail.getByRole('button',{name:'Исходники',exact:true}).click();await nav.getByRole('treeitem',{name:'P-01.device.ts',exact:true}).click();}
+    if(name==='Исходник'){await rail.getByRole('button',{name:'Объект',exact:true}).click();await chooseExplorerMode(page,'Код');await nav.getByRole('treeitem',{name:'P-01.device.ts',exact:true}).click();}
     else if(name==='Отчёты')await rail.getByRole('button',{name:'Отчёты',exact:true}).click();
     else {await rail.getByRole('button',{name:'Объект',exact:true}).click();if(name==='Документация'){await chooseExplorerMode(page,'Объекты');await nav.getByRole('treeitem',{name:'Документация',exact:true}).click();}}
     await bell.click();await bell.click();await onePanel();
