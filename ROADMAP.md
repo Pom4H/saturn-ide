@@ -92,7 +92,7 @@
 
 - [x] Обратная связь 2026-10-02: добавить тройник как канонический узел физической топологии, а не декоративное пересечение линий.
 - [x] `tee()` использует общий `device()` contract и три passive fluid-порта; `pipe()` допускает passive fitting на любом конце, сохраняя source/sink-направление оборудования.
-- [x] Один и тот же tee участвует в source/Diagram/3D/drag-connect и создаётся через обычный IDE scaffold. Split и merge проверяются тем же `validateProject`; занятость каждого порта остаётся общей проверкой topology.
+- [x] Один и тот же tee участвует в source/Diagram/3D/drag-connect и создаётся через обычный IDE scaffold. Split и merge проверяются тем же `validateProject`; занятость каждого порта остаётся общей проверкой topology.\n- [ ] Записать воспроизводимую video-приёмку настоящего Shell: split/merge, три порта, crossing ≠ connection, 2D/3D drag+rewire, source-first и reject invalid occupied/direction drafts; сохранить MP4/WebM, кадры и JSON evidence в GitHub Actions artifact.
 - [ ] Не обобщать это сразу в каталог фитингов. Reducer/cross/manifold/diameter/гидравлические балансы добавлять только из конкретного инженерного сценария и с собственным контрактом/проверкой.
 
 ## COL-1 — участники, обсуждения и общий контекст
