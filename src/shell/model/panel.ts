@@ -7,7 +7,7 @@ export type PanelAction =
   | { type: 'close' }
   | { type: 'maximize' }
   | { type: 'resize'; height: number };
-export const initialPanel: PanelState = { tab: 'equipment', open: true, height: 200, maximized: false };
+export const initialPanel: PanelState = { tab: 'equipment', open: false, height: 200, maximized: false };
 /** Keep the environment and scenario layouts separate without unmounting the shared terminal. */
 export type PanelLayouts = { work:PanelState; environment:PanelState; scenarios:PanelState };
 export function panelLayoutsReducer(state:PanelLayouts, action:{context:keyof PanelLayouts;action:PanelAction}):PanelLayouts {
