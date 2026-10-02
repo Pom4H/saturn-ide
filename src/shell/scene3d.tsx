@@ -347,7 +347,7 @@ export default function Scene3D(props:SceneProps){
           resources.geometries.add(geometry);resources.materials.add(material);
           const guide=new T.Line(geometry,material);guide.computeLineDistances();guide.renderOrder=5;guide.userData.routeDiagnostic=route.id;routeWorld.add(guide);
         }else for(let i=1;i<points.length;i++)tube(routeWorld,points[i-1]!,points[i]!,route.kind==='pipe'?5:1.5,m);
-        if(p.interaction==='edit')for(const end of ['from','to'] as const){const point=end==='from'?points[0]:points.at(-1);if(!point)continue;const handle=mesh(routeWorld,new T.SphereGeometry(6,16,10),amber,point.x,point.y,point.z);handle.userData.cablePlug={id:route.id,end};plugMeshes.push(handle);}
+        if(p.interaction==='edit')for(const end of ['from','to'] as const){const point=end==='from'?points[0]:points.at(-1);if(!point)continue;const position=vector(point),handle=mesh(routeWorld,new T.SphereGeometry(6,16,10),amber,position.x,position.y,position.z);handle.userData.cablePlug={id:route.id,end};plugMeshes.push(handle);}
         if(route.kind!=='pipe'||!route.valid)continue;
         const edge=pipe!;
         // The moving indicators follow the rendered curve, including its vertical risers and bends.
