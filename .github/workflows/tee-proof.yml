@@ -27,30 +27,54 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: saturn-ide
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-examples
+          path: saturn-examples
+          ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-plugins
+          ref: d0716d560030de29eb59fce6ede2dea01db51e8b
+          path: saturn-plugins
+          ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
       - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-tee-proof-bun-1.4.2-${{ hashFiles('bun.lock', 'package.json') }}
+          key: ${{ runner.os }}-tee-proof-bun-1.4.2-${{ hashFiles('saturn-ide/bun.lock', 'saturn-ide/package.json') }}
           restore-keys: |
             ${{ runner.os }}-tee-proof-bun-1.4.2-
       - run: bun install --frozen-lockfile
+        working-directory: saturn-ide
+      - name: Share test toolchain with pinned integration fixtures
+        run: |
+          mkdir -p saturn-ide/node_modules/@saturn
+          ln -s ../.. saturn-ide/node_modules/@saturn/core
+          ln -s ../saturn-ide/node_modules saturn-examples/node_modules
+          ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
       - name: Install Chromium
         run: bunx playwright install --with-deps chromium
+        working-directory: saturn-ide
       - name: Ensure MP4 encoder
         run: command -v ffmpeg >/dev/null || (sudo apt-get update && sudo apt-get install -y ffmpeg)
       - name: Typecheck architecture
         run: bun run check
+        working-directory: saturn-ide
       - name: Tee unit contract
         run: bun test tests/pipe-tee.test.ts
+        working-directory: saturn-ide
       - name: Record real Shell proof
         run: bun scripts/tee-proof-browser-test.ts
+        working-directory: saturn-ide
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: tee-topology-proof-${{ github.sha }}
-          path: artifacts/tee-proof/
+          path: saturn-ide/artifacts/tee-proof/
           if-no-files-found: error
           retention-days: 14
