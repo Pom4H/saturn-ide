@@ -83,7 +83,12 @@ const shot=(name:string)=>page.screenshot({path:join(out,name+'.png'),fullPage:f
 let failure:unknown;
 try{
   await page.addInitScript(()=>{localStorage.setItem('saturn.locale','ru');localStorage.setItem('saturn.theme','light');});
-  await page.goto(app.server.url.href);await page.locator('.scene [data-equipment="T-S"]').waitFor({timeout:30000});await page.getByRole('button',{name:'Правка',exact:true}).click();
+  await page.goto(app.server.url.href);
+  const welcome=page.getByRole('dialog',{name:'Как вы будете использовать Saturn?'});
+  if(await welcome.count()){await expect(welcome).toBeVisible();await welcome.getByRole('button',{name:'Для бизнеса',exact:false}).click();await expect(welcome).toHaveCount(0);}
+  await openDiagram();
+  const twoD=page.getByRole('button',{name:'2D',exact:true});if(await twoD.count())await twoD.click();
+  await page.locator('.scene [data-equipment="T-S"]').waitFor({timeout:30000});await page.getByRole('button',{name:'Правка',exact:true}).click();
 
   assert.equal(await page.locator('.scene [data-equipment="T-S"] [data-port]').count(),3);
   assert.equal(Object.keys(app.state().project.equipment.find(item=>item.id==='T-S')?.ports??{}).length,3);
