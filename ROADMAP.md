@@ -12,6 +12,12 @@
 [verification](docs/verification.md). Этот roadmap дополняет их, не отменяет незавершённый
 перенос и не меняет архитектурный контракт одним лишь появлением задачи.
 
+## Shell / UX evidence
+
+- [x] **2026-10-02 — светлые эталонные кадры Shell.** Документационные screenshot-capture фиксирует `light` явно, README использует светлый hero, а изменения Shell/capture автоматически обновляют реальные `docs/screenshots` без отдельной нарисованной витрины.
+- [ ] **Следующий ergonomic pass:** сделать Project / Surface / Environment постоянно различимыми и показать revision chain `Source → Checked → Published → Applied` как safety-контекст, а не прятать environment/revision в status bar.
+- [ ] Уменьшить конкуренцию chrome с рабочим объектом: контекстные Diagram actions оставить у canvas, редкие View/Inspector действия убрать из первого зрительного уровня, проверить tab/sidebar density на 1536×864 и 1024×768.
+
 ## Направление продукта
 
 **Saturn Mobile — новое поколение средств разработки: вайбинженеринг.**
