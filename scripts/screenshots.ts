@@ -5,6 +5,7 @@ import { fixture } from '../tests/helpers';
 const fixtureProject=fixture();
 const base='http://127.0.0.1:4017';
 mkdirSync('docs/screenshots',{recursive:true});
+// Documentation captures intentionally use a deterministic light Shell.
 
 const server=Bun.spawn(['bun','dev'],{
   env:{...Bun.env,SATURN_PROJECT:fixtureProject.root,PORT:'4017',DATABASE_URL:':memory:',SATURN_PREVIEW:'simulation'},
