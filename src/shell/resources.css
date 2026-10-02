@@ -212,3 +212,8 @@
   .route-page-controls button{width:23px;min-width:23px;height:25px}
   .route-page-controls span{min-width:55px;font-size:10px}
 }
+
+/* Source is a secondary artifact, but it still needs enough width to review typed code. */
+.inspector.resource-details.source-context{width:clamp(420px,38vw,620px);flex:0 0 clamp(420px,38vw,620px)}
+@container workbench (max-width:1000px){.inspector.resource-details.source-context{width:min(560px,94%);flex-basis:auto}}
+@media(max-width:760px){.inspector.resource-details.source-context{width:95%;flex-basis:auto}}
