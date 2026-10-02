@@ -150,6 +150,8 @@ try{
   await captureRail('Изменения','git.png');
 
   await rail.getByRole('button',{name:'Объект',exact:true}).click();
+  const openReview=page.getByRole('complementary',{name:'Ревью проекта'});
+  if(await openReview.isVisible().catch(()=>false))await openReview.getByRole('button',{name:'Закрыть ревью',exact:true}).click();
   await page.locator('[data-equipment="P-01"]').waitFor();
   await page.screenshot({path:'docs/screenshots/ide-light.png'});
   await page.locator('[data-equipment="P-01"]').click();
