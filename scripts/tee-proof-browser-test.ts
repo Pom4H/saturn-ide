@@ -114,7 +114,8 @@ try{
   await caption('4/10 · 2D UNPLUG + REWIRE','split-a → free(); split-b → освободившийся T-S.right');await shot('04-unplug-rewire-2d');
 
   await openSource("pipe('split-a'");const after2d=app.workspace.read('project.ts').source;
-  assert(after2d.includes('free(split.ports.right'));assert(after2d.includes("pipe('split-b',{from:split.ports.right"));
+  assert(/from\s*:\s*[_$A-Za-z][_$A-Za-z0-9]*\(split\.ports\.right\s*,\s*\{/.test(after2d),'Canonical free end is missing from source');
+  assert(/pipe\(['"]split-b['"]\s*,\s*\{\s*from\s*:\s*split\.ports\.right/.test(after2d),'2D rewire is missing from source');
   await caption('5/10 · CANONICAL CODE','free() и новый endpoint существуют в TypeScript, не в отдельном UI-store');await shot('05-source-after-2d');
 
   await openDiagram();await page.getByRole('button',{name:'3D',exact:true}).click();const scene=page.locator('.scene3d');await scene.waitFor();await wait(async()=>Number(await scene.getAttribute('data-frames'))>8,'3D did not render');assert.equal(await scene.getAttribute('data-invalid-routes'),'0');
