@@ -58,7 +58,7 @@ jobs:
           ln -s ../saturn-ide/node_modules saturn-examples/node_modules
           ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
       - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install chromium
         working-directory: saturn-ide
       - name: Ensure MP4 encoder
         run: command -v ffmpeg >/dev/null || (sudo apt-get update && sudo apt-get install -y ffmpeg)
