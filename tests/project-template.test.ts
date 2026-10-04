@@ -14,7 +14,7 @@ test('fresh project has one model and optional folders; generated devices check 
  try{
   expect(readdirSync(root).sort()).toEqual(['.gitignore','README.md','package.json','project.ts','tsconfig.json']);
   const metadata=JSON.parse(readFileSync(join(root,'package.json'),'utf8')) as {dependencies:Record<string,string>};
-  expect(metadata.dependencies['@saturn/core']).toBe('git+ssh://git@github.com/Pom4H/saturn-ide.git#7b0f33319e0c65b5a8b92b8f42e7d7819772cd98');
+  expect(metadata.dependencies['@saturn/core']).toBe('git+https://github.com/Pom4H/saturn-ide.git#67c596e20bd9cc05ee890e26e56f0892a62390f2');
   expect(readFileSync(join(root,'README.md'),'utf8')).toContain('Checked build');
   const initial=await builder.build();expect(initial.project.equipment).toHaveLength(0);expect(initial.artifact.driver).toBeNull();
   const device=previewDevice(workspace,'pump','P-01','Water pump');workspace.createAndAttach(device.path,device.source,device.projectSource,device.projectVersion);

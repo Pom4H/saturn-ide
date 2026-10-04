@@ -17,4 +17,6 @@ export interface IDEState {
   adapter: "sqlite" | "postgres";
   key: string;
   pushPublicKey: string;
+  /** Host-owned local navigation; absent in remote/embedded workspaces. */
+  launcherUrl?: string;
 }

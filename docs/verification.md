@@ -1535,3 +1535,59 @@ isolation of runtime from the existing dev workspace.
 An earlier browser run exposed immutable iframe URL incompatibility; the Shell URL
 adapter was corrected and the final srcdoc/AppBridge acceptance above passed.
 Earlier failed runs and their videos are not counted as passing evidence.
+
+## 2026-10-04 — project onboarding ONB-1
+
+Environment: Linux x64, Bun **1.4.2**, Chromium **153.0.8010.12**. Browser
+acceptance used the actual interface, filesystem and Git. The compiled recording
+uses WebGL 2 through ANGLE/SwiftShader; it is not a hardware-GPU or Windows claim.
+
+- `bun run check` — PASS: TypeScript 7, TypeScript 6 and architecture guard,
+  **201 modules**. The new launcher composes the existing workspace/runtime host.
+- Canonical starter tests — **2 passed, 11 assertions**: exactly five authored
+  files, empty project and actual first-device build, no implicit driver.
+- `tests/local-onboarding.test.ts` — **10 passed, 76 assertions**: discovery without
+  source execution; exclusive destination creation; real clone and cancellation;
+  preservation of a parent Git repository; no-Git creation; HTTP origin/session
+  guards; recovery after reload; failed browser build before runtime activation;
+  one runtime after retry and complete shutdown.
+- `scripts/onboarding-browser-test.ts` — PASS, **six complete journeys, zero page
+  errors**, both from the source application and from the compiled portable IDE
+  with a fresh extraction cache. Actual UI creation, visible preset selection,
+  first device preview/create, source editing/save/reload, dirty-document guard,
+  recent reopening, local Git clones, multiroot selection, missing/occupied paths,
+  stalled SSH cancellation, light/dark and 390 px layouts. Checked exists while
+  Applied remains empty. Evidence: `artifacts/local-onboarding/`.
+- `bun run ide:build` — PASS. The embedded payload includes `docs/`, required by
+  the Shell's text imports. The browser acceptance in the existing CI workflow
+  builds and exercises this same portable distribution path.
+- `scripts/onboarding-quickstart.ts` — PASS, continuous **144.60-second** capture
+  of the compiled Linux application, 1440×1000 at 25 fps. Fresh workspace, browser
+  state and extraction cache; actual UI input; no cuts, acceleration, inserted
+  frames or substituted API responses. Fifteen reference frames and source hashes
+  are recorded beside the video. Binary SHA256:
+  `ef291f9603125ce9ae155a6d4ed440cf20f93f1d4bcac329b9ac0bf4a0661f00`.
+- Full local suite repeat: **387 passed, 2 skipped, 1 environment failure**.
+  PostgreSQL checks had no local service. OPC UA could not enumerate interfaces
+  (`getifaddrs`, EPERM) in this execution environment. An intermittent trash test
+  was separately traced to scratch-directory synchronization: an independent
+  Python-only rename probe recreated the source with the same bytes/mtime and a
+  new inode in scratch, while the matching `/tmp` probe stayed deleted. No Saturn
+  process participated. Product trash behavior was not changed to hide that
+  external interference. GitHub CI runs the full suite with PostgreSQL and its
+  normal filesystem/network environment.
+
+SaaS acceptance on the matching core update: **43 tests, 1755 assertions, zero
+failures**, strict TypeScript, browser production build and Nitro server build.
+The **eight** scenarios in `scripts/onboarding-review.py` all pass, with no page
+errors or unexpected API requests: direct repository URL, paged list, empty and
+multiroot repositories, layered errors/retries, draft/file/history preservation,
+keyboard/modal behavior, held creation through Escape/Back, lost reply, partial
+setup/resume and authentication cancellation/expiry. Its HTTP fixtures are
+explicitly identified; they do not prove real OAuth consent or provisioning under
+an actual GitHub account. The existing landing and learning browser checks also
+pass, including real 2D/3D frames, normal cable animation and native WebGL fallback.
+
+The user-facing video remains gated on successful relevant CI for the pushed
+changes. Native Windows execution and real remote Git credentials are separate
+checks; neither is inferred from Linux or fixture-browser evidence.

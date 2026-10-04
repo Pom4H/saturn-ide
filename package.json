@@ -74,6 +74,7 @@
   "exports": {
     ".": "./src/core.ts",
     "./core": "./src/core.ts",
+    "./project-template": "./src/workspace/project-template-files.ts",
     "./artifact": "./src/core/artifact.ts",
     "./shell": "./src/shell/app.tsx",
     "./host": "./src/host/dev.ts",

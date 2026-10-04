@@ -7,7 +7,7 @@ import { unzipSync } from 'fflate';
 export async function standalone(payload:string,version:string,digest:string){
   const args=Bun.argv.slice(2);
   if(args.includes('--version')){console.log(`Saturn ${version} · Bun ${Bun.version} · ${process.platform}-${process.arch}`);return;}
-  if(args[0]==='--help'){console.log('saturn [gui|serve] --project <directory> [--port 3000] [--no-open] [--manual]\nsaturn init <directory>\nsaturn cli [--url http://127.0.0.1:3000] [--json] <command>\nsaturn tui [http://127.0.0.1:3000]\nGUI uses your system browser. Git is required for source control.');return;}
+  if(args[0]==='--help'){console.log('saturn gui [--project <directory>] [--port 3000] [--no-open] [--manual]\nsaturn serve --project <directory> [--port 3000] [--manual]\nsaturn init <directory>\nsaturn cli [--url http://127.0.0.1:3000] [--json] <command>\nsaturn tui [http://127.0.0.1:3000]\nGUI without a project opens the create/open/connect screen in your system browser. Git is required for source control and cloning; local project creation also works without Git.');return;}
   const cache=process.env.SATURN_CACHE_DIR??join(homedir(),'.saturn','ide');mkdirSync(cache,{recursive:true});
   const root=join(cache,`${version}-${digest.slice(0,16)}`);
   if(!existsSync(join(root,'ready'))){

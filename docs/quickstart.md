@@ -3,26 +3,78 @@
 Saturn IDE and an engineering project are separate directories. The project contains authored
 TypeScript and project-owned extensions; it does not contain a copy of the IDE.
 
-## Create and open
+## Start with the project screen
 
-From a Saturn IDE source checkout (Bun 1.4.2 or newer, Git and `bun install` in the IDE checkout):
+With an installed `saturn` executable, run:
 
 ```sh
-bun start init ../my-plant
-bun start gui --project ../my-plant
+saturn gui
 ```
 
-With an installed `saturn` executable, use `saturn init ../my-plant` and
-`saturn gui --project ../my-plant`. `gui` prints the local URL and opens it in the browser;
-`serve` prints the URL without opening a browser. Run `saturn --help` for the launcher options.
+From a Saturn IDE source checkout (Bun 1.4.2 or newer, Git, and `bun install` in
+the IDE checkout), run `bun start gui`. When the selected directory has no
+`project.ts`, Saturn opens a project screen in your browser instead of stopping
+with a missing-project error.
 
-The starter has `project.ts`, `package.json`, `tsconfig.json`, `README.md` and `.gitignore`.
-It does not create a Git repository; run `git init` in the project when you want source history
-and the IDE's Git review actions.
-Opening it runs the workspace check and produces a **Checked** build. In the IDE, use
-**Add equipment** on the empty diagram, preview the generated source, and
-create the first device. The device appears on the diagram and has a normal TypeScript import
-in `project.ts`.
+Choose one of the three paths:
+
+- **Create project:** choose the parent folder and a new folder name. Saturn
+  creates a thin, empty engineering project, checks the model and opens the
+  existing IDE. No dependency installation is needed for this first check.
+  When Git is installed, Saturn initializes `main` or retains the existing
+  parent repository and its remote. Without Git, the files still open locally;
+  the IDE explains how to enable history and repository connection later.
+- **Open folder:** select an existing directory. Saturn discovers `project.ts`
+  files without executing them; if a repository contains several projects,
+  choose the one to open. Recent entries store directory paths only.
+- **Connect repository:** paste its HTTPS/SSH Git address and choose a new local
+  folder. This path requires Git. Saturn clones the repository, then lets you
+  choose its project.
+  Cloning can be canceled or retried. Existing destination folders are preserved.
+  Private repositories use the Git/SSH credentials already configured on the
+  computer; do not put tokens or passwords into the repository address.
+
+The launcher remains available while its project windows are open. Reopen the
+same project from its recent list to reuse the existing workspace. After restarting
+Saturn, enter through the launcher again; project windows use local session URLs.
+
+The empty starter has `project.ts`, `package.json`, `tsconfig.json`, `README.md`
+and `.gitignore`, plus Git metadata when available through the graphical launcher.
+On the first IDE visit choose the desired interface preset. Use **Add equipment**
+on the empty diagram, review the source preview and create the first device.
+It appears on the real diagram and is attached with an ordinary TypeScript import
+in `project.ts`. Saving, dragging and opening code use the same workspace model.
+
+Opening the starter produces a **Checked** build. It has no simulator or physical
+driver, so observations and **Applied** remain empty until a driver is explicitly
+added. Source edits never apply changes to physical equipment.
+
+### Direct commands
+
+The command-line paths remain available:
+
+```sh
+saturn init ../my-plant
+saturn gui --project ../my-plant
+```
+
+Use `bun start init ../my-plant` and `bun start gui --project ../my-plant` from a
+source checkout. `init` only writes the five authored starter files; run `git init`
+in that directory if using this CLI path. `serve --project <directory>` starts
+without opening a browser and fails clearly for a missing project.
+
+### GitHub workspace
+
+Open [Saturn Cloud](https://saturn-ide.vercel.app/?workspace=1) to create a repository
+or connect one by its URL. A new project defaults to the empty starter; the pumping
+station remains an explicit template. GitHub sign-in returns to the selected
+workspace and preserves the form. Repository and file navigation survive reloads.
+
+If GitHub created a repository but file preparation was interrupted, use
+**Continue setup** to finish that same repository. Recovery checks the Git revision
+and stops if another author changed it. The source view also offers the exact local
+commands for opening the selected project in Saturn IDE. Cloud source browsing does
+not run arbitrary repository code inside the OAuth service.
 
 To start a new equipment class, select **Собственный тип оборудования / Project-owned equipment**
 in the Add equipment template list. The preview shows an ordinary `device()` definition in
@@ -107,8 +159,8 @@ Applied while reviewing a change. Saving TypeScript is never an implicit live ap
 
 The IDE's first check does not need `node_modules` in the new project. For a separate
 `bun run check` inside the project, its `@saturn/core` dependency must be accessible to Bun.
-The starter uses a pinned GitHub SSH URL because Bun can use SSH credentials for private Git
-dependencies. Configure that access before running:
+The empty starter uses a pinned HTTPS dependency on the public Saturn IDE repository,
+so a separate SSH key is not needed for that dependency:
 
 ```sh
 cd ../my-plant
@@ -116,15 +168,8 @@ bun install
 bun run check
 ```
 
-If this machine has GitHub HTTPS credentials but no SSH key, the following macOS/Linux command
-temporarily asks Git to use the existing HTTPS credential helper for this one install:
-
-```sh
-GIT_CONFIG_COUNT=1 \
-GIT_CONFIG_KEY_0='url.https://github.com/.insteadOf' \
-GIT_CONFIG_VALUE_0='ssh://git@github.com/' \
-bun install
-```
+Example projects can have additional private Git dependencies. Configure ordinary
+Git credentials for those dependencies before installing them.
 
 Commit the resulting `bun.lock` with the project. If the Git dependency is inaccessible,
 `bun install` can fail even when the IDE check succeeded. The starter pins a published core

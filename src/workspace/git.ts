@@ -44,7 +44,7 @@ export class Git {
   }
   async status():Promise<GitState> {
     const empty:GitState={available:false,branch:'',head:'',status:'',log:'',remotes:'',diff:'',commits:[],mainRef:null,ahead:0,behind:0,fetchedAt:this.fetchedAt};
-    try{await this.run('rev-parse','--git-dir');}catch{return empty;}
+    try{await this.run('rev-parse','--git-dir');}catch{return {...empty,installed:await this.run('--version').then(()=>true,()=>false)};}
     const [branch,status,remotes,head]=await Promise.all([this.run('branch','--show-current'),this.run('status','--porcelain=v1','--','.'),this.run('remote'),this.head().catch(()=>'')]);
     const remote=remotes.trim().split('\n').find(r=>r==='origin')??remotes.trim().split('\n')[0];
     const candidate=remote?`refs/remotes/${remote}/main`:'';
@@ -56,7 +56,7 @@ export class Git {
     ]);
     const commits:GitCommit[]=raw.split('\x1e').filter(s=>s.trim()).map(row=>{const [hash='',parents='',name='',email='',date='',subject='',refs='']=row.trim().split('\x1f');return {hash,parents:parents?parents.split(' '):[],name,email,date,subject,refs};});
     const [ahead=0,behind=0]=counts.trim().split(/\s+/).map(Number);
-    return {...empty,available:true,branch:branch.trim()||'detached',head,status,remotes:remotes.trim(),diff,commits,log:commits.slice(0,5).map(c=>`${c.hash.slice(0,7)} ${c.subject}`).join('\n'),mainRef,ahead,behind};
+    return {...empty,available:true,installed:true,branch:branch.trim()||'detached',head,status,remotes:remotes.trim(),diff,commits,log:commits.slice(0,5).map(c=>`${c.hash.slice(0,7)} ${c.subject}`).join('\n'),mainRef,ahead,behind};
   }
   async action(action: string, message?: string, options:{expectedHead?:string;commit?:string}={}) {
     if(options.expectedHead!==undefined&&await this.head()!==options.expectedHead)throw new Error('HEAD changed; refresh before continuing');

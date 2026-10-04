@@ -68,6 +68,22 @@ jobs:
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         run: bunx playwright install ffmpeg
         working-directory: saturn-ide
+      - name: First-run project creation and repository connection
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        timeout-minutes: 4
+        run: |
+          bun run ide:build
+          timeout --kill-after=10s 210s bun scripts/onboarding-browser-test.ts
+        env:
+          SATURN_ONBOARDING_BINARY: ./artifacts/distribution/saturn-linux-x64
+        working-directory: saturn-ide
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: local-onboarding-evidence
+          path: saturn-ide/artifacts/local-onboarding/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Decision text UX and System One contract acceptance
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         timeout-minutes: 3

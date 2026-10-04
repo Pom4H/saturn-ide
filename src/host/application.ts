@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { existsSync, statSync } from 'node:fs';
 const usage=`Usage:
   saturn init <directory> [--template empty|pumping-station|smart-home]
-  saturn gui --project <directory> [--port 3000] [--manual] [--no-open]
+  saturn gui [--project <directory>] [--port 3000] [--manual] [--no-open]
   saturn serve --project <directory> [--port 3000] [--manual]
   saturn cli [--url http://127.0.0.1:3000] [command]
   saturn tui [url]
@@ -26,14 +26,16 @@ export async function application(argv:string[]) {
   if(mode==='cli'){const {cli}=await import('./cli');process.exitCode=await cli(args);return;}
   if(mode==='tui'){const {runTerminal}=await import('./terminal');await runTerminal(args[0]);return;}
   if(mode!=='gui'&&mode!=='serve')throw new Error(usage);
-  let projectDir=resolve('.'),port=3000,open=mode==='gui',preview:'manual'|'simulation'='simulation';
-  while(args.length){const flag=args.shift();if(flag==='--no-open')open=false;else if(flag==='--manual')preview='manual';else if(flag==='--project'){const value=args.shift();if(!value)throw new Error('Missing project directory');projectDir=resolve(value);}else if(flag==='--port'){port=Number(args.shift());if(!Number.isInteger(port)||port<0||port>65535)throw new Error('Invalid port');}else throw new Error('Unknown option: '+flag);}
-  const entry=join(projectDir,'project.ts');
-  if(!existsSync(entry)||!statSync(entry).isFile())throw new Error(`Saturn project not found in ${projectDir}: expected project.ts. Create one with “saturn init <directory>” or select an existing project with --project.`);
-  const {createApp}=await import('./dev');
-  const dataDir=Bun.env.SATURN_DATA_DIR??join(homedir(),'.saturn','workspaces',new Bun.CryptoHasher('sha256').update(projectDir).digest('hex').slice(0,16));
-  const app=await createApp({projectDir,dataDir,port,preview});
-  console.log(`Saturn IDE  ${app.server.url}\nProject     ${projectDir}`);
+  let projectDir=resolve('.'),port=3000,open=mode==='gui',projectSpecified=false,preview:'manual'|'simulation'='simulation';
+  while(args.length){const flag=args.shift();if(flag==='--no-open')open=false;else if(flag==='--manual')preview='manual';else if(flag==='--project'){const value=args.shift();if(!value)throw new Error('Missing project directory');projectDir=resolve(value);projectSpecified=true;}else if(flag==='--port'){port=Number(args.shift());if(!Number.isInteger(port)||port<0||port>65535)throw new Error('Invalid port');}else throw new Error('Unknown option: '+flag);}
+  const entry=join(projectDir,'project.ts'),valid=existsSync(entry)&&statSync(entry).isFile();
+  if(!valid&&mode==='serve')throw new Error(`Saturn project not found in ${projectDir}: expected project.ts. Create one with “saturn init <directory>” or select an existing project with --project.`);
+  const app=valid?await(async()=>{
+    const {createApp}=await import('./dev');
+    const dataDir=Bun.env.SATURN_DATA_DIR??join(homedir(),'.saturn','workspaces',new Bun.CryptoHasher('sha256').update(projectDir).digest('hex').slice(0,16));
+    return createApp({projectDir,dataDir,port,preview});
+  })():await(await import('./project-launcher')).createProjectLauncher({initialDirectory:projectDir,selectDirectory:projectSpecified,port,preview,dataDir:Bun.env.SATURN_DATA_DIR});
+  console.log(`Saturn IDE  ${app.server.url}\n${valid?'Project     '+projectDir:'Create, open or clone a project in your browser.'}`);
   for(const signal of ['SIGINT','SIGTERM'] as const)process.once(signal,()=>void app.close().then(()=>process.exit(0)));
   if(open){const url=app.server.url.href;const command=process.platform==='darwin'?['open',url]:process.platform==='win32'?['rundll32','url.dll,FileProtocolHandler',url]:['xdg-open',url];try{const child=Bun.spawn(command,{stdout:'ignore',stderr:'ignore'});if(await child.exited!==0)console.error('Open this URL in your browser: '+url);}catch{console.error('Open this URL in your browser: '+url);}}
 }

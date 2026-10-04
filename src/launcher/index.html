@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Проекты — Saturn IDE</title>
+    <link rel="stylesheet" href="/launcher.css" />
+    <script type="module" src="/launcher.js"></script>
+  </head>
+  <body>
+    <svg class="icon-definitions" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+        <symbol id="icon-folder" viewBox="0 0 24 24"><path d="M3 7V5a1 1 0 0 1 1-1h5l3 3h8a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z" /></symbol>
+        <symbol id="icon-git" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="5" r="2" /><path d="M6 7v10M18 7v2a6 6 0 0 1-6 6H6" /></symbol>
+        <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6" /></symbol>
+        <symbol id="icon-close" viewBox="0 0 24 24"><path d="m7 7 10 10M7 17 17 7" /></symbol>
+        <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
+      </defs>
+    </svg>
+
+    <div class="launcher">
+      <header class="masthead">
+        <div class="brand">
+          <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="16" cy="16" r="8" /><ellipse cx="16" cy="16" rx="16" ry="4.5" transform="rotate(-28 16 16)" /></svg>
+          <span>Saturn <span class="brand-suffix">IDE</span></span>
+        </div>
+        <span class="host-caption">На этом компьютере</span>
+      </header>
+
+      <main>
+        <header class="welcome-heading">
+          <h1>Начните с проекта</h1>
+          <p>Создайте новый проект или продолжите работу с существующим.</p>
+        </header>
+
+        <div id="connection-error" class="connection-error" role="alert" hidden>
+          <p id="connection-message"></p>
+          <button id="retry-connection" type="button">Подключиться снова</button>
+        </div>
+        <p id="launcher-notice" class="launcher-notice" role="status" hidden></p>
+
+        <div class="welcome-layout">
+          <section class="project-start" aria-label="Открытие проекта">
+            <div class="start-tabs" role="tablist" aria-label="Как начать работу">
+              <button id="tab-create" class="start-tab" type="button" role="tab" aria-selected="true" aria-controls="panel-create" data-tab="create" disabled>
+                <svg class="icon" aria-hidden="true"><use href="#icon-plus" /></svg><span>Создать</span>
+              </button>
+              <button id="tab-open" class="start-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-open" tabindex="-1" data-tab="open" disabled>
+                <svg class="icon" aria-hidden="true"><use href="#icon-folder" /></svg><span>Открыть</span>
+              </button>
+              <button id="tab-clone" class="start-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-clone" tabindex="-1" data-tab="clone" disabled>
+                <svg class="icon" aria-hidden="true"><use href="#icon-git" /></svg><span>Из Git</span>
+              </button>
+            </div>
+
+            <div class="start-content">
+              <div id="operation-status" class="operation-status" role="status" aria-live="polite">
+                <span class="spinner" aria-hidden="true"></span>
+                <span id="operation-message">Подключаемся к Saturn IDE…</span>
+                <button id="cancel-clone" class="quiet-button" type="button" hidden>Отменить</button>
+              </div>
+              <div id="action-error" class="action-error" role="alert" tabindex="-1" hidden></div>
+
+              <section id="panel-create" class="start-panel" role="tabpanel" aria-labelledby="tab-create">
+                <h2>Новый проект</h2>
+                <p class="panel-description">Пустой проект в отдельной папке. Оборудование и схемы добавите в IDE.</p>
+                <form id="create-form">
+                  <fieldset class="form-fields" disabled>
+                    <div class="field">
+                      <label for="create-name">Название проекта</label>
+                      <input id="create-name" name="name" type="text" placeholder="Насосная станция" autocomplete="off" autocapitalize="off" spellcheck="false" required aria-describedby="create-name-help" />
+                      <p id="create-name-help" class="field-help">Так будет называться и папка проекта.</p>
+                    </div>
+                    <div class="field">
+                      <label for="create-parent">Родительская папка</label>
+                      <input id="create-parent" class="path-input" name="parent" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required />
+                    </div>
+                    <div class="destination-preview">
+                      <span>Проект будет создан здесь</span>
+                      <output id="create-destination" for="create-parent create-name" class="path-output">Укажите название проекта</output>
+                    </div>
+                    <button class="primary-button" type="submit"><span>Создать и открыть</span><svg class="icon" aria-hidden="true"><use href="#icon-arrow" /></svg></button>
+                  </fieldset>
+                </form>
+              </section>
+
+              <section id="panel-open" class="start-panel" role="tabpanel" aria-labelledby="tab-open" hidden>
+                <h2>Открыть с компьютера</h2>
+                <p class="panel-description">Укажите папку проекта или каталог с несколькими проектами.</p>
+                <form id="discover-form">
+                  <fieldset class="form-fields" disabled>
+                    <div class="field">
+                      <label for="open-directory">Путь к папке</label>
+                      <input id="open-directory" class="path-input" name="directory" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required aria-describedby="open-directory-help" />
+                      <p id="open-directory-help" class="field-help">Проверим эту папку и до трёх уровней вложенных папок.</p>
+                    </div>
+                    <button id="discover-submit" class="primary-button" type="submit"><span>Найти проекты</span><svg class="icon" aria-hidden="true"><use href="#icon-arrow" /></svg></button>
+                  </fieldset>
+                </form>
+                <section id="open-results" class="discovery-results" aria-labelledby="open-results-heading" hidden></section>
+              </section>
+
+              <section id="panel-clone" class="start-panel" role="tabpanel" aria-labelledby="tab-clone" hidden>
+                <h2>Подключить репозиторий</h2>
+                <p id="clone-description" class="panel-description">Склонируем репозиторий на этот компьютер, затем выберем проект.</p>
+                <details id="clone-settings" class="clone-settings" open>
+                  <summary id="clone-settings-summary" hidden>Адрес и папка репозитория</summary>
+                  <form id="clone-form">
+                  <fieldset class="form-fields" disabled>
+                    <div class="field">
+                      <label for="clone-repository">Адрес репозитория</label>
+                      <input id="clone-repository" name="repository" type="text" placeholder="https://github.com/команда/проект" autocomplete="off" autocapitalize="off" spellcheck="false" required aria-describedby="clone-repository-help" />
+                      <p id="clone-repository-help" class="field-help">HTTPS, SSH или локальный путь. Для доступа используются ваши настройки Git.</p>
+                    </div>
+                    <div class="clone-destination-fields">
+                      <div class="field">
+                        <label for="clone-parent">Родительская папка</label>
+                        <input id="clone-parent" class="path-input" name="parent" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required />
+                      </div>
+                      <div class="field">
+                        <label for="clone-name">Новая папка</label>
+                        <input id="clone-name" name="name" type="text" placeholder="проект" autocomplete="off" autocapitalize="off" spellcheck="false" required />
+                      </div>
+                    </div>
+                    <div class="destination-preview">
+                      <span id="clone-destination-caption">Репозиторий будет сохранён здесь</span>
+                      <output id="clone-destination" for="clone-parent clone-name" class="path-output">Укажите адрес репозитория</output>
+                    </div>
+                    <button id="clone-submit" class="primary-button" type="submit"><span>Клонировать</span><svg class="icon" aria-hidden="true"><use href="#icon-arrow" /></svg></button>
+                  </fieldset>
+                  </form>
+                </details>
+                <section id="clone-results" class="discovery-results" aria-labelledby="clone-results-heading" hidden></section>
+                <p class="trust-caption">Открытие проекта выполняет его TypeScript-код. Открывайте только доверенные репозитории.</p>
+              </section>
+            </div>
+          </section>
+
+          <aside class="recent-projects" aria-labelledby="recent-heading">
+            <header class="recent-heading"><h2 id="recent-heading" tabindex="-1">Недавние проекты</h2><span id="recent-count" hidden></span></header>
+            <div id="recent-loading" class="recent-empty">Загружаем список…</div>
+            <div id="recent-empty" class="recent-empty" hidden>
+              <svg class="empty-folder icon" aria-hidden="true"><use href="#icon-folder" /></svg>
+              <p>Здесь появятся проекты,<br />которые вы откроете.</p>
+            </div>
+            <ul id="recent-list" class="recent-list" hidden></ul>
+            <p class="recent-caption">Исходники остаются в выбранных папках. К работе можно вернуться в любой момент.</p>
+          </aside>
+        </div>
+      </main>
+
+      <footer class="launcher-footer"><span>Исходники проекта — обычные TypeScript-файлы.</span><span>Локальная рабочая среда</span></footer>
+      <noscript><p class="connection-error">Для открытия проектов включите JavaScript в браузере.</p></noscript>
+    </div>
+    <div id="announcement" class="sr-only" role="status" aria-live="polite"></div>
+  </body>
+</html>

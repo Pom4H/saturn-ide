@@ -44,7 +44,7 @@ const defaultAppRoot = resolve(import.meta.dir, '../..');
 const empty: Project = { id: 'unloaded', label: { en: 'Project not loaded', ru: 'Проект не загружен' }, signals: {}, equipment: [], pipes: [], alarms: [] };
 /** Composition root for local development; runtime modules themselves know no workspace. */
 export interface DevelopmentApp {server:Bun.Server<undefined>;close:()=>Promise<void>;runtime:Runtime;workspace:Workspace;state:()=>IDEState;reload:()=>Promise<void>}
-export async function createApp(options: { appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation'; decision?: Readonly<Record<string,string|undefined>>; demoLauncher?:boolean; agentCommand?:readonly string[] } = {}):Promise<DevelopmentApp> {
+export async function createApp(options: { appRoot?:string; projectDir?: string; dataDir?: string; databaseUrl?: string; port?: number; preview?: 'manual' | 'simulation'; decision?: Readonly<Record<string,string|undefined>>; demoLauncher?:boolean; agentCommand?:readonly string[]; launcherUrl?:string } = {}):Promise<DevelopmentApp> {
   const appRoot=options.appRoot??defaultAppRoot;
   const decisions=new DecisionService(options.decision);
   const updates=new IDEUpdates(Bun.env.SATURN_IDE_VERSION??(await Bun.file(join(appRoot,'package.json')).json()).version);
@@ -52,6 +52,9 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
   const agents=new AgentHost(options.agentCommand??configuredAgent(Bun.env.SATURN_AGENT_COMMAND),workspace.root);
   const dataDir = options.dataDir ?? join(appRoot, '.saturn', hash(workspace.root).slice(0, 12));
   mkdirSync(dataDir, { recursive: true });
+  // Reject an unbuildable browser extension before allocating runtime resources or
+  // starting a simulator. An unsuccessful open must leave no unowned driver behind.
+  let browser = await browserAssets(appRoot, workspace.root, dataDir);
   const database = options.databaseUrl ?? Bun.env.DATABASE_URL ?? `sqlite://${join(dataDir, 'history.sqlite')}`;
   const store = new Store(database);
   await store.init(); await store.prune();
@@ -79,7 +82,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
   const mode = (): Driver['mode'] | 'offline' => manager.phase === 'running' ? active()?.driver?.mode ?? 'offline' : 'offline';
   const authoringProject = () => draft?.project ?? runtime.project;
   const state = (): IDEState => ({ project: runtime.project, snapshot: runtime.snapshot, revision: (manager.applied ?? releaseState.applied)?.slice(7) ?? '',
-    authoring:draft?.authoring,editorError:draft?.editorError,positions:draft?.authoring?.positions??draft?.positions??{}, problems, mode: mode(), runtimePhase:manager.phase, runtimeError:manager.error, adapter: store.adapter, key, pushPublicKey: push.publicKey });
+    authoring:draft?.authoring,editorError:draft?.editorError,positions:draft?.authoring?.positions??draft?.positions??{}, problems, mode: mode(), runtimePhase:manager.phase, runtimeError:manager.error, adapter: store.adapter, key, pushPublicKey: push.publicKey, launcherUrl:options.launcherUrl });
   function reportError(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     problems = [{ code: 'RUNTIME', message: { en: message, ru: message } }];
@@ -123,7 +126,6 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
   const runtimeSerial = <T,>(action:()=>Promise<T>) => { const next=reloadQueue.then(()=>{if(closed)throw new HttpError(503,'Workspace is closing');return action();});reloadQueue=next.catch(()=>{});return next; };
   const reload = () => runtimeSerial(reloadNow);
   await reload();
-  let browser = await browserAssets(appRoot, workspace.root, dataDir);
   const staleTimer = setInterval(() => { if (manager.phase === 'running') void runtime.stale().catch(reportError); }, 1000);
   const trashRetention = setInterval(() => { try { trash.purgeExpired(); } catch(error) { console.error('Workspace trash retention:',error); } }, 3600_000);
   const retention = setInterval(() => void store.prune().catch(reportError), 3600_000);
