@@ -119,11 +119,14 @@ try{
   await until(async()=>(await fetch(base)).ok,'bun dev did not start');
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
   const page=await browser.newPage({viewport:{width:1536,height:864},deviceScaleFactor:1,colorScheme:'light'});
-  await page.addInitScript(()=>{localStorage.setItem('saturn.locale','ru');localStorage.setItem('saturn.theme','light');});
+  await page.addInitScript(()=>{localStorage.setItem('saturn.preset','business');localStorage.setItem('saturn.locale','ru');localStorage.setItem('saturn.theme','light');localStorage.setItem('saturn.home.dimension','2d');});
   await page.emulateMedia({colorScheme:'light',reducedMotion:'reduce'});
   await page.goto(base);
   await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');
   await page.locator('[data-equipment="P-01"]').waitFor({timeout:30000});
+  await page.locator('.safety-context').waitFor({timeout:30000});
+  await page.locator('.environment-chip').filter({hasText:'SIM'}).waitFor();
+  await page.locator('.version-chip').filter({hasText:'Applied'}).waitFor();
 
   const rail=page.getByRole('navigation',{name:'Рабочие области'});
   const shoot=async(file:string,ready?:()=>Promise<void>)=>{
