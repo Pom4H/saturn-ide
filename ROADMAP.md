@@ -31,8 +31,14 @@ runtime-слои; он удаляет исторические обратные 
 - [x] Во всех четырёх репозиториях добавлены/усилены architecture checks, чтобы границы
   проверялись CI, а не оставались договорённостью в документации.
 
-Связанные изменения: `saturn-saas@68708c0`, `saturn-examples@62f076b`,
-`saturn-plugins@1627059`, `saturn-ide@45672a6`.
+Финальные изменения: `saturn-saas@eac4c0c`, `saturn-examples@a1631e3`,
+`saturn-plugins@fca6b22`, `saturn-ide@588e743`. В ходе проверки устранены реальные
+скрытые зависимости: private `node_modules/saturn-ide/src` import в SaaS, stale Git-package
+metadata в examples lockfile и несовпадение pinned acquisition contract в source kits.
+
+Проверено CI без ослабления acceptance: SaaS run `37236848919` — success; examples
+run `37237245148` — success; plugins run `37237015206` — success; IDE architecture /
+integration run `37236637568` и Pages run `37236637569` — success.
 
 ## ONB-1 — создание и подключение проекта
 
