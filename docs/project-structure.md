@@ -4,8 +4,9 @@
 
 `bun run scaffold project ../new-station` creates an empty authored project.
 The installed/source launcher also exposes `saturn init ../new-station` /
-`bun start init ../new-station`. Use `--template pumping-station` with either init
-command for the complete example. The default has five files:
+`bun start init ../new-station`. Complete examples are external project source;
+pass `--template pumping-station --example ../saturn-examples/pumping-station`
+(or set `SATURN_EXAMPLE`). The default has five files:
 
 ```
 new-station/
@@ -43,11 +44,12 @@ installed. See [First project](quickstart.md) for the checked and runtime states
 The previous complete station remains explicitly available:
 
 ```sh
-bun run scaffold project ../station-demo --template pumping-station
+bun run scaffold project ../station-demo --template pumping-station --example ../saturn-examples/pumping-station
 ```
 
-The example checkout is `../saturn-examples/pumping-station`, overridable with
-`SATURN_EXAMPLE`. If unavailable, creation fails before creating the destination.
+The example checkout may live anywhere. Pass it explicitly with `--example` or
+`SATURN_EXAMPLE`; Saturn IDE does not infer a sibling repository. If unavailable,
+creation fails before creating the destination.
 Vendor SVG/3D, Firmverse HMI/firmware, reports, simulation and project tests are
 preserved when copying this template. Install the copied project's dependencies
 before opening it: its project-owned React HMI requires React and type declarations.

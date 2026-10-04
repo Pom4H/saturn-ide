@@ -1,6 +1,6 @@
 # Saturn roadmap
 
-Обновлено: **2026-10-04**. Основание: создание и подключение проекта (ONB-1), текстовые decision-модели Jev/Kev (DEC-1), ACP-интеграция внешних coding agents, Saturn Mobile, совместная работа,
+Обновлено: **2026-10-05**. Основание: создание и подключение проекта (ONB-1), текстовые decision-модели Jev/Kev (DEC-1), ACP-интеграция внешних coding agents, Saturn Mobile, совместная работа,
 монтажа, пространственного контекста и проектирования по документам.
 
 Это единый план развития Saturn IDE / Cloud / Mobile и интеграции внешних агентов. Пункты ниже —
@@ -11,6 +11,28 @@
 [матрица возможностей](docs/capabilities.md), область уже описанных проверок —
 [verification](docs/verification.md). Этот roadmap дополняет их, не отменяет незавершённый
 перенос и не меняет архитектурный контракт одним лишь появлением задачи.
+
+## ARCH-1 — владение кодом между репозиториями
+
+Приоритет **P0**, выполнено 2026-10-05. Рефакторинг не вводит новые пакеты или
+runtime-слои; он удаляет исторические обратные зависимости и фиксирует существующую
+архитектуру автоматическими проверками.
+
+- [x] `saturn-ide` владеет DSL/core, build artifact, workspace, runtime, Shell и local host.
+  Production source больше не предполагает соседний checkout `saturn-examples`;
+  внешние demo/example projects передаются явно.
+- [x] `saturn-examples` — канонический владелец завершённых authored engineering projects.
+  Architecture check запрещает runtime-импорты IDE/SaaS implementation и sibling plugin source.
+- [x] `saturn-plugins` — канонический владелец project-owned source kits. Широкий
+  development alias `@saturn/core/*` удалён; допустимы только объявленные public core exports.
+- [x] `saturn-saas` больше не хранит копию pumping-station. Для пустого проекта используется
+  `saturn-ide/project-template`, для демонстрационного — immutable revision из
+  `saturn-examples` по provenance. OAuth/server не исполняет этот source.
+- [x] Во всех четырёх репозиториях добавлены/усилены architecture checks, чтобы границы
+  проверялись CI, а не оставались договорённостью в документации.
+
+Связанные изменения: `saturn-saas@68708c0`, `saturn-examples@62f076b`,
+`saturn-plugins@1627059`, `saturn-ide@45672a6`.
 
 ## ONB-1 — создание и подключение проекта
 

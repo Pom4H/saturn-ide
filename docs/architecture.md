@@ -121,7 +121,7 @@ project/
   tests/
 ```
 
-Новый пустой проект содержит только project.ts, package.json, tsconfig.json, README.md и .gitignore. Полная демонстрационная станция создаётся отдельно через `--template pumping-station`. `server.ts` и `browser.ts` добавляются только при необходимости.
+Новый пустой проект содержит только project.ts, package.json, tsconfig.json, README.md и .gitignore. Полная демонстрационная станция создаётся отдельно из явно указанного внешнего example source (`--template pumping-station --example <path>` или `SATURN_EXAMPLE`); IDE не предполагает соседний checkout `saturn-examples`. `server.ts` и `browser.ts` добавляются только при необходимости.
 
 ### Первый запуск и выбор проекта
 
@@ -371,8 +371,8 @@ normal source edits continue through existing SSE/preview behavior.
 
 Integration tests deliberately use sibling examples/plugins checkouts; these
 are test inputs, not production IDE dependencies. `SATURN_PROJECT` selects the
-local engineering project; the development convenience default is the sibling
-`saturn-examples/pumping-station`. Core and runtime remain usable independently.
+local engineering project; examples are supplied explicitly by integration scripts or `SATURN_EXAMPLE`/`SATURN_DEMO_ROOT`;
+production source has no implicit sibling-repository lookup. Core and runtime remain usable independently.
 Cloud source authoring does not run an arbitrary repository in the OAuth server.
 Remote runtime execution and physical PLC flashing remain separate acceptance
 criteria; a deployment plan alone does not fulfill them.
