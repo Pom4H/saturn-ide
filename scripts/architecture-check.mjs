@@ -14,6 +14,7 @@ export function violations(sources) {
   const errors = [];
   for (const [file, source] of Object.entries(sources)) {
     const owner = layer(file), headless = file.replaceAll('\\','/').startsWith('src/shell/model/');
+    for(const repository of ['saturn-examples','saturn-plugins','saturn-saas']) if(source.includes(repository)) errors.push(`${file}: product source must not depend on ${repository}`);
     const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, file.endsWith('tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
     if (!allowed[owner]) { errors.push(`${file}: unowned module`); continue; }
     const check = (specifier, declaration) => {
@@ -51,6 +52,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   walk('src');
   const errors = violations(sources);
   for (const old of ['src/server', 'src/ide']) if (existsSync(old)) errors.push(`Remove the old implementation directory: ${old}`);
+  const manifest=JSON.parse(readFileSync('package.json','utf8'));
+  for(const [name,target] of Object.entries(manifest.exports??{})) if(typeof target!=='string'||!target.startsWith('./')||!existsSync(target.slice(2))) errors.push(`package export ${name} points outside a real owned file: ${String(target)}`);
   if (errors.length) { console.error(errors.join('\n')); process.exitCode = 1; }
   else console.log(`Architecture boundaries checked in ${Object.keys(sources).length} modules`);
 }

@@ -64,7 +64,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
   trash.purgeExpired();
   const key = crypto.randomUUID();
   const demos=new Map<string,Promise<{server:{url:URL};close:()=>Promise<void>}>>();
-  const demoRoot=resolve(Bun.env.SATURN_DEMO_ROOT??join(appRoot,'../saturn-examples'));
+  const demoRoot=Bun.env.SATURN_DEMO_ROOT?resolve(Bun.env.SATURN_DEMO_ROOT):undefined;
   const demoTemplates={home:'smart-home',business:'pumping-station'} as const;
   let draft: DraftBuild | undefined, problems: Problem[] = [];
   let restoreProblem: Problem | undefined;
@@ -183,7 +183,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         if (request.method === 'GET') {
           if(path==='/' || path==='/hmi') return new Response(browser.html,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
           const asset=browser.assets.get(path); if(asset)return new Response(asset,{headers:{'Cache-Control':'no-cache'}});
-          if(path==='/api/demos')return json((['home','business'] as const).map(preset=>({preset,available:options.demoLauncher!==false&&existsSync(join(demoRoot,demoTemplates[preset],'project.ts'))})));
+          if(path==='/api/demos')return json((['home','business'] as const).map(preset=>({preset,available:options.demoLauncher!==false&&!!demoRoot&&existsSync(join(demoRoot,demoTemplates[preset],'project.ts'))})));
           if (path === '/api/state') return json(state());
           if (path === '/api/decision') return json(decisions.status());
           if (path === '/api/agent') return json(agents.status());
@@ -245,7 +245,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         if(path==='/api/agent/disconnect'){await agents.disconnect(field(b,'id'));return json({ok:true});}
         if(path==='/api/demos/open'){
           const preset=field(b,'preset');if(options.demoLauncher===false||preset!=='home'&&preset!=='business')throw new HttpError(400,'Demo preset unavailable');
-          const source=join(demoRoot,demoTemplates[preset]);if(!existsSync(join(source,'project.ts')))throw new HttpError(404,'Demo source project is unavailable');
+          if(!demoRoot)throw new HttpError(404,'Demo source project is unavailable; configure SATURN_DEMO_ROOT');const source=join(demoRoot,demoTemplates[preset]);if(!existsSync(join(source,'project.ts')))throw new HttpError(404,'Demo source project is unavailable');
           let pending=demos.get(preset);if(!pending){pending=(async()=>{const root=join(dataDir,'demos',preset,'project'),demoData=join(dataDir,'demos',preset,'runtime');if(!existsSync(root))createProject(root,{template:demoTemplates[preset],example:source});return createApp({appRoot,projectDir:root,dataDir:demoData,port:0,preview:'simulation',demoLauncher:false});})();demos.set(preset,pending);void pending.catch(()=>demos.delete(preset));}
           const demo=await pending;return json({url:String(demo.server.url)+'?page=home&preset='+preset,project:demoTemplates[preset]});
         }

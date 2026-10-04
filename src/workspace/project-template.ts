@@ -7,7 +7,8 @@ export function createProject(destination:string,options:ProjectTemplateOptions=
  const target=resolve(destination),name=basename(target),id=projectTemplateId(name);
  if(existsSync(target))throw new Error('Destination already exists');
  if(options.template==='pumping-station'||options.template==='smart-home'){
-  const source=resolve(options.example??Bun.env.SATURN_EXAMPLE??join(import.meta.dir,'../../../saturn-examples',options.template));
+  const external=options.example??Bun.env.SATURN_EXAMPLE;if(!external)throw new Error('Example templates are external project source. Pass example or set SATURN_EXAMPLE.');
+  const source=resolve(external);
   if(!existsSync(join(source,'project.ts')))throw new Error('Example not found. Set SATURN_EXAMPLE to a project checkout.');
   cpSync(source,target,{recursive:true,filter:path=>!basename(path).startsWith('.')&&basename(path)!=='node_modules'});
   const pkg=JSON.parse(readFileSync(join(target,'package.json'),'utf8'));writeFileSync(join(target,'package.json'),JSON.stringify({...pkg,name:id,private:true},null,2)+'\n');

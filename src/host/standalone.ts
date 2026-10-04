@@ -14,7 +14,7 @@ function packagedRoot(exeDir:string){
 }
 function defaultProject(exeDir:string){
   const packaged=join(exeDir,'projects','pumping-station');
-  return existsSync(join(packaged,'project.ts'))?packaged:resolve(Bun.env.SATURN_PROJECT??'../saturn-examples/pumping-station');
+  return existsSync(join(packaged,'project.ts'))?packaged:(Bun.env.SATURN_PROJECT?resolve(Bun.env.SATURN_PROJECT):packaged);
 }
 function stateRoot(projectDir:string){
   if(Bun.env.SATURN_DATA_DIR)return resolve(Bun.env.SATURN_DATA_DIR);
