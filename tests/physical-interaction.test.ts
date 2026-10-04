@@ -139,10 +139,12 @@ test('a loose end placed inside equipment is not reported as a valid straight ca
   const project=fixture('cable');project.cables![0]={...project.cables![0]!,to:free(project.cables![0]!.to,{x:450,y:100,z:0})};
   assert.equal(routeConnections(project)[0]!.valid,false);
 });
-test('moving the station pump onto a fixed free cable end reports its clearance collision',()=>{
-  const initial=decodeProject(canonical(demo)),at=(dx:number)=>({...initial,equipment:initial.equipment.map(e=>e.id==='P-01'?{...e,x:e.x+dx}:e)});
-  const clear=routeConnections(at(28)).find(route=>route.id==='run-command')!;
-  const blocked=routeConnections(at(29)).find(route=>route.id==='run-command')!;
+test('moving equipment onto a fixed free cable end reports its clearance collision',()=>{
+  const initial=fixture('cable'),edge=initial.cables![0]!;
+  const loose={...edge,to:free(edge.to,{x:690,y:150,z:0})};
+  const clearProject={...initial,cables:[loose]};
+  const blockedProject={...clearProject,equipment:clearProject.equipment.map(e=>e.id==='B'?{...e,x:e.x-2}:e)};
+  const clear=routeConnections(clearProject)[0]!,blocked=routeConnections(blockedProject)[0]!;
   assert.equal(clear.valid,true);
   assert.equal(blocked.valid,false);
   assert.equal(blocked.error,'Free end overlaps equipment clearance');
