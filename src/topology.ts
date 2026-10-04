@@ -83,7 +83,12 @@ function retargetRoute(project:Project,edge:Pipe|Cable,old:PhysicalRoute,boxes:r
   const movedFrom=!samePoint(old.points[0]!,start),movedTo=!samePoint(old.points.at(-1)!,end);
   const extent=movedFrom&&movedTo?Math.min(8,interior.length-1):interior.length-1;
   const leftLimit=movedFrom?extent:0,rightLimit=movedTo?extent:0;
-  const fresh=routeConnection(project,edge),maxLength=fresh.valid?pathLength(fresh.points)+(edge.kind==='pipe'?28:18):Infinity;
+  // Route identity is anchored from source -> destination. Moving only the
+  // destination must not migrate a still-clear source corridor toward a newly
+  // shorter path. When the source moves, its old prefix is no longer anchored,
+  // so use a fresh route only as the detour bound for trimming that prefix.
+  const fresh=movedFrom?routeConnection(project,edge):undefined;
+  const maxLength=fresh?.valid?pathLength(fresh.points)+(edge.kind==='pipe'?28:18):Infinity;
   let fallback:PhysicalRoute|undefined;
   for(let trim=0;trim<=leftLimit+rightLimit;trim++){
     let best:PhysicalRoute|undefined,bestScore=Infinity,trimFallback:PhysicalRoute|undefined,trimFallbackScore=Infinity;
