@@ -51,6 +51,14 @@ jobs:
       - name: Capture repository screenshots
         run: bun scripts/screenshots.ts
 
+      - name: Upload screenshot evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: saturn-screenshots
+          path: docs/screenshots/
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Store screenshots in selected branch
         env:
           TARGET_BRANCH: ${{ inputs.branch || github.ref_name }}
