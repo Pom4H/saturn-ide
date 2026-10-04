@@ -83,6 +83,8 @@ function retargetRoute(project:Project,edge:Pipe|Cable,old:PhysicalRoute,boxes:r
   const movedFrom=!samePoint(old.points[0]!,start),movedTo=!samePoint(old.points.at(-1)!,end);
   const extent=movedFrom&&movedTo?Math.min(8,interior.length-1):interior.length-1;
   const leftLimit=movedFrom?extent:0,rightLimit=movedTo?extent:0;
+  const fresh=routeConnection(project,edge),maxLength=fresh.valid?pathLength(fresh.points)+(edge.kind==='pipe'?28:18):Infinity;
+  let fallback:PhysicalRoute|undefined,fallbackScore=Infinity;
   for(let trim=0;trim<=leftLimit+rightLimit;trim++){
     let best:PhysicalRoute|undefined,bestScore=Infinity;
     for(let left=0;left<=leftLimit;left++){
@@ -94,14 +96,18 @@ function retargetRoute(project:Project,edge:Pipe|Cable,old:PhysicalRoute,boxes:r
         // only on those outward segments.
         const middle=compactPoints([...prefix,...kept,...suffix]);
         const points=compactPoints([start,...middle,end]);
-        const candidate={...old,points},score=pathLength(points)+points.length*4;
-        if(score>=bestScore-1e-7||retraces(points)||retraces(compactPoints(points.map(point=>({...point,z:0}))))||!routeClear(candidate,boxes,edge)||!keepsWaypoints(points,edge.via))continue;
+        const candidate={...old,points},length=pathLength(points),score=length+points.length*4;
+        if(retraces(points)||retraces(compactPoints(points.map(point=>({...point,z:0}))))||!routeClear(candidate,boxes,edge)||!keepsWaypoints(points,edge.via))continue;
+        if(score<fallbackScore){fallback=candidate;fallbackScore=score;}
+        if(length>maxLength||score>=bestScore-1e-7)continue;
         best=candidate;bestScore=score;
       }
     }
     if(best)return best;
   }
-  return undefined;
+  // If the fresh router itself has no valid reference, keep the best local repair
+  // instead of replacing a valid route with a failure.
+  return fallback;
 }
 // Port-aligned, bounded A* visibility-grid router. Adapted from Saturn plant/routing.ts.
 // A crossing is not a connection. Shared logical nodes are declared equipment/ports only.

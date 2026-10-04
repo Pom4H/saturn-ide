@@ -160,7 +160,8 @@ try{
   await page.locator('[data-equipment="P-01"]').waitFor();
   await page.screenshot({path:'docs/screenshots/ide-light.png'});
   await page.locator('[data-equipment="P-01"]').click();
-  await page.getByRole('button',{name:'Исходник',exact:true}).click();
+  await page.getByRole('button',{name:'Меню проекта',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Показать в коде',exact:true}).click();
   await shoot('source-context.png',async()=>{await page.getByRole('complementary',{name:'Исходник объекта'}).getByRole('textbox',{name:'Исходный код'}).waitFor();});
   await page.getByRole('button',{name:'Закрыть исходник',exact:true}).click();
 

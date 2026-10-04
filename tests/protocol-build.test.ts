@@ -18,7 +18,8 @@ test('compiled Modbus project retains lazy SDK imports and executes through the 
   // Provision the test deployment explicitly, as an operator would install the locked SDKs.
   symlinkSync(join(appRoot, 'node_modules'), join(dir, 'node_modules'), 'junction');
   cpSync(join(appRoot, 'bun.lock'), join(workspace, 'bun.lock'));
-  cpSync(join(appRoot, '../saturn-plugins/protocols'), join(workspace, 'plugins'), { recursive: true });
+  const pluginRoot=join(workspace,'plugins'),sourceRoot=join(appRoot,'../saturn-plugins/protocols');mkdirSync(pluginRoot);
+  for(const name of ['modbus.ts','modbus-transport.ts','shared.ts'])cpSync(join(sourceRoot,name),join(pluginRoot,name));
   let measured = 17, requests = 0;
   const sockets = new Set<Socket>();
   const server = createServer(socket => {
