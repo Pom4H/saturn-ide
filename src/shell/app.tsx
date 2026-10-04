@@ -401,7 +401,7 @@ function Workbench({displays,importers,embedded=false}:AppProps) {
   const revisionBase=releases?.applied?`Applied ${shortIdentity(releases.applied)}`:(ru?'Не применено':'Not applied');
   const revisionDelta=!connected?(ru?'последнее известное':'last known'):sourceChanged?'Source +':releases?.checked!==releases?.applied?'Checked ≠':releases?.published!==releases?.applied?'Published ≠':'✓';
   const revisionTone=!connected?'offline':versionAttention||!releases?.applied?'attention':'synced';
-  const environmentLabel=!connected?(ru?'ОФЛАЙН':'OFFLINE'):state.mode==='simulation'?'SIM':state.mode==='live'?`LIVE · ${location.host}`:(ru?'НЕТ ДРАЙВЕРА':'NO DRIVER');
+  const environmentLabel=!connected?(ru?'ОФЛАЙН':'OFFLINE'):state.mode==='simulation'?'SIM':state.mode==='live'?`LIVE · ${globalThis.location.host}`:(ru?'НЕТ ДРАЙВЕРА':'NO DRIVER');
   const hasVersionChanges=!operator&&versionAttention;
   return <div className={`shell engineering-shell ${operator ? 'operator-mode' : ''}${navigationMode!=='threads'?' resource-page':''}${navigationMode==='settings'?' settings-page':''}${navigationMode==='home'?' home-page':''}${tree?'':' sidebar-collapsed'}${artifactOpen?' artifact-open':''}${artifactFullscreen?' artifact-fullscreen':''}`} style={{'--artifact-width':`${artifactWidth}px`} as CSSProperties}>
     {!preset&&<PresetWelcome locale={locale} select={value=>{preferences.selectPreset(value);}}/>}
