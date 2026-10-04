@@ -1,6 +1,6 @@
 # Saturn roadmap
 
-Обновлено: **2026-10-02**. Основание: текстовые decision-модели Jev/Kev (DEC-1), ACP-интеграция внешних coding agents, Saturn Mobile, совместная работа,
+Обновлено: **2026-10-04**. Основание: текстовые decision-модели Jev/Kev (DEC-1), ACP-интеграция внешних coding agents, Saturn Mobile, совместная работа,
 монтажа, пространственного контекста и проектирования по документам.
 
 Это единый план развития Saturn IDE / Cloud / Mobile и интеграции внешних агентов. Пункты ниже —
@@ -14,6 +14,7 @@
 
 ## Shell / UX evidence
 
+- [x] **2026-10-04 — safety-context и regression repair.** Постоянный topbar показывает surface/environment/applied + mismatch и локальную authority отдельно от view. Routing сохраняет валидный коридор во время drag и проверяет free-end collision против всей геометрии; Modbus due-channel capability синхронизирован с `saturn-plugins` без ослабления core policy.
 - [x] **2026-10-02 — воспроизводимые light-theme кадры Shell.** Capture использует self-contained DSL fixture, явно фиксирует `light`, а workflow `37043603969` успешно пересобрал и опубликовал object-first screenshots. Evidence commit ребейзится на актуальный `main` перед push, поэтому параллельная работа больше не превращает успешный capture в ложный failure.
 - [x] **P0 — object-first вместо IDE-first.** TypeScript остаётся authored source of truth, Git/diff/agent format и advanced/debugging surface, но обычный human UX начинается с физической модели объекта и не требует ручного редактирования кода.
 - [x] **P0 — центр по умолчанию = объект.** 2D/3D остаются главным canvas с общей selection/topology model. Глобальные surfaces больше не накапливаются как ряд IDE-вкладок; вкладки сохранены только в advanced source workflow.
@@ -22,10 +23,10 @@
 - [x] **P1 — отдавать площадь рабочему объекту.** Нижняя ShellPanel закрыта по умолчанию; Review/Properties/Source появляются только как вторичный контекст. Чистый object capture не держит открытые dock/panel без причины.
 - [x] **P1 — Context Dock baseline.** Один правый слот уже переиспользуют Properties / Review / Source; Source использует тот же DocumentBuffer/Language Service и не создаёт второй authored state. Порядок affordances: Properties → Review → Source.
 - [ ] **P1 — расширить Context Dock:** History / HMI preview / Agent должны войти в тот же слот вместо новых независимых панелей. Нужны сохранение/resize ширины и понятное переключение контекста.
-- [ ] **P0 — постоянный safety context.** Project / Surface / Environment должны читаться без открытия панели. Свернуть `Source → Checked → Published → Applied` до компактного постоянного revision/runtime context; подробности оставить в Review. Для live-среды показывать конкретный target и отдельное визуальное состояние, не только маленький `СИМ`/status bar.
+- [x] **P0 — постоянный safety context.** Topbar постоянно показывает Project / Surface / Environment и Applied revision; Source/Checked/Published mismatch не прячется за popup. `LIVE` включает конкретный host target, SIM/OFFLINE имеют отдельные состояния, подробные identities остаются в Review/Summary.
 - [ ] **P1 — контекстные действия рядом с контекстом.** Diagram actions остаются у canvas; `Вид / Свойства / Ревью / Исходник / Проекции` ещё нужно сократить и адаптировать к selection, чтобы глобальный chrome не конкурировал с объектом.
 - [x] **P1 — view ≠ authority в названии.** Переключатель переименован в `Проект / Операторский вид`, чтобы не выглядеть выдачей прав.
-- [ ] **P1 — явно показывать runtime authority.** Реальные права на read/control/deploy и live target должны отображаться независимо от выбранного вида.
+- [x] **P1 — явно показывать runtime authority.** Текущий loopback IDE host показывает `LOCAL · FULL` отдельно от `Проект / Операторский вид`; переключение вида не меняет authority. Remote/SaaS роли по-прежнему обязаны приходить от своего server-side authorization boundary, а не выводиться из UI.
 - [ ] **P2 — проверить плотность и читаемость** на 1536×864 и 1024×768: контраст вторичных подписей на светлой схеме, размер command palette, локализацию инженерных metric labels и отсутствие горизонтального overflow.
 
 ## Направление продукта

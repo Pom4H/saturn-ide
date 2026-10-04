@@ -47,13 +47,9 @@ test('unsupported transport and impossible cadence reject requirements before I/
   expect(opened).toBe(0);
 });
 
-test('a pinned legacy read(abort) plugin rejects per-signal exchange before I/O',async()=>{
+test('a pinned plugin without due-channel capability rejects per-signal exchange before I/O',()=>{
   const source=jsonHttp('legacy',{url:'http://127.0.0.1:1/unused'},{mode:'simulation',pollMs:10,timeoutMs:100,reconnectMs:10,maxReconnectMs:20});
-  const legacy=source.bind(signal('measured',{initial:0,exchange:{pollMs:20}}),{tag:'measured'});
-  const measured={...legacy,binding:{...legacy.binding!,pollMs:20}};
-  const p=model(measured),driver=acquire(source);
-  await expect(driver.start({project:p,snapshot:{samples:{},alarms:{}},publish:async()=>{},observe:async()=>{}})).rejects.toThrow('polling requirement');
-  expect(driver.status()).toHaveLength(0);
+  expect(()=>source.bind(signal('measured',{initial:0,exchange:{pollMs:20}}),{tag:'measured'})).toThrow('per-signal polling');
 });
 
 test('a project-owned Modbus plugin copy builds a checked per-channel polling contract against current core',async()=>{

@@ -101,12 +101,9 @@ function retargetRoute(project:Project,edge:Pipe|Cable,old:PhysicalRoute,boxes:r
       best=candidate;bestScore=score;bestTrim=trim;
     }
   }
-  if(best){
-    // Retain small drag repairs, but retire a corridor once it becomes a detour.
-    // In particular, a stale riser can pull the new end back past its own bend.
-    const fresh=routeConnection(project,edge),slack=edge.kind==='pipe'?28:18;
-    if(fresh.valid&&pathLength(best.points)>pathLength(fresh.points)+slack)return fresh;
-  }
+  // A valid locally repaired corridor is authoritative during a gesture.
+  // Shorter fresh routes are an explicit optimize/reroute concern; switching here makes
+  // the pipe jump between equivalent corridors as the pointer moves by a pixel.
   return best;
 }
 // Port-aligned, bounded A* visibility-grid router. Adapted from Saturn plant/routing.ts.
@@ -144,6 +141,13 @@ function routeConnectionWithBoxes(project:Project,edge:Pipe|Cable,boxes:readonly
 }
 export function routeConnection(project:Project,edge:Pipe|Cable):PhysicalRoute {
   const boxes=boxesFor(project,edge.kind==='pipe'?14:9);
+  const start=connectionTip(project,edge,'from'),end=connectionTip(project,edge,'to');
+  const inside=(point:Point)=>boxes.some(box=>point.x>box.x+.01&&point.x<box.right-.01&&point.y>box.y+.01&&point.y<box.bottom-.01);
+  // Fast-path routing may ignore unrelated equipment while choosing a corridor, but
+  // physical validity never may: a free authored endpoint cannot be swallowed by
+  // equipment that moved onto it.
+  if((!isAttached(edge.from)&&inside(start))||(!isAttached(edge.to)&&inside(end)))
+    return routeConnectionWithBoxes(project,edge,boxes);
   // Unrelated equipment must not change a clear path merely by adding grid lines.
   const endpoints=boxes.filter(box=>box.id===owner(edge.from)||box.id===owner(edge.to));
   const preferred=routeConnectionWithBoxes(project,edge,endpoints);
