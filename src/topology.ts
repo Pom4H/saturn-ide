@@ -76,35 +76,32 @@ function retargetRoute(project:Project,edge:Pipe|Cable,old:PhysicalRoute,boxes:r
   // The former repair could accumulate hundreds of tiny bends. Replanning one
   // such legacy cache entry is cheaper than searching its every possible trim.
   if(interior.length>32)return;
-  // A sequence of small diagonal drags can leave one new bend per frame. Search all
-  // trims at the moving end, then prefer the simplest clear repair. The stationary
-  // end keeps its corridor. If both ends move, cap the Cartesian search and let a
-  // fresh route handle an already pathological cached path.
+  // A sequence of small diagonal drags can leave one new bend per frame. Trim only
+  // from an end that actually moved. Most importantly, trim count is the first
+  // ordering key: a shorter alternative may not discard more of a still-valid
+  // corridor merely because the pointer moved by one pixel.
   const movedFrom=!samePoint(old.points[0]!,start),movedTo=!samePoint(old.points.at(-1)!,end);
   const extent=movedFrom&&movedTo?Math.min(8,interior.length-1):interior.length-1;
   const leftLimit=movedFrom?extent:0,rightLimit=movedTo?extent:0;
-  let best:PhysicalRoute|undefined,bestScore=Infinity,bestTrim=Infinity;
-  for(let left=0;left<=leftLimit;left++)for(let right=0;right<=Math.min(rightLimit,interior.length-left-1);right++){
-    const kept=interior.slice(left,interior.length-right),first=kept[0]!,last=kept.at(-1)!;
-    // A small preference for an established long corridor avoids shifting the
-    // entire pipe for each pixel of drag. Its cap keeps a detour from winning.
-    const retained=Math.min(pathLength(kept),600)*0.02;
-    for(const prefix of bridges(from,first))for(const suffix of bridges(last,to)){
-      // Start with terminal stubs: routeClear may ignore the owning equipment
-      // only on those outward segments.
-      const middle=compactPoints([...prefix,...kept,...suffix]);
-      const points=compactPoints([start,...middle,end]);
-      const candidate={...old,points};
-      const score=pathLength(points)+points.length*4-retained,trim=left+right;
-      const worse=score>bestScore+1e-7||(Math.abs(score-bestScore)<=1e-7&&trim>=bestTrim);
-      if(worse||retraces(points)||retraces(compactPoints(points.map(point=>({...point,z:0}))))||!routeClear(candidate,boxes,edge)||!keepsWaypoints(points,edge.via))continue;
-      best=candidate;bestScore=score;bestTrim=trim;
+  for(let trim=0;trim<=leftLimit+rightLimit;trim++){
+    let best:PhysicalRoute|undefined,bestScore=Infinity;
+    for(let left=0;left<=leftLimit;left++){
+      const right=trim-left;
+      if(right<0||right>rightLimit||left+right>=interior.length)continue;
+      const kept=interior.slice(left,interior.length-right),first=kept[0]!,last=kept.at(-1)!;
+      for(const prefix of bridges(from,first))for(const suffix of bridges(last,to)){
+        // Start with terminal stubs: routeClear may ignore the owning equipment
+        // only on those outward segments.
+        const middle=compactPoints([...prefix,...kept,...suffix]);
+        const points=compactPoints([start,...middle,end]);
+        const candidate={...old,points},score=pathLength(points)+points.length*4;
+        if(score>=bestScore-1e-7||retraces(points)||retraces(compactPoints(points.map(point=>({...point,z:0}))))||!routeClear(candidate,boxes,edge)||!keepsWaypoints(points,edge.via))continue;
+        best=candidate;bestScore=score;
+      }
     }
+    if(best)return best;
   }
-  // A valid locally repaired corridor is authoritative during a gesture.
-  // Shorter fresh routes are an explicit optimize/reroute concern; switching here makes
-  // the pipe jump between equivalent corridors as the pointer moves by a pixel.
-  return best;
+  return undefined;
 }
 // Port-aligned, bounded A* visibility-grid router. Adapted from Saturn plant/routing.ts.
 // A crossing is not a connection. Shared logical nodes are declared equipment/ports only.
