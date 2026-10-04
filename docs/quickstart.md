@@ -138,8 +138,8 @@ simulator or a physical deployment.
 
 The complete pumping-station example has its own equipment, HMI and explicit simulator.
 Clone `Pom4H/saturn-examples` next to the IDE checkout. Before opening a new clone,
-install its project dependencies (including React) with GitHub SSH access. Machines using
-only HTTPS credentials can use the temporary Git rewrite shown below:
+install its project dependencies (including React). Configure Git credentials for
+any private dependencies; the commands below assume those credentials are ready:
 
 ```sh
 cd ../saturn-examples/pumping-station
