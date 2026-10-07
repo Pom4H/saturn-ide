@@ -14,12 +14,13 @@ class Connection {
   private session?:acp.ActiveSession;
   private emit?:(event:AgentEvent)=>void;
   private pending=new Map<string,{request:acp.RequestPermissionRequest;resolve:(value:acp.RequestPermissionResponse)=>void}>();
-  private busy=false;
+  private answering=false;
   private touched=Date.now();
   private closed=false;
   private closing?:Promise<void>;
   readonly ready:Promise<AgentConnection>;
-  get expired(){return this.closed||!this.busy&&Date.now()-this.touched>10*60*1000;}
+  get busy(){return this.answering;}
+  get expired(){return !this.busy&&(this.closed||Date.now()-this.touched>10*60*1000);}
   constructor(command:readonly string[],cwd:string) {
     const executable=process.platform==='win32'&&['npx','npm'].includes(command[0]!)?`${command[0]}.cmd`:command[0]!;
     this.child=spawn(executable,command.slice(1),{cwd,env:process.env,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32'});
@@ -55,7 +56,7 @@ class Connection {
     if(this.closed||!this.session)throw new HttpError(410,'Agent connection is closed; reconnect');
     if(this.busy)throw new HttpError(409,'Agent is already answering');
     this.touched=Date.now();
-    this.busy=true;
+    this.answering=true;
     const encoder=new TextEncoder();
     let detached=false;
     const abort=()=>{detached=true;this.emit=undefined;void this.cancel().catch(()=>{});};
@@ -69,7 +70,7 @@ class Connection {
           try {
             for(;;){const item=await session.nextUpdate();if(item.kind==='stop'){this.emit?.({kind:'stop',reason:item.stopReason});break;}this.emit?.({kind:'update',update:item.update});}
           }catch(error){this.emit?.({kind:'error',message:error instanceof Error?error.message:String(error)});}
-          finally{signal.removeEventListener('abort',abort);this.dismissPermissions();this.busy=false;this.touched=Date.now();this.emit=undefined;if(!detached)controller.close();}
+          finally{signal.removeEventListener('abort',abort);this.dismissPermissions();if(this.closing)await this.closing;this.answering=false;this.touched=Date.now();this.emit=undefined;if(!detached)controller.close();}
         })();
         if(signal.aborted)abort();
       },cancel:abort,
@@ -110,6 +111,8 @@ export class AgentHost {
   constructor(private command:readonly string[]|undefined,private cwd:string){this.timer=setInterval(()=>this.prune(),60000);this.timer.unref();}
   private prune(){for(const [id,connection] of this.connections)if(connection.expired){this.connections.delete(id);void connection.close();}}
   status(){return {available:!!this.command};}
+  /** Active prompts include tool work and pending permission responses in this worktree. */
+  get hasActiveRequest(){return [...this.connections.values()].some(connection=>connection.busy);}
   async connect(signal?:AbortSignal):Promise<AgentConnection>{
     if(this.closed)throw new HttpError(503,'Agent host is closing');
     if(!this.command)throw new HttpError(503,'Configure SATURN_AGENT_COMMAND to connect an external ACP agent');
@@ -120,6 +123,6 @@ export class AgentHost {
     try{return await connection.ready;}catch(error){this.connections.delete(connection.id);await connection.close();throw error;}finally{signal?.removeEventListener('abort',abort);}
   }
   get(id:string){const value=this.connections.get(id);if(!value)throw new HttpError(404,'Agent connection not found');return value;}
-  async disconnect(id:string){const connection=this.get(id);this.connections.delete(id);await connection.close();}
+  async disconnect(id:string){const connection=this.get(id);await connection.close();this.connections.delete(id);}
   async close(){this.closed=true;clearInterval(this.timer);const connections=[...this.connections.values()];this.connections.clear();await Promise.all(connections.map(connection=>connection.close()));}
 }

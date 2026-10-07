@@ -1,5 +1,58 @@
 # Verification
 
+## Task workspace — 2026-10-07
+
+The business workspace now opens around a Git task: local branches on the left,
+the existing interactive model in the center, the selected signal and scenario
+on the right, and the existing engineering conversation below. Source, review,
+2D/3D, terminal and the other tools remain reachable through the same shell
+session. This is an implemented browser surface, not a generated UI mockup.
+
+![Actual task workspace with the generic pumping fixture](screenshots/task-workspace.png)
+
+Executed locally on Linux x64, Bun 1.4.2, Chromium 153 through Playwright:
+
+- `bun run check` — PASS: both TypeScript compilers and the architecture guard,
+  206 modules.
+- Focused shell navigation, receipt scope, real Git branches, host/ACP exclusion
+  and bounded history tests — 33 passed, 0 failed, 299 assertions. A real failing
+  post-checkout hook verifies reconciliation when Git has already switched to a
+  different commit with identical files, so a filesystem watcher cannot hide
+  a stale branch/source identity.
+- `bun tests/scenario-controller.browser.ts` — PASS with the actual React hook
+  and controlled delayed transport: project/reconnect fencing, fresh state
+  before commands, double-click admission, cancellation and retained results.
+- `bun scripts/task-workspace-browser-test.ts` — PASS using the real local host,
+  worker, demo driver, SQLite history and a temporary Git repository. It creates
+  and switches two tasks, preserves the original Unicode title and independent
+  composer drafts, starts a successful scenario, verifies an intentionally failed
+  scenario, scopes results to the selected scenario/build/run, preserves an
+  unsaved source draft and blocks branch switching until that draft is resolved.
+  Desktop, dark, mobile, Escape and disconnected states are inspected; no browser
+  page errors. Closing the host deliberately produces a transport error in the
+  disconnected phase. Reports and screenshots are written to
+  `artifacts/task-workspace/`.
+- Full local `bun test tests` — 402 passed, 2 skipped, 1 failed. The remaining
+  local failure is the OPC UA server's `os.networkInterfaces()` call rejected by
+  this execution environment (`getifaddrs` / EPERM); the two PostgreSQL tests
+  require a running PostgreSQL service. They are not counted as local passes.
+  Repository CI supplies PostgreSQL and repeats the complete suite, followed by
+  the task/scenario lifecycle and existing browser acceptance gates.
+
+The browser script defaults to the generic pumping-station fixture. It adds
+acceptance scenarios only to its temporary project copy; the real demo driver
+supplies observations. `SATURN_TASK_PROJECT` optionally selects an external
+project and its existing scenarios. `SATURN_CHROMIUM_PATH` and JSON
+`SATURN_CHROMIUM_ARGS` select a local browser; CI uses its installed Chrome.
+The public screenshot and default CI artifacts use only the generic fixture.
+Project-specific simulation evidence belongs in the corresponding project
+repository.
+
+Local Git ancestry is reported as content inclusion in the known main, not a
+remote Pull Request state. Task names are local Git branch descriptions and
+conversation drafts remain in memory. This change does not add remote PR
+synchronization or durable agent-conversation storage.
+
 ## Pre-push verification — 2026-10-02
 
 Executed on macOS arm64, Bun 1.4.2, against the complete accumulated working tree:
@@ -1591,3 +1644,47 @@ pass, including real 2D/3D frames, normal cable animation and native WebGL fallb
 The user-facing video remains gated on successful relevant CI for the pushed
 changes. Native Windows execution and real remote Git credentials are separate
 checks; neither is inferred from Linux or fixture-browser evidence.
+
+## 2026-10-07 — model-clock freshness across engineering domains
+
+Cross-domain acceptance exposed wall-clock expiry of paused explicitly stepped
+simulations. The runtime now transports a run/build-bound model clock in the
+snapshot; shared health uses model age only for matching observations. Live and
+timer-driven acquisition retains receipt-clock freshness. No heartbeat, timestamp
+rewrite or synthetic history row is used to keep a paused model readable.
+
+Local verification on Bun 1.4.2:
+
+- `bun run check`: TypeScript 7, TypeScript 6 and architecture guard PASS,
+  206 modules.
+- Operational/runtime policy, simulation clock, scenario runner, shell model,
+  signal policy, runtime host, monitoring, decisions and command shell:
+  **75 passed, 0 failed, 384 assertions** across ten files.
+- The regression checks cover paused observations, model advancement without
+  observations, a real host stale timer, observe-before-clock-commit, intrinsic
+  bad/offline/stale states, foreign/ended runs, receipt preservation, unchanged
+  archive row counts and existing command/apply fencing.
+
+The task-workspace browser check now compares the final model-time tick using
+the interface's locale, including thousands separators. Complete thermal,
+mechanical and pneumatic projects and their real browser evidence are owned by
+`saturn-examples`; no domain equations or private project screenshots are added
+to core. Exact pushed-commit CI results are recorded on the task-workspace PR.
+
+### High-rate telemetry in the shared trend panel
+
+The engineering-domain PR browser run also exposed a React passive-update chain
+in the shared `MultiTrend`, which remains mounted when the lower panel is hidden.
+An external, explicitly stepped 6,000-step run reproduced six maximum-depth
+warnings before the fix. The identical real browser journey passes after the fix
+with no page errors or unexpected console errors; the solver and persisted
+observations are unchanged.
+
+The display cache now reconciles its own snapshot/selection inputs atomically
+instead of scheduling a passive state update for each telemetry packet. Late
+history responses merge with retained observations, including distinct sequence
+numbers within one receipt millisecond. The cache retains its 240-point,
+two-minute bound; complete model-time traces still come from runtime history.
+Four focused tests cover the 6,000-point stream, delayed hydration, duplicate
+identity, receipt windows and unavailable samples. Both TypeScript checks and
+the architecture guard pass (207 modules).

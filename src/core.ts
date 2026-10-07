@@ -2,7 +2,7 @@ import {validateQueryReport,type QueryReport,type ReportSchema,type SchemaRow} f
 export * from './core/reporting';
 import {validateSchedule,type ReportSchedule} from './core/cron';
 import {validateScenarios,type Scenario} from './core/scenarios';
-export type {SimulationClock,SimulationClockState} from './core/simulation';
+export type {SimulationClock,SimulationClockState,SimulationObservationClock} from './core/simulation';
 export {scenario,wait,set,expectValue,expectRange,advance,validateScenarios,type Scenario,type ScenarioStep,type ScenarioWaitStep,type ScenarioCommandStep,type ScenarioExpectStep,type ScenarioAdvanceStep,type ScenarioExpectRangeStep} from './core/scenarios';
 export type Locale = 'en' | 'ru';
 /** Authored names and descriptions use ordinary strings. The locale map is accepted
@@ -578,7 +578,11 @@ export interface Sample<T extends Value=Value> {
   sourceAt?:number; receivedAt?:number; sequence?:number; state?:QualityState;
 }
 export interface AlarmState {id:string;active:boolean;acknowledged:boolean;at:number}
-export interface Snapshot {samples:Record<string,Sample>;alarms:Record<string,AlarmState>}
+export interface Snapshot {
+  samples:Record<string,Sample>;alarms:Record<string,AlarmState>;
+  /** Only an active runtime installation with an explicit SimulationClock supplies this context. */
+  simulation?:import('./core/simulation').SimulationObservationClock;
+}
 /** @ru Тип показания выводится из переданного сигнала; отсутствие данных не заменяется initial.
  * @en Observation type is inferred from the signal; missing data is never replaced with initial. */
 export function observation<S extends Signal>(snapshot:Snapshot,signal:S):Sample<SignalValue<S>>|undefined {

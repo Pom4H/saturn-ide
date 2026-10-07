@@ -1,5 +1,5 @@
 import { type MonitoringGroup, type MonitoringMetric, type Project, type Quality, type Signal, type Snapshot, type Text } from '../core';
-import { signalHealth, type HealthReason, type ObservationContext } from './operational';
+import { observationContext, signalHealth, type HealthReason, type ObservationContext } from './operational';
 
 /** A monitoring rule describes an engineering range; it does not create or acknowledge an Alarm. */
 export type MonitoringStatus = 'ok' | 'warning' | 'critical' | 'unknown';
@@ -30,7 +30,7 @@ const outside = (value: number, limits: MonitoringMetric['warning']): boolean =>
 
 function evaluateMetric(metric: MonitoringMetric, snapshot: Snapshot, context: ObservationContext): MonitoringMetricState {
   const sample = snapshot.samples[metric.signal.id];
-  const health = signalHealth(metric.signal, sample, context);
+  const health = signalHealth(metric.signal, sample, observationContext(snapshot, context));
   const base = {
     id: metric.id, label: metric.label ?? metric.signal.label ?? metric.signal.id,
     signal: metric.signal, unit: metric.signal.unit, quality: health.quality, ageMs: health.ageMs,

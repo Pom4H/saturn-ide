@@ -2,7 +2,7 @@ import type { Snapshot } from '../core';
 import type { Scenario, ScenarioStepReceipt, ScenarioResult } from '../core/scenarios';
 export type { ScenarioStepReceipt, ScenarioResult } from '../core/scenarios';
 import type { TelemetryRun } from '../core/telemetry-run';
-import { signalHealth } from '../core/operational';
+import { observationContext, signalHealth } from '../core/operational';
 
 export interface ScenarioTarget {url:string;token:string}
 export interface ScenarioBinding {projectId:string;build:string;expectedRun:string}
@@ -69,7 +69,7 @@ export async function runScenario(definition:Scenario,target:ScenarioTarget,bind
           const state=await inspectScenarioRuntime(target,binding,expectSignal),sample=state.snapshot.samples[step.signal.id];
           if(sample)receipt.sample=sample;
           const matches=step.kind==='expect'?sample?.value===step.value:typeof sample?.value==='number'&&Number.isFinite(sample.value)&&sample.value>=step.min&&sample.value<=step.max;
-          if(sample?.provenance?.id===binding.expectedRun&&sample.provenance.build===binding.build&&signalHealth(step.signal,sample,{now:Date.now()}).usable&&matches)break;
+          if(sample?.provenance?.id===binding.expectedRun&&sample.provenance.build===binding.build&&signalHealth(step.signal,sample,observationContext(state.snapshot,{now:Date.now()})).usable&&matches)break;
           if(performance.now()>=deadline)throw new Error(`Scenario expectation timed out: ${step.signal.id}`);
           await pause(Math.min(100,Math.max(1,deadline-performance.now())),expectSignal);
         }}catch(error){if(expectTimeout.aborted&&!signal.aborted)throw new Error(`Scenario expectation timed out: ${step.signal.id}`);throw error;}

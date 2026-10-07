@@ -18,7 +18,7 @@ import { Git } from '../workspace/git';
 import { Store } from '../runtime/store';
 import { Events } from '../runtime/events';
 import { Runtime } from '../runtime/engine';
-import { historyResponse } from './history-api';
+import { historyResponse, latestHistoryResponse } from './history-api';
 import { Push, validateSubscription } from '../runtime/push';
 import { InstallationManager } from '../runtime/installation';
 import { ProjectInstallation } from '../runtime/project-installation';
@@ -221,9 +221,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
           }
           if (path === '/api/history') {
             if (!releaseState.applied) throw new HttpError(409, 'History requires an applied build');
-            const id=url.searchParams.get('signal')??'',definition=Object.values(runtime.project.signals).find(signal=>signal.id===id);
-            if(!definition)throw new HttpError(404,'Unknown signal');
-            return json(await store.history(definition.semanticId??definition.id));
+            return await latestHistoryResponse(store, runtime.project, url);
           }
           if(path === '/api/telemetry/runs')return json(await store.runs());
             if(path === '/api/telemetry/compare')return json(await compareRuns(store,revisions,url.searchParams.get('a')??'',url.searchParams.get('b')??'',url.searchParams.get('signal')??'',Number(url.searchParams.get('duration')),Number(url.searchParams.get('bucket'))));
@@ -238,6 +236,7 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         if(path==='/api/agent/connect')return json(await agents.connect(request.signal));
         if(path==='/api/agent/prompt'){
           const prompt=field(b,'prompt');if(!prompt.trim()||prompt.length>64000)throw new HttpError(400,'Prompt must contain 1–64000 characters');
+          if(gitBusy)throw new HttpError(409,'Git operation already running; wait before sending an agent request');
           return agents.get(field(b,'id')).prompt(prompt,request.signal);
         }
         if(path==='/api/agent/permission'){const option=b.option;if(option!==null&&typeof option!=='string')throw new HttpError(400,'Expected permission option or null');agents.get(field(b,'id')).permission(field(b,'request'),option);return json({ok:true});}
@@ -371,8 +370,19 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
         });
         if (path === '/api/ide/check') return json(await updates.check());
         if (path === '/api/git') {
-          if (gitBusy) throw new HttpError(409, 'Git operation already running'); gitBusy = true;
-          try { const result = await git.action(field(b, 'action'), typeof b.message === 'string' ? b.message : undefined, {expectedHead:typeof b.expectedHead==='string'?b.expectedHead:undefined,commit:typeof b.commit==='string'?b.commit:undefined}); await reload(); return json(result); } finally { gitBusy = false; }
+          if (gitBusy) throw new HttpError(409, 'Git operation already running');
+          const action=field(b,'action');
+          if((action==='create-task'||action==='switch-task')&&agents.hasActiveRequest)throw new HttpError(409,'Finish or stop the active agent request before changing tasks');
+          // Reserve synchronously with the ACP check so neither side can enter during the other operation.
+          gitBusy = true;
+          try { const result = await git.action(action, typeof b.message === 'string' ? b.message : undefined, {expectedHead:typeof b.expectedHead==='string'?b.expectedHead:undefined,commit:typeof b.commit==='string'?b.commit:undefined}); await reload(); return json(result); }
+          catch(error){
+            // A checkout hook can fail after Git has switched branches. Reconcile
+            // actual source before releasing ACP admission; never undo the checkout.
+            // reload records build problems; host closure must not replace the Git error.
+            if(action==='create-task'||action==='switch-task')await reload().catch(()=>{});
+            throw error;
+          }finally { gitBusy = false; }
         }
         if (path === '/api/push/subscribe') { const sub = validateSubscription(b.subscription); const all = await store.subscriptions(); if (all.length >= 100 && !all.some(s => s.endpoint === sub.endpoint)) throw new HttpError(429, 'Subscription limit reached'); await store.subscribe(sub); return json({ ok: true }); }
         if (path === '/api/push/unsubscribe') { await store.unsubscribe(field(b, 'endpoint')); return json({ ok: true }); }

@@ -1,12 +1,47 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import type { Alarm, AlarmState, Report, Sample, Signal, Snapshot } from '../src/core';
-import { acknowledgeAlarm, alarmNeedsAttention, measurementTime, projectSnapshot, sampleInterval, signalHealth, transitionAlarm } from '../src/core/operational';
+import { acknowledgeAlarm, alarmNeedsAttention, measurementTime, observationContext, projectSnapshot, sampleInterval, signalHealth, transitionAlarm } from '../src/core/operational';
+import { numeric } from '../src/motion';
+import { displaySample } from '../src/shell/model/observations';
 import { aggregateReport } from '../src/reports';
 
 const pressure: Signal<number> = { id: 'P.pressure', initial: 0, unit: 'bar', staleAfter: 1000 };
 const sample = (changes: Partial<Sample> = {}): Sample => ({ signal: pressure.id, value: 12, quality: 'good', at: 1000, receivedAt: 1000, ...changes });
 const rule: Alarm = { id: 'high', label: 'High pressure', signal: pressure, above: 10, hysteresis: 2 };
+
+test('an explicitly stepped snapshot uses model age across health, snapshot and numeric display', () => {
+  const provenance = { id: 'run-1', build: 'build-1', sourceRevision: null, mode: 'simulation' as const, startedAt: 1000 };
+  const observation = sample({ sourceAt: 0, provenance });
+  const snapshot: Snapshot = { samples: { [pressure.id]: observation }, alarms: {},
+    simulation: { run: 'run-1', build: 'build-1', timeMs: 0, stepMs: 10 } };
+  const context = observationContext(snapshot, { now: 60_000 });
+  assert.equal(signalHealth(pressure, observation, context).ageMs, 0);
+  assert.equal(signalHealth(pressure, observation, context).usable, true);
+  assert.equal(projectSnapshot({ pressure }, snapshot, { now: 60_000 }).samples[pressure.id]?.quality, 'good');
+  assert.equal(numeric(snapshot, pressure.id, 60_000, 1000), 12);
+  assert.equal(displaySample(pressure, observation, true, 60_000, snapshot.simulation)?.quality, 'good');
+  assert.equal(signalHealth(pressure, observation, { ...context, simulation: { ...snapshot.simulation!, timeMs: 1001 } }).reason, 'expired');
+  assert.equal(observation.at, 1000); assert.equal(observation.receivedAt, 1000);
+  // Historic wall-time coverage does not become infinite because a simulator paused.
+  assert.equal(sampleInterval(pressure, observation, 60_000, 3000, 60_000), undefined);
+});
+
+test('model freshness never grants another run, a timer driver or unavailable data a fresh reading', () => {
+  const provenance = { id: 'run-1', build: 'build-1', sourceRevision: null, mode: 'simulation' as const, startedAt: 1000 };
+  const context = { now: 60_000, simulation: { run: 'run-1', build: 'build-1', timeMs: 0, stepMs: 10 } };
+  for (const patch of [
+    { provenance: undefined }, { provenance: { ...provenance, id: 'other' } },
+    { provenance: { ...provenance, build: 'other' } }, { provenance: { ...provenance, mode: 'live' as const } },
+    { provenance: { ...provenance, endedAt: 2000 } }, { sourceAt: undefined }, { sourceAt: 10 },
+  ]) assert.equal(signalHealth(pressure, sample({ sourceAt: 0, provenance, ...patch }), context).reason, 'expired');
+  assert.equal(signalHealth(pressure, sample({ sourceAt: 0, provenance }), { now: 60_000 }).reason, 'expired');
+  for (const quality of ['bad', 'offline', 'stale'] as const)
+    assert.equal(signalHealth(pressure, sample({ sourceAt: 0, provenance, quality }), context).quality, quality);
+  assert.equal(signalHealth(pressure, undefined, context).reason, 'missing');
+  assert.equal(signalHealth(pressure, sample({ sourceAt: 0, provenance, at: 0, receivedAt: undefined, quality: 'stale' }), context).reason, 'missing');
+  assert.equal(signalHealth(pressure, sample({ sourceAt: 0, provenance }), { ...context, connected: false }).reason, 'disconnected');
+});
 
 test('receipt time, not a newer quality event or source clock, determines freshness', () => {
   const old = sample({ at: 2500, sourceAt: 999999 });

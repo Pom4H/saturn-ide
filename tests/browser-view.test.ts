@@ -30,3 +30,12 @@ test('catalog can be linked alongside either TS or the same 3D project',()=>{
 });
 
 test('a view link names the exact device port without authored or runtime mutation',()=>{const view=readBrowserView('?page=diagram&device=P-01&port=outlet&dimension=3d');expect(view.port).toBe('outlet');expect(readBrowserView(browserViewSearch(view))).toEqual(view);});
+
+test('task links preserve the selected tool, signal and explicitly closed experiment context',()=>{
+  for(const tool of ['diagram','source','scenarios'] as const){
+    const view=readBrowserView(`?page=task&tool=${tool}&device=ADCT&signal=ADCT.voltage&details=none`);
+    expect(view.page).toBe('task');expect(view.tool).toBe(tool);
+    expect(browserViewSearch(view)).toContain('details=none');
+    expect(readBrowserView(browserViewSearch(view))).toEqual(view);
+  }
+});

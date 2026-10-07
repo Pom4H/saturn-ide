@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { text, type Locale, type Project, type Signal, type Snapshot } from '../core';
-import { alarmNeedsAttention, signalHealth } from '../core/operational';
+import { alarmNeedsAttention, observationContext, signalHealth } from '../core/operational';
 import { evaluateMonitoring, type MonitoringStatus } from '../core/monitoring';
 import type { HistoryRange, HistoryWindow } from '../core/history';
 import type { RuntimeDiagnostics, SourceStatus } from '../core/diagnostics';
@@ -49,7 +49,7 @@ function Spark({ signal, samples, now }: { signal: Signal<number>; samples: Rece
 }
 function observationSummary(project: Project, snapshot: Snapshot, now: number, connected: boolean) {
   const observed = Object.values(project.signals).filter(signal => !signal.writable);
-  const fresh = observed.filter(signal => signalHealth(signal, snapshot.samples[signal.id], { now, connected }).usable).length;
+  const fresh = observed.filter(signal => signalHealth(signal, snapshot.samples[signal.id], observationContext(snapshot, { now, connected })).usable).length;
   const active = project.alarms.filter(alarm => snapshot.alarms[alarm.id]?.active).length;
   const needsAttention = project.alarms.filter(alarm => {
     const state = snapshot.alarms[alarm.id];
@@ -61,7 +61,7 @@ function equipmentObservations(project: Project, snapshot: Snapshot, now: number
   const signals = Object.values(project.signals).filter(signal => !signal.writable);
   return project.equipment.map(equipment => {
     const owned = signals.filter(signal => signal.owner?.kind === 'equipment' && signal.owner.id === equipment.id);
-    const fresh = owned.filter(signal => signalHealth(signal, snapshot.samples[signal.id], { now, connected }).usable).length;
+    const fresh = owned.filter(signal => signalHealth(signal, snapshot.samples[signal.id], observationContext(snapshot, { now, connected })).usable).length;
     return { equipment, total: owned.length, fresh };
   });
 }
@@ -98,7 +98,7 @@ export function Performance({ project, snapshot, now, connected, locale, mode, l
   const operating = data.connected && diagnosticsFresh && status?.phase === 'running' && !!status.applied && (data.mode === 'simulation' || data.mode === 'live') && !data.diagnosticsError;
   const window = data.history && data.history.signal === current?.id && Math.round(data.history.to - data.history.from) === period ? data.history : undefined;
   const sample = current ? data.snapshot.samples[current.id] : undefined;
-  const health = current ? signalHealth(current, sample, { now: data.now, connected: operating }) : undefined;
+  const health = current ? signalHealth(current, sample, observationContext(data.snapshot, { now: data.now, connected: operating })) : undefined;
   const value = health?.usable && typeof sample?.value === 'number' ? sample.value : undefined;
   const label = current ? text(current.label ?? current.id, locale) : '';
   const quality = !health ? '' : health.reason === 'missing' ? (ru ? 'Нет измерений' : 'Not measured') : health.usable ? (ru ? 'Достоверно' : 'Good') : health.reason === 'disconnected' ? !data.connected ? (ru ? 'Нет связи с runtime' : 'Runtime disconnected') : data.mode === 'offline' ? (ru ? 'Нет активного драйвера' : 'No active driver') : (ru ? 'Исполнение не подтверждено' : 'Execution not confirmed') : health.quality === 'offline' ? (ru ? 'Источник недоступен' : 'Source offline') : health.quality === 'bad' ? (ru ? 'Недостоверно' : 'Bad quality') : (ru ? 'Устарело' : 'Stale');
@@ -161,7 +161,7 @@ export function Performance({ project, snapshot, now, connected, locale, mode, l
         <div className="perf-section-heading"><div><h3>{ru ? 'Измерения' : 'Measurements'}</h3></div><span>{signals.length} {ru ? 'в списке' : 'shown'}</span></div>
         <nav className="perf-resources" aria-label={ru ? 'Измеряемые ресурсы' : 'Measured resources'}>
           {signals.map((s, index) => {
-            const observed = data.snapshot.samples[s.id], h = signalHealth(s, observed, { now: data.now, connected: operating });
+            const observed = data.snapshot.samples[s.id], h = signalHealth(s, observed, observationContext(data.snapshot, { now: data.now, connected: operating }));
             const color = `var(--chart-${(allSignals.findIndex(item => item.id === s.id) % 4) + 1})`;
             return <button key={s.id} ref={node => { if (node) resourceRefs.current.set(s.id, node); else resourceRefs.current.delete(s.id); }} className={`perf-resource${current?.id === s.id ? ' selected' : ''}`} aria-pressed={current?.id === s.id} data-signal={s.id} style={{ '--perf-color': color } as CSSProperties} tabIndex={current?.id === s.id ? 0 : -1} onClick={() => setSelected(s.id)} onKeyDown={event => {
               const next = event.key === 'ArrowDown' || event.key === 'ArrowRight' ? (index + 1) % signals.length : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? (index - 1 + signals.length) % signals.length : event.key === 'Home' ? 0 : event.key === 'End' ? signals.length - 1 : -1;

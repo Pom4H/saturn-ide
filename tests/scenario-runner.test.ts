@@ -56,6 +56,20 @@ test('expectation ignores missing, bad, stale, expired and foreign-run values un
   } finally { f.close(); }
 }, 10_000);
 
+test('expectation accepts a paused stepped observation using the transported run-bound model clock', async () => {
+  const observation = sample({ at: Date.now() - 60_000, receivedAt: Date.now() - 60_000, sourceAt: 200 });
+  const response = state(observation);
+  response.snapshot.simulation = { run: run.id, build: run.build, timeMs: 200, stepMs: 10 };
+  const f = fixture(() => Response.json(response));
+  try {
+    const result = await runScenario(scenario('paused', { label: 'Paused', timeoutMs: 2000,
+      steps: [expectValue(measured, 7, 200)] }), f.target, binding, new AbortController().signal);
+    expect(result.steps[0]?.status).toBe('succeeded');
+    expect(result.steps[0]?.sample?.receivedAt).toBe(observation.receivedAt);
+    expect(f.counts.get('/api/scenario/state')).toBe(3);
+  } finally { f.close(); }
+});
+
 test('a telemetry-run change during wait prevents the following command', async () => {
   const f = fixture((path, count) => path === '/api/scenario/state'
     ? Response.json(state(sample(), count >= 3 ? { ...run, id: 'restarted-run' } : run))

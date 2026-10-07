@@ -84,7 +84,7 @@ export function TerminalView({ client, session, state, connected, connectionErro
   const equipment = state.project.equipment.find(e => e.id === nav.selected);
   const edges = [...state.project.pipes, ...state.project.cables ?? []].filter(e => !equipment || [e.from, e.to].filter(isAttached).map(end => end.device).includes(equipment.id));
   const signalLines = Object.values(state.project.signals).map(signal => {
-    const sample = displaySample(signal,state.snapshot.samples[signal.id],connected,now);
+    const sample = displaySample(signal,state.snapshot.samples[signal.id],connected,now,state.snapshot.simulation);
     const good = sample?.quality === 'good';
     return `${signal.id.padEnd(22)} ${good ? String(sample.value) : '—'} ${signal.unit ?? ''} [${good ? 'good' : 'stale'}]`;
   });

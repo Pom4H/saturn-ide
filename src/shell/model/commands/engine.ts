@@ -102,7 +102,7 @@ export class CommandShell {
   }
   private offset(raw:string,length:number){const position=raw==='end'?length:Number(raw);if(!Number.isInteger(position)||position<0||position>length)throw new Error(`Позиция: 0…${length} или end (UTF-16)`);return position;}
   private signals(device?:string){const p=this.state().project;if(!device)return Object.values(p.signals);const e=p.equipment.find(e=>e.id===device);if(!e)throw new Error(`Устройство не найдено: ${device}`);return related(p,e).signals;}
-  private readings(device?:string){const state=this.state(),now=Date.now();return this.signals(device).map(s=>{const sample=displaySample(s,state.snapshot.samples[s.id],this.port.connected(),now),quality=sample?.quality??'stale';return {id:s.id,value:quality==='good'?sample?.value:null,unit:s.unit??'',quality,at:sample?.at??null,writable:!!s.writable};});}
+  private readings(device?:string){const state=this.state(),now=Date.now();return this.signals(device).map(s=>{const sample=displaySample(s,state.snapshot.samples[s.id],this.port.connected(),now,state.snapshot.simulation),quality=sample?.quality??'stale';return {id:s.id,value:quality==='good'?sample?.value:null,unit:s.unit??'',quality,at:sample?.at??null,writable:!!s.writable};});}
   private endName(end:ConnectionEnd){return isAttached(end)?`${end.device}.${end.port}`:endLabel(end);}
   private topology(device?:string){return [...this.state().project.pipes,...this.state().project.cables??[]].filter(edge=>!device||[edge.from,edge.to].some(end=>isAttached(end)&&end.device===device));}
   context(){

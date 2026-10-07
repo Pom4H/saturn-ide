@@ -9,7 +9,7 @@ import { tags, highlightCode } from '@lezer/highlight';
 import { forceLinting, linter } from '@codemirror/lint';
 import { indentWithTab, isolateHistory } from '@codemirror/commands';
 import type { Locale, Problem, Signal, Snapshot } from '../core';
-import { signalHealth } from '../core/operational';
+import { observationContext, signalHealth } from '../core/operational';
 const syntaxColors=HighlightStyle.define([
   {tag:tags.keyword,color:'var(--syntax-keyword)'},
   {tag:[tags.string,tags.regexp],color:'var(--syntax-string)'},
@@ -50,7 +50,7 @@ export interface EditorProps {language?:LanguageRequest;readOnly?:boolean;path:s
 function decorateHints(hints: readonly SignalHint[], props: EditorProps): LiveDecoration[] {
   return hints.flatMap(hint => {
     const definition = props.signals[hint.signal]; if (!definition) return [];
-    const sample = props.snapshot.samples[hint.signal], health = signalHealth(definition, sample, { now: props.now });
+    const sample = props.snapshot.samples[hint.signal], health = signalHealth(definition, sample, observationContext(props.snapshot, { now: props.now }));
     const value = health.ageMs === null ? undefined : sample?.value;
     const formatted = typeof value === 'number' ? new Intl.NumberFormat(props.locale, { maximumFractionDigits: 2 }).format(value) : value === undefined ? '—' : String(value);
     const unit = hint.unit ?? definition.unit, age = health.ageMs;

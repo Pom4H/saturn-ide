@@ -1,22 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Locale, Sample, Signal, Snapshot } from '../core';
 import { api } from './api';
+import { hydrateSignalSeries, recordSignalSnapshot, seriesWindowMs, type SignalSeries } from './model/signal-series';
 
 const colors=['#22a6bd','#e59a3c','#a56bd8','#57a875','#d75d76','#628fde','#b78b36'];
-const windowMs=120_000;
+const windowMs=seriesWindowMs;
 export function MultiTrend({signals,snapshot,locale}:{signals:readonly Signal[];snapshot:Snapshot;locale:Locale}){
   const ids=signals.map(signal=>signal.id).join('\0');
-  const [series,setSeries]=useState<Record<string,Sample[]>>({});
+  const [record,setRecord]=useState<{ids:string;snapshot:Snapshot;series:SignalSeries}>(()=>({ids,snapshot,series:recordSignalSnapshot({},signals,snapshot)}));
+  // Reconcile this component's inputs atomically, before commit. A passive
+  // setState for every telemetry packet can form an unbounded update chain
+  // when another SSE packet arrives before the follow-up render completes.
+  let series=record.series;
+  if(record.ids!==ids||record.snapshot!==snapshot){
+    series=recordSignalSnapshot(record.ids===ids?record.series:{},signals,snapshot);
+    setRecord({ids,snapshot,series});
+  }
   const [error,setError]=useState('');
-  useEffect(()=>{const abort=new AbortController();setSeries({});setError('');
+  useEffect(()=>{const abort=new AbortController();setError('');
     void Promise.all(signals.map(async signal=>[signal.id,(await api<Sample[]>(`history?signal=${encodeURIComponent(signal.id)}`,undefined,abort.signal)).slice(-240)] as const))
-      .then(rows=>{if(!abort.signal.aborted)setSeries(Object.fromEntries(rows));})
+      .then(rows=>{if(!abort.signal.aborted)setRecord(previous=>previous.ids===ids?{...previous,series:hydrateSignalSeries(Object.fromEntries(rows),previous.series)}:previous);})
       .catch(reason=>{if(!abort.signal.aborted)setError(String(reason));});
     return()=>abort.abort();
   },[ids]);
-  useEffect(()=>{setSeries(previous=>{let changed=false;const next={...previous};for(const signal of signals){const sample=snapshot.samples[signal.id],last=previous[signal.id]?.at(-1);
-      if(!sample||last&&last.at>=sample.at)continue;next[signal.id]=[...(previous[signal.id]??[]).filter(item=>item.at>=sample.at-windowMs),sample].slice(-240);changed=true;
-    }return changed?next:previous;});},[snapshot,ids]);
   const plotted=signals.filter(signal=>typeof signal.initial==='number'||typeof signal.initial==='boolean');
   const groups=useMemo(()=>{const map=new Map<string,Signal[]>();for(const signal of plotted){const key=typeof signal.initial==='boolean'?'0 / 1':signal.unit||'—';map.set(key,[...(map.get(key)??[]),signal]);}return [...map];},[ids]);
   const now=Math.max(Date.now(),...Object.values(series).flatMap(items=>items.map(item=>item.at)));

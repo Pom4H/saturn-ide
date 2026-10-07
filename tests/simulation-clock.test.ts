@@ -136,8 +136,33 @@ test('advancing the clock does not fabricate or refresh signal observations', as
     expect(after.clock?.timeMs).toBe(20);
     expect(after.snapshot.samples.position).toEqual(before);
     expect(await (await f.call('/api/history?signal=position')).json()).toHaveLength(1);
+    expect((await f.advance(500)).status).toBe(200);
+    const expired = await f.state();
+    expect(expired.clock?.timeMs).toBe(5020);
+    expect(expired.snapshot.samples.position?.quality).toBe('stale');
+    expect(expired.snapshot.samples.position?.receivedAt).toBe(before?.receivedAt);
+    expect(expired.snapshot.samples.position?.sourceAt).toBe(0);
+    expect(await (await f.call('/api/history?signal=position')).json()).toHaveLength(1);
   } finally { await f.close(); }
 });
+
+test('runtime transports a run-bound model clock and its real stale timer respects a paused installation', async () => {
+  const f = await fixture(driverCode.replace("quality:'good',sourceAt:time", "quality:'good',receivedAt:Date.now()-60000,sourceAt:time"));
+  try {
+    expect(f.applied.status).toBe(200);
+    const before = await f.state();
+    expect(before.snapshot.simulation).toEqual({ run: before.run.id, build: f.artifact.hash, timeMs: 0, stepMs: 10 });
+    await Bun.sleep(1100); // Exercise the actual runtime host stale timer, not a fake heartbeat.
+    const paused = await f.state();
+    expect(paused.snapshot.samples.position?.quality).toBe('good');
+    expect(paused.snapshot.samples.position?.receivedAt).toBe(before.snapshot.samples.position?.receivedAt);
+    expect(await (await f.call('/api/history?signal=position')).json()).toHaveLength(1);
+    expect((await f.advance(1)).status).toBe(200);
+    const stepped = await f.state();
+    expect(stepped.snapshot.simulation?.timeMs).toBe(10);
+    expect(stepped.snapshot.samples.position?.quality).toBe('good');
+  } finally { await f.close(); }
+}, 5000);
 
 test('runtime shutdown aborts a cooperative pending advance before draining queues and fences late observations', async () => {
   const f = await fixture(`let ctx,time=0;export default {mode:'simulation',

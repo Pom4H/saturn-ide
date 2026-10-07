@@ -2,7 +2,7 @@ import {useMemo} from 'react';
 import {text,type Locale,type Project,type Signal,type Snapshot,type Value} from '../core';
 import {canonical} from '../core/artifact';
 import {inspectSignal} from '../core/inspection';
-import {measurementTime,signalHealth} from '../core/operational';
+import {measurementTime,observationContext,signalHealth} from '../core/operational';
 import {semanticGraph,type SemanticNode} from '../semantic';
 import {durationLabel,healthReasonLabels,qualityLabels,semanticKindLabel,signalOriginLabel,signalPolicy} from './signal-presentation';
 
@@ -40,7 +40,7 @@ export function Signals({project,authoringProject,appliedRevision,snapshot,selec
   const inspectionProject=entry?.checked?checked:applied;
   const graph=useMemo(()=>inspectionProject?semanticGraph(inspectionProject):undefined,[inspectionProject]);
   const inspection=useMemo(()=>selected&&inspectionProject&&graph?inspectSignal(inspectionProject,selected,graph):undefined,[inspectionProject,graph,selected]);
-  const ru=locale==='ru',context={now,connected};
+  const ru=locale==='ru',context=observationContext(snapshot,{now,connected});
   const signal=inspection?.signal,appliedSignal=entry?.applied;
   const sample=appliedSignal?snapshot.samples[appliedSignal.id]:undefined;
   const health=appliedSignal?signalHealth(appliedSignal,sample,context):undefined;

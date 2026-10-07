@@ -22,7 +22,19 @@ and engineering metadata when they describe the same system.
 
 [Открыть интерактивный сайт Saturn IDE](https://pom4h.github.io/saturn-ide/)
 
-![Saturn IDE](docs/screenshots/diagram.png)
+![Saturn task workspace with the pumping model](docs/screenshots/task-workspace.png)
+
+## Work around an engineering task
+
+The business workspace opens with project tasks on the left, the interactive model
+in the center, the selected signal and experiment on the right, and the engineering
+conversation below. Model, Runs and Source share the same project context.
+
+Tasks use actual local Git branches. Run check executes an authored scenario through
+the existing runtime; the result belongs to its scenario, applied build and model run.
+The screenshot shows the generic pumping fixture in the real browser application.
+See [workspace ownership](docs/architecture.md#рабочая-область-задачи--2026-10-07)
+and [verification](docs/verification.md#task-workspace--2026-10-07).
 
 ## System as code
 

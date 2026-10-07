@@ -10,7 +10,7 @@ import { decodeProject } from '../runtime/decode-project';
 import { Store } from '../runtime/store';
 import { Events } from '../runtime/events';
 import { Runtime } from '../runtime/engine';
-import { historyResponse } from './history-api';
+import { historyResponse, latestHistoryResponse } from './history-api';
 import { RevisionStore } from '../runtime/revisions';
 import { InstallationManager } from '../runtime/installation';
 import { ProjectInstallation } from '../runtime/project-installation';
@@ -97,9 +97,7 @@ export async function createRuntimeHost(options: RuntimeHostOptions) {
             if(path === '/api/report')return await reportResponse(store,runtime.project,manager.applied??'',url);
             if (path === '/api/alarms') return json(await store.events());
             if (path === '/api/history') {
-              const signal = Object.values(runtime.project.signals).find(signal => signal.id === url.searchParams.get('signal'));
-              if (!signal) throw new RequestError(404, 'Unknown signal');
-              return json(await store.history(signal.semanticId ?? signal.id));
+              return await latestHistoryResponse(store, runtime.project, url);
             }
             throw new RequestError(404, 'Not found');
           }

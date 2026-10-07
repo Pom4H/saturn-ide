@@ -18,6 +18,7 @@ Pom4H/saturn `90da21a1885a72022b7a2d1b45cb36993bee1597`. Наличие реал
 | Единое Presentation/HMI (ADR-0008, plant/presentation) | core presentation + target renderer | Браузерный SVG HMI; **canonical Presentation и физический target не завершены** | Один authored экран → web/operator и реальный целевой дисплей; никаких отдельных HMI-сигналов |
 | История/воспроизведение (`plant/service.ts`, kernel/store) | runtime | История, per-signal плотность/TTL есть, **replay/checkpoint parity нет**; raw ML export отсутствует | Restart, source/build/run provenance; воспроизведение изолировано от live commands; разные профили архива не фабрикуют coverage |
 | Сценарии симуляции из TS-проекта | core declarations + runtime authority + существующий worker host | Проверенные command/wait/advance/expect/expect-range выполняются через standalone и dev runtime API тем же Bun Worker pool, что отчёты; Shell запускает через gateway; **нет reset/checkpoint replay**; физические модели и их приёмка принадлежат проектам в `saturn-examples` | Проверка типов/ссылок, actual observations, build/run/clock fencing, отмена, failed/interrupted receipts, отсутствие повторной команды при retry; физическая достоверность конкретной модели проверяется отдельно |
+| Свежесть пошаговой симуляции | runtime installation + shared observation policy | Snapshot передаёт model clock, связанный с run/build; пауза не старит matching sourceAt по wall time, продвижение без наблюдений старит по model time; live/timer acquisition сохраняет receipt-time policy | Нет heartbeat/ретаймстемпинга; bad/offline/stale, чужой run и disconnect не превращаются в good; тот же контекст используется в scenario, Shell и numeric views |
 | Отчёты (`plant/reporting.ts`, dsl, Service.runJobs) | core report plan + runtime jobs + shell reports | Агрегации + typed SQL schemas, настоящий XLSX/CSV/HTML/печать, durable snapshots, Bun worker jobs и cron через Workflow SDK есть; **произвольный старый Presentation/view и report notification/outbox остаются открытыми** | Почасовой расход, пропуски, часовые пояса, типы сортировок/колонок, повторный запуск задания без дубля |
 | Immutable BuildArtifact (`plant/artifact.ts`) | core/artifact + workspace/build | Новый v2 hash/driver/provenance/verify | Transport round trip, tamper, проверенная миграция v1 без потери сущностей; source ≠ build |
 | Управляемое apply (`plant/service.ts`, store) | runtime/installation + revisions | В dev подключены CAS/restore/fencing и rollback автомата | Bun+SQLite+Postgres fault tests, реальный драйвер, outage/restart; не выдавать physical rollback за конфигурационный |
@@ -27,6 +28,12 @@ Pom4H/saturn `90da21a1885a72022b7a2d1b45cb36993bee1597`. Наличие реал
 | Browser/offline, standalone, VS Code (старые host/docs) | отдельные host adapters над теми же модулями | **Частично**: Windows portable host и versioned single executable (GUI/CLI/TUI); browser/offline и VS Code не перенесены | Открытие того же проекта, offline ограничения, runtime-only/kiosk, отсутствие второго DSL |
 
 ## Как планировать новую функцию
+
+Рабочая область задачи (2026-10-07) объединяет существующую модель, обсуждение,
+измерения и сценарии на одном экране. Git-ветки и guarded create/switch реализованы;
+статус удалённых PR и долговременная история обсуждения остаются незавершёнными.
+Эта компоновка сохраняет доступ к исходникам, 2D/3D, сценариям, Git, отчётам,
+мониторингу и среде через прежние ShellSession и каталог инструментов.
 
 Сначала найти её владельца и проверить, нет ли уже реализации в старом Saturn. В задаче указать
 источник, сохраняемый контракт, инженерный и операторский сценарии, формат данных/версий и тест.
