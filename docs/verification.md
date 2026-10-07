@@ -1670,3 +1670,21 @@ the interface's locale, including thousands separators. Complete thermal,
 mechanical and pneumatic projects and their real browser evidence are owned by
 `saturn-examples`; no domain equations or private project screenshots are added
 to core. Exact pushed-commit CI results are recorded on the task-workspace PR.
+
+### High-rate telemetry in the shared trend panel
+
+The engineering-domain PR browser run also exposed a React passive-update chain
+in the shared `MultiTrend`, which remains mounted when the lower panel is hidden.
+An external, explicitly stepped 6,000-step run reproduced six maximum-depth
+warnings before the fix. The identical real browser journey passes after the fix
+with no page errors or unexpected console errors; the solver and persisted
+observations are unchanged.
+
+The display cache now reconciles its own snapshot/selection inputs atomically
+instead of scheduling a passive state update for each telemetry packet. Late
+history responses merge with retained observations, including distinct sequence
+numbers within one receipt millisecond. The cache retains its 240-point,
+two-minute bound; complete model-time traces still come from runtime history.
+Four focused tests cover the 6,000-point stream, delayed hydration, duplicate
+identity, receipt windows and unavailable samples. Both TypeScript checks and
+the architecture guard pass (207 modules).
