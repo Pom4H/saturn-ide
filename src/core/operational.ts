@@ -2,7 +2,18 @@ import { qualityState, type Alarm, type AlarmState, type Quality, type QualitySt
 
 /** @ru Контекст наблюдения, не состояние устройства. Часы передаёт вызывающий host.
  * @en Observation context, not device state. The calling host supplies the clock. */
-export interface ObservationContext { readonly now: number; readonly connected?: boolean }
+export interface ObservationContext { readonly now: number; readonly connected?: boolean; readonly simulation?: Snapshot['simulation'] }
+/** Share runtime clock metadata across Shell, scenario and numeric projections. */
+export function observationContext(snapshot: Snapshot, context: ObservationContext): ObservationContext {
+  return { ...context, simulation: snapshot.simulation };
+}
+/** Source time is model time only for a matching, explicitly stepped runtime run. */
+export function simulationSample(sample: Sample | undefined, clock: Snapshot['simulation']): boolean {
+  return !!clock && Number.isSafeInteger(clock.timeMs) && clock.timeMs >= 0
+    && Number.isSafeInteger(clock.stepMs) && clock.stepMs > 0 && !!clock.run && !!clock.build
+    && sample?.provenance?.mode === 'simulation' && sample.provenance.id === clock.run && sample.provenance.build === clock.build
+    && sample.provenance.endedAt === undefined && sample.sourceAt !== undefined && Number.isFinite(sample.sourceAt) && sample.sourceAt >= 0;
+}
 export type HealthReason = 'good' | 'missing' | 'invalid-time' | 'clock-skew' | 'disconnected' | 'offline' | 'bad' | 'expired' | 'stale';
 export interface SignalHealth {
   readonly quality: Quality;
@@ -26,8 +37,12 @@ export function measurementTime(sample: Sample | undefined): number | undefined 
  * A disconnected browser never downgrades bad/offline to stale. */
 export function signalHealth(signal: Signal, sample: Sample | undefined, context: ObservationContext): SignalHealth {
   if (!Number.isFinite(context.now)) throw new RangeError('Observation clock must be finite');
-  const received = measurementTime(sample), ageMs = received === undefined ? null : Math.max(0, context.now - received);
-  const expired = received !== undefined && context.now - received > (signal.staleAfter ?? 5000);
+  const received = measurementTime(sample);
+  // A driver can await observe(nextPoint) before committing its own clock. Such a
+  // future point keeps receipt-clock freshness until the runtime confirms the step.
+  const modelTime = simulationSample(sample, context.simulation) && sample!.sourceAt! <= context.simulation!.timeMs;
+  const ageMs = received === undefined ? null : Math.max(0, modelTime ? context.simulation!.timeMs - sample!.sourceAt! : context.now - received);
+  const expired = ageMs !== null && ageMs > (signal.staleAfter ?? 5000);
   const future = received !== undefined && received > context.now;
   const missing = !sample || sample.at === 0 && sample.quality === 'stale' && sample.receivedAt === undefined;
   const reason: HealthReason = missing ? 'missing'
@@ -50,6 +65,7 @@ export function signalHealth(signal: Signal, sample: Sample | undefined, context
 /** @ru Проекция не мутирует снимок и не создаёт отсутствующее измерение из initial.
  * @en Projection neither mutates the snapshot nor manufactures a missing measurement from initial. */
 export function projectSnapshot(signals: Readonly<Record<string, Signal>>, snapshot: Snapshot, context: ObservationContext): Snapshot {
+  context = observationContext(snapshot, context);
   let changed = false;
   const definitions = new Map(Object.values(signals).map(signal => [signal.id, signal]));
   const samples = Object.fromEntries(Object.entries(snapshot.samples).map(([id, sample]) => {
@@ -74,8 +90,8 @@ export function sampleInterval(signal: Signal, sample: Sample, nextAt: number, f
 
 /** @ru Состояние тревоги меняется только по свежему измерению; clear сохраняет квитирование.
  * @en Only a fresh measurement changes alarm activity; clear preserves acknowledgement. */
-export function transitionAlarm(rule: Alarm, previous: AlarmState | undefined, sample: Sample | undefined, now: number): AlarmState | undefined {
-  if (!signalHealth(rule.signal, sample, { now }).usable || typeof sample?.value !== 'number') return;
+export function transitionAlarm(rule: Alarm, previous: AlarmState | undefined, sample: Sample | undefined, now: number, simulation?: Snapshot['simulation']): AlarmState | undefined {
+  if (!signalHealth(rule.signal, sample, { now, simulation }).usable || typeof sample?.value !== 'number') return;
   const active = previous?.active ? sample.value > rule.above - (rule.hysteresis ?? 0) : sample.value > rule.above;
   if (active === (previous?.active ?? false)) return;
   return { id: rule.id, active, acknowledged: active ? false : previous?.acknowledged ?? false, at: now };

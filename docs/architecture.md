@@ -443,6 +443,15 @@ runtime authority, without exposing worker credentials. Neither saving source no
 a completed job deploys, flashes a PLC or repeats its commands.
 See [runtime scenarios](runtime-scenarios.md) for the API and interruption semantics.
 
+An explicitly stepped installation owns a run/build-bound simulation clock in
+its runtime snapshot. Shared observation health uses that model clock only for
+matching simulated observations; live and timer-driven acquisition retain
+receipt-time freshness. Clock metadata is transported to all presentation
+surfaces and scenario execution without inventing measurements or history rows.
+Domain models remain project-owned; a paused model must not fail because a user
+spent wall-clock time inspecting its diagram. Historical report aggregates
+continue to use their declared server-time basis.
+
 ### Operator feedback → authored DSL proposal
 
 Авторский `project()` допускает отсутствие пустых `equipment`, `pipes`, `alarms`.

@@ -1,7 +1,7 @@
 import type { TelemetryRun } from '../core/telemetry-run';
 import { qualityState, validateValue, type Driver, type Project, type Sample, type Signal, type Snapshot, type Value } from "../core";
 import { validateObservation, type Observation } from "../core/acquisition";
-import { acknowledgeAlarm, projectSnapshot, transitionAlarm, type AlarmEvent } from '../core/operational';
+import { acknowledgeAlarm, projectSnapshot, simulationSample, transitionAlarm, type AlarmEvent } from '../core/operational';
 import type { Store } from "./store";
 import type { Events } from "./events";
 
@@ -18,6 +18,13 @@ function archiveSample(definition:Signal, previous:Sample|undefined, current:Sam
 }
 export class Runtime {
   snapshot: Snapshot = { samples: {}, alarms: {} };
+  private simulationPending = false;
+  /** Installation-owned clock context; never an observation, heartbeat or archive row. */
+  setSimulationClock(clock: Snapshot['simulation'], pending = false): void {
+    this.simulationPending = pending;
+    this.snapshot = { ...this.snapshot, simulation: clock ? { ...clock } : undefined };
+    this.events.emit('telemetry', this.snapshot);
+  }
   private queue: Promise<unknown> = Promise.resolve();
   private clock = 0;
   private readonly archived = new Map<string,Sample>();
@@ -60,6 +67,7 @@ export class Runtime {
     this.apply(this.project);
   }
   apply(project: Project) {
+    this.simulationPending = false;
     const oldByIdentity=new Map(Object.values(this.snapshot.samples).map(sample=>[sample.semantic??sample.signal,sample]));
     this.project = project;
     const next: Snapshot = { samples: {}, alarms: {} };
@@ -116,7 +124,7 @@ export class Runtime {
         // An unrelated channel cannot turn a retained value into a new alarm
         // transition. The observed channel also supplies its archive evidence.
         if (!seen.has(rule.signal.id)) continue;
-        const transition = transitionAlarm(rule, alarms[rule.id], nextSamples[rule.signal.id], evaluatedAt);
+        const transition = transitionAlarm(rule, alarms[rule.id], nextSamples[rule.signal.id], evaluatedAt, this.snapshot.simulation);
         if (!transition) continue;
         // Event ordering may lead the wall clock; it must not age measurements.
         const state = { ...transition, at };
@@ -128,7 +136,7 @@ export class Runtime {
         forceSignals.has(sample.signal)||this.snapshot.samples[sample.signal]?.quality!==sample.quality));
       await this.append(archived, changes);
       for(const sample of archived)this.archived.set(sample.semantic??sample.signal,sample);
-      this.snapshot = { samples: nextSamples, alarms };
+      this.snapshot = { ...this.snapshot, samples: nextSamples, alarms };
       this.events.emit("telemetry", this.snapshot);
       for (const e of changes) { this.events.emit("alarm", e); if (e.active) this.notify(e.id); }
     }).finally(() => { this.statistics.pendingObservations--; });
@@ -157,6 +165,15 @@ export class Runtime {
     return this.serial(async () => {
       const next = projectSnapshot(this.project.signals, this.snapshot, { now });
       if (next === this.snapshot) return;
+      if (this.simulationPending && this.snapshot.simulation) {
+        // A pending observe() can precede the driver's own clock commit. Do not
+        // irreversibly store derived wall expiry for that uncommitted future point.
+        // Consumers still project its current health; final clock sync ages it normally.
+        for (const [id, sample] of Object.entries(this.snapshot.samples)) {
+          if (simulationSample(sample, this.snapshot.simulation) && sample.sourceAt! > this.snapshot.simulation.timeMs)
+            next.samples[id] = sample;
+        }
+      }
       // Staleness is age-derived, not another observation at the old timestamp.
       this.snapshot = next;
       this.events.emit("telemetry", this.snapshot);

@@ -46,6 +46,11 @@ export class ProjectInstallation implements Installation {
     return state;
   }
   private checkpoint: Snapshot | undefined;
+  private syncClock(session: Session, pending = false): void {
+    if (session !== this.session) return;
+    const clock = this.simulationClock, run = session.provenance;
+    this.engine.setSimulationClock(clock && run ? { ...clock, run: run.id, build: run.build } : undefined, pending);
+  }
   readonly acquisitionKey: string;
   private constructor(readonly artifact: BuildArtifact, readonly project: Project, public driver: Driver | undefined, private readonly engine: Runtime) {
     // Presentation and archive-only edits can adopt acquisition. Exchange and physical
@@ -148,6 +153,7 @@ export class ProjectInstallation implements Installation {
     this.engine.apply(this.project); this.engine.snapshot = session.snapshot;
     await this.engine.store.startRun?.(session.provenance);
     const staged = session.staged; session.staged = {}; session.active = true;
+    this.syncClock(session);
     if (Object.keys(staged).length) await this.engine.observe(Object.values(staged),session.provenance);
   }
   command(id: string, value: unknown): Promise<void> {
@@ -174,6 +180,7 @@ export class ProjectInstallation implements Installation {
       const timeMs = before.timeMs + steps * before.stepMs;
       if (!Number.isSafeInteger(timeMs)) throw new Error('Simulation time exceeds safe integer milliseconds');
       // Use the command queue, never the observation queue: the driver can await publish().
+      this.syncClock(session, true);
       try {
         await this.driver.simulation.advance(steps);
         const after = this.simulationClock;
@@ -184,6 +191,10 @@ export class ProjectInstallation implements Installation {
         // for inspection and require a fresh installation before advancing this model again.
         session.simulationError = 'Simulation stepping failed; start a fresh installation before advancing again';
         throw error;
+      } finally {
+        // Preserve the actual partial clock on failure too, without inventing observations.
+        try { this.syncClock(session); } catch { if (session === this.session) this.engine.setSimulationClock(undefined); }
+        await this.engine.stale();
       }
     });
     session.commands = result.then(() => {}, () => {});
@@ -211,6 +222,7 @@ export class ProjectInstallation implements Installation {
       await this.engine.serial(async () => {});
       await this.engine.serial(async () => {
         this.checkpoint = structuredClone(this.engine.snapshot);
+        this.engine.setSimulationClock(undefined);
         for (const sample of Object.values(this.engine.snapshot.samples)) { sample.quality = 'stale'; sample.state = qualityState('stale'); }
       });
       if(session.provenance)await this.engine.store.endRun?.(session.provenance.id,Date.now());
@@ -251,6 +263,7 @@ export class ProjectInstallation implements Installation {
           flushed.push(flush);
         }
         session.active=true;session.transitioning=false;
+        this.syncClock(session);
       });
       await Promise.all(flushed);
     } catch(error) {

@@ -17,6 +17,42 @@ function fixture(latest: Sample[] = []) {
   return { runtime, signal, writes, fail: (value: boolean) => { reject = value; } };
 }
 
+test('paused model observations stay fresh without re-timestamping or archive writes, then age on model advance', async () => {
+  const { runtime, writes } = fixture();
+  await runtime.init();
+  const run = { id: 'r', build: 'b', sourceRevision: null, mode: 'simulation' as const, startedAt: Date.now() };
+  runtime.setSimulationClock({ run: 'r', build: 'b', timeMs: 0, stepMs: 10 });
+  await runtime.observe([{ signal: 'pressure', value: 4, quality: 'good', sourceAt: 0 }], run);
+  const before = runtime.snapshot.samples.pressure!, count = writes.length;
+  await runtime.stale(before.receivedAt! + 60_000);
+  assert.equal(runtime.snapshot.samples.pressure?.quality, 'good');
+  assert.equal(runtime.snapshot.samples.pressure?.at, before.at);
+  assert.equal(runtime.snapshot.samples.pressure?.receivedAt, before.receivedAt);
+  runtime.setSimulationClock({ run: 'r', build: 'b', timeMs: 1001, stepMs: 10 });
+  await runtime.stale(before.receivedAt!);
+  assert.equal(runtime.snapshot.samples.pressure?.quality, 'stale');
+  assert.equal(writes.length, count);
+});
+
+test('observe-before-clock-commit cannot permanently poison a future point while advance awaits publication', async () => {
+  const { runtime, writes } = fixture();
+  await runtime.init();
+  const run = { id: 'r', build: 'b', sourceRevision: null, mode: 'simulation' as const, startedAt: Date.now() };
+  runtime.setSimulationClock({ run: 'r', build: 'b', timeMs: 0, stepMs: 10 }, true);
+  await runtime.observe([{ signal: 'pressure', value: 4, quality: 'good', sourceAt: 10 }], run);
+  const before = runtime.snapshot.samples.pressure!, count = writes.length;
+  await runtime.stale(before.receivedAt! + 60_000);
+  assert.equal(runtime.snapshot.samples.pressure?.quality, 'good');
+  runtime.setSimulationClock({ run: 'r', build: 'b', timeMs: 10, stepMs: 10 });
+  await runtime.stale(before.receivedAt! + 60_000);
+  assert.equal(runtime.snapshot.samples.pressure?.quality, 'good');
+  assert.equal(runtime.snapshot.samples.pressure?.receivedAt, before.receivedAt);
+  await runtime.observe([{ signal: 'pressure', quality: 'bad' }], run);
+  await runtime.stale(before.receivedAt! + 60_000);
+  assert.equal(runtime.snapshot.samples.pressure?.quality, 'bad');
+  assert.equal(writes.length, count + 1);
+});
+
 test('runtime persists a cleared acknowledgement before changing visible state', async () => {
   const { runtime, writes, fail } = fixture();
   await runtime.init();

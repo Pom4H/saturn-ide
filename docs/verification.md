@@ -1644,3 +1644,29 @@ pass, including real 2D/3D frames, normal cable animation and native WebGL fallb
 The user-facing video remains gated on successful relevant CI for the pushed
 changes. Native Windows execution and real remote Git credentials are separate
 checks; neither is inferred from Linux or fixture-browser evidence.
+
+## 2026-10-07 — model-clock freshness across engineering domains
+
+Cross-domain acceptance exposed wall-clock expiry of paused explicitly stepped
+simulations. The runtime now transports a run/build-bound model clock in the
+snapshot; shared health uses model age only for matching observations. Live and
+timer-driven acquisition retains receipt-clock freshness. No heartbeat, timestamp
+rewrite or synthetic history row is used to keep a paused model readable.
+
+Local verification on Bun 1.4.2:
+
+- `bun run check`: TypeScript 7, TypeScript 6 and architecture guard PASS,
+  206 modules.
+- Operational/runtime policy, simulation clock, scenario runner, shell model,
+  signal policy, runtime host, monitoring, decisions and command shell:
+  **75 passed, 0 failed, 384 assertions** across ten files.
+- The regression checks cover paused observations, model advancement without
+  observations, a real host stale timer, observe-before-clock-commit, intrinsic
+  bad/offline/stale states, foreign/ended runs, receipt preservation, unchanged
+  archive row counts and existing command/apply fencing.
+
+The task-workspace browser check now compares the final model-time tick using
+the interface's locale, including thousands separators. Complete thermal,
+mechanical and pneumatic projects and their real browser evidence are owned by
+`saturn-examples`; no domain equations or private project screenshots are added
+to core. Exact pushed-commit CI results are recorded on the task-workspace PR.

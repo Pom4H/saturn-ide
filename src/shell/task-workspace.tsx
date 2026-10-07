@@ -3,7 +3,7 @@ import { equipmentSignals, text, type Locale, type Project, type Signal, type Sn
 import type { GitState } from '../core/git';
 import { currentTaskReceipt, scenarioResult } from './model/task-evidence';
 import type { EditorId } from '../core/resources';
-import { signalHealth } from '../core/operational';
+import { observationContext, signalHealth } from '../core/operational';
 import { ResourceIcon } from './icons';
 import { qualityLabels } from './signal-presentation';
 import type { ScenarioController } from './use-scenarios';
@@ -65,7 +65,7 @@ export function taskSignal(project:Project,selected:string,controller:ScenarioCo
 export function TaskInspector({project,snapshot,selected,locale,controller,connected,now,mode,close,openSource,properties,history,signalId,selectSignal}:{project:Project;snapshot:Snapshot;selected:string;locale:Locale;controller:ScenarioController;connected:boolean;now:number;mode:string;close:()=>void;openSource:()=>void;properties:()=>void;history:()=>void;signalId?:string;selectSignal:(id:string)=>void}) {
   const ru=locale==='ru',equipment=project.equipment.find(item=>item.id===selected),signals=equipment?equipmentSignals(equipment):Object.values(project.signals).filter(signal=>!signal.writable);
   const signal=signals.find(item=>item.id===signalId)??taskSignal(project,selected,controller),sample=signal?snapshot.samples[signal.id]:undefined;
-  const health=signal?signalHealth(signal,sample,{now,connected}):undefined;
+  const health=signal?signalHealth(signal,sample,observationContext(snapshot,{now,connected})):undefined;
   const value=health?.usable&&sample?(typeof sample.value==='number'?new Intl.NumberFormat(locale,{maximumFractionDigits:6}).format(sample.value):String(sample.value)):'—';
   const checks=controller.definition?.steps.flatMap((step,index)=>step.kind==='expect'||step.kind==='expect-range'?[{step,index}]:[])??[];
   const receipt=currentTaskReceipt(controller),matchingResult=receipt?.result,applicable=!!matchingResult;

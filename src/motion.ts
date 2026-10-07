@@ -1,6 +1,7 @@
 import { isAttached, equipmentSignal, type Equipment, type Pipe, type Project, type Snapshot } from './core';
+import { observationContext, signalHealth } from './core/operational';
 export function numeric(snapshot:Snapshot,id:string,now=Date.now(),staleAfter=5000):number|null {
-  const s=snapshot.samples[id];return s?.quality==='good'&&typeof s.value==='number'&&Number.isFinite(s.value)&&now-s.at<=staleAfter?s.value:null;
+  const s=snapshot.samples[id];return typeof s?.value==='number'&&Number.isFinite(s.value)&&signalHealth({id,initial:0,staleAfter},s,observationContext(snapshot,{now})).usable?s.value:null;
 }
 /** Visual slowdown is deliberate. Integration preserves phase on speed changes and reversal. */
 export const advancePhase=(phase:number,rate:number,dt:number)=>((phase+rate*Math.max(0,Math.min(.1,dt)))%1+1)%1;

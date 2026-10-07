@@ -237,7 +237,9 @@ try {
     await expect(trace).toHaveAttribute('data-run', successful.current.run!.id);
     await expect(trace).toHaveAttribute('data-build', successful.current.applied!);
     await expect.poll(async () => Number(await trace.getAttribute('data-points'))).toBeGreaterThan(1);
-    await expect(trace).toContainText(`${successful.current.clock.timeMs} ms`);
+    // The shell formats axis ticks in its locale, including thousands separators.
+    const endTick = new Intl.NumberFormat('ru', { maximumSignificantDigits: 4 }).format(successful.current.clock.timeMs);
+    await expect(trace.locator('text').last()).toHaveText(`${endTick} ms`);
     report.trace = await trace.evaluate(node => ({ points: node.getAttribute('data-points'), labels: [...node.querySelectorAll('text')].map(item => item.textContent), timeAxis: node.getAttribute('data-time-axis') }));
   }
   passed.push('UI command, actual worker/driver receipt, canonical observation provenance');

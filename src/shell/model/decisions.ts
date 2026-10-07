@@ -213,8 +213,9 @@ export class DecisionSession {
       const guard = () => {
         this.guard(generation);
         if (plan.command.startsWith('/runtime set ')) {
-          const definition = Object.values(this.commands.port.state()?.project.signals ?? {}).find(signal => plan.command.startsWith(`/runtime set ${quoteWord(signal.id)} `));
-          const sample = definition && displaySample(definition, this.commands.port.state()?.snapshot.samples[definition.id], this.commands.port.connected(), Date.now());
+          const state = this.commands.port.state();
+          const definition = Object.values(state?.project.signals ?? {}).find(signal => plan.command.startsWith(`/runtime set ${quoteWord(signal.id)} `));
+          const sample = definition && displaySample(definition, state?.snapshot.samples[definition.id], this.commands.port.connected(), Date.now(),state?.snapshot.simulation);
           if (!sample || sample.quality !== 'good') throw new Error('Нет свежих достоверных показаний; команда не отправлена. / No fresh, good-quality observation; command not sent.');
         }
       };
