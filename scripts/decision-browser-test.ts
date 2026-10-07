@@ -39,7 +39,7 @@ try{
   const config=await (await fetch(new URL('/api/decision',app.server.url))).text();assert(!config.includes('test-provider-secret'));
   const refused=await fetch(new URL('/api/decision/evaluate',app.server.url),{method:'POST',headers:{'content-type':'application/json'},body:'{}'});assert.equal(refused.status,403);assert.equal(requests,0);
   await prepareInterface(page);
-  await page.goto(app.server.url.toString());
+  await page.goto(new URL('?page=diagram',app.server.url).toString());
   await page.getByRole('tab',{name:'Терминал',exact:true}).click();
   await page.getByRole('button',{name:'Текст',exact:true}).click();
   const prompt=page.getByRole('textbox',{name:'Запрос к IDE',exact:true}),prepare=page.getByRole('button',{name:'Подготовить',exact:true});

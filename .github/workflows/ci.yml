@@ -96,6 +96,20 @@ jobs:
           path: saturn-ide/artifacts/decision/
           if-no-files-found: ignore
           retention-days: 3
+      - name: Task workspace and scenario lifecycle acceptance
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        timeout-minutes: 6
+        run: |
+          timeout --kill-after=10s 90s bun tests/scenario-controller.browser.ts
+          timeout --kill-after=10s 210s bun scripts/task-workspace-browser-test.ts
+        working-directory: saturn-ide
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: task-workspace-evidence
+          path: saturn-ide/artifacts/task-workspace/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Importer browser acceptance
         run: bun scripts/importer-browser-test.ts
         working-directory: saturn-ide

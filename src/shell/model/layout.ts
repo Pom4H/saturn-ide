@@ -1,6 +1,6 @@
 import type { BrowserView } from './browser-view';
 
-export type ShellPage = 'home' | 'resources' | 'threads' | 'settings';
+export type ShellPage = 'home' | 'resources' | 'threads' | 'task' | 'settings';
 export type DetailsSlot = 'none' | 'properties' | 'review' | 'catalog' | 'source';
 /** The tool remains owned by ShellSession when its slot closes or displays the launcher. */
 export interface ShellLayout {
@@ -10,7 +10,7 @@ export interface ShellLayout {
   summary:boolean;
 }
 export type LayoutAction =
-  | {type:'navigate';page:'home'|'threads'|'settings'}
+  | {type:'navigate';page:'home'|'threads'|'task'|'settings'}
   | {type:'open-tool';page?:'resources'}
   | {type:'new-tab';page?:'resources'}
   | {type:'close-new-tab'}
@@ -24,15 +24,15 @@ export type LayoutAction =
   | {type:'restore';view:BrowserView};
 
 export function layoutFromView(view:BrowserView):ShellLayout {
-  const page=view.page==='chat'?'threads':view.page==='home'||view.page==='settings'?view.page:'resources';
-  return {page,artifact:{visibility:page==='resources'?'central':page==='threads'&&view.pane?(view.full?'full':'split'):'closed',content:view.newTab?'launcher':'tool'},details:page==='settings'?'none':view.details,summary:false};
+  const page=view.page==='chat'?'threads':view.page==='home'||view.page==='settings'||view.page==='task'?view.page:'resources';
+  return {page,artifact:{visibility:page==='resources'||page==='task'?'central':page==='threads'&&view.pane?(view.full?'full':'split'):'closed',content:view.newTab?'launcher':'tool'},details:page==='settings'?'none':view.details,summary:false};
 }
 export function layoutReducer(state:ShellLayout, action:LayoutAction):ShellLayout {
   switch(action.type){
     case 'restore':return layoutFromView(action.view);
-    case 'navigate':return {page:action.page,artifact:{visibility:'closed',content:'tool'},details:'none',summary:false};
-    case 'open-tool': {const page=action.page??(state.page==='threads'?'threads':'resources');return {...state,page,artifact:{visibility:page==='resources'?'central':state.artifact.visibility==='full'?'full':'split',content:'tool'},summary:false};}
-    case 'new-tab': {const page=action.page??(state.page==='threads'?'threads':'resources');return {...state,page,artifact:{visibility:page==='resources'?'central':state.artifact.visibility==='full'?'full':'split',content:'launcher'},details:'none',summary:false};}
+    case 'navigate':return {page:action.page,artifact:{visibility:action.page==='task'?'central':'closed',content:'tool'},details:action.page==='task'?'properties':'none',summary:false};
+    case 'open-tool': {const page=action.page??(state.page==='threads'||state.page==='task'?state.page:'resources');return {...state,page,artifact:{visibility:page==='resources'||page==='task'?'central':state.artifact.visibility==='full'?'full':'split',content:'tool'},summary:false};}
+    case 'new-tab': {const page=action.page??(state.page==='threads'||state.page==='task'?state.page:'resources');return {...state,page,artifact:{visibility:page==='resources'||page==='task'?'central':state.artifact.visibility==='full'?'full':'split',content:'launcher'},details:'none',summary:false};}
     case 'close-new-tab':return {...state,artifact:{...state.artifact,content:'tool'}};
     case 'show-pane':return state.page==='threads'?{...state,artifact:{...state.artifact,visibility:'split'}}:state;
     case 'close-pane':return state.page==='threads'?{...state,artifact:{...state.artifact,visibility:'closed'}}:state;

@@ -135,7 +135,8 @@ try {
   await projects();
   await expect(page.locator('.recent-open')).toHaveCount(1);
   await page.locator('.recent-open').click(); await page.waitForURL(url => url.origin === workspaceOrigin);
-  await expect(page.getByRole('treeitem', { name: 'Насос подачи P-01', exact: true })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Задачи проекта', exact: true })).toBeVisible();
+  await expect(page.locator('svg.scene [data-equipment="P-01"]')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 }); await projects(); assert.equal(await noOverflow(), true);
   await shot('08-recent-phone'); await page.setViewportSize({ width: 1440, height: 1000 });
   checks.push('Existing dirty-document protection before leaving; saved project reopens from recents on same host; mobile menu returns to projects');

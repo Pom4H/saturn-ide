@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Locale } from '../core';
 import { ResourceIcon } from './icons';
 import { MenuButton, type MenuItem } from './menu';
 
 /** Transient shell task drafts, not agent conversation history or an authored project model. */
 export interface EngineeringThread { id:string; title:string; draft:string; pinned:boolean; archived:boolean }
-export function useEngineeringThreads(_project:string|undefined, locale:Locale) {
+export function useEngineeringThreads(project:string|undefined, locale:Locale) {
   const [items,setItems]=useState<EngineeringThread[]>([]);
   const [activeId,setActiveId]=useState('');
+  useEffect(()=>{setItems([]);setActiveId('');},[project]);
   const active=items.find(item=>item.id===activeId);
   const create=()=>{const item={id:crypto.randomUUID(),title:locale==='ru'?'Новая задача':'New task',draft:'',pinned:false,archived:false};setItems(previous=>[item,...previous]);setActiveId(item.id);return item.id;};
   const update=(id:string,patch:Partial<Omit<EngineeringThread,'id'>>)=>setItems(previous=>previous.map(item=>item.id===id?{...item,...patch}:item));
-  return {items,active,create,select:setActiveId,update};
+  const ensure=(id:string,title:string)=>{setItems(previous=>previous.some(item=>item.id===id)?previous:[{id,title,draft:'',pinned:false,archived:false},...previous]);setActiveId(id);};
+  return {items,active,create,ensure,select:setActiveId,update};
 }
 export type EngineeringThreadController=ReturnType<typeof useEngineeringThreads>;
 export function threadMenu(threads:EngineeringThreadController,item:EngineeringThread,locale:Locale):MenuItem[] {

@@ -45,3 +45,13 @@ test('resource destinations always own the center; chat pane shortcuts cannot hi
   let layout=layoutFromView(readBrowserView('?page=source'));
   for(const action of [{type:'close-pane'},{type:'toggle-full'},{type:'show-pane'},{type:'new-tab'},{type:'close-new-tab'}] as const){layout=layoutReducer(layout,action);assert.equal(layout.page,'resources');assert.equal(layout.artifact.visibility,'central');assert.equal(layoutViewFields(layout).pane,false);}
 });
+
+test('task keeps one central tool and one details slot through source, runs and launcher navigation',()=>{
+  let layout=layoutReducer(layoutFromView(readBrowserView('?page=home')),{type:'navigate',page:'task'});
+  assert.equal(layout.page,'task');assert.equal(layout.artifact.visibility,'central');assert.equal(layout.details,'properties');
+  for(const action of [{type:'open-tool'},{type:'close-pane'},{type:'toggle-full'},{type:'new-tab'},{type:'close-new-tab'}] as const){
+    layout=layoutReducer(layout,action);assert.equal(layout.page,'task');assert.equal(layout.artifact.visibility,'central');
+  }
+  layout=layoutReducer(layout,{type:'details',slot:'review'});assert.equal(layout.details,'review');assert.equal(detailsVisible(layout),true);
+  layout=layoutReducer(layout,{type:'details',slot:'none'});assert.equal(detailsVisible(layout),false);
+});
