@@ -37,6 +37,21 @@
 Не закрывает полную 3D parity, точные объёмные коллизии между этажами, BIM-стены,
 геометрические размеры проходов или физическую монтажную приёмку.
 
+## CAD-1 — импорт CAD/BIM как пространственной подложки и маршрутов
+
+Приоритет **P1**, исследование **2026-10-10**. Референсы: Bentley OpenPlant + Raceway and Cable Management, Revit MEP, nanoCAD BIM ВК/Электро/СКС, AutoCAD Plant 3D. Обменный старт — IFC 2x3/4/4.3 и реальные проверочные файлы; native API/Autodesk Data Exchange — отдельный следующий этап. Это **план**, не реализованный импорт.
+
+- [ ] Развести три независимых факта с provenance: физическое размещение/геометрия CAD; реальные или проектные гидравлические и электрические соединения; authored логика Saturn (signals, drivers, HMI). CAD mesh/GLB сам по себе не подтверждает сетевую топологию.
+- [ ] Сделать read-only CAD reference, а не ещё одну редактируемую модель объекта. Для импорта сохранять исходный файл/revision, source document key + IFC GlobalId/native element ID, единицы, систему осей, геодезическую/локальную привязку, placements и принадлежность IfcBuildingStorey/IfcSpace. В существующие x/y единицы схемы CAD-метры/миллиметры не подмешивать.
+- [ ] Адаптер IFC извлекает IfcSpace, этажи, стены/перекрытия/проёмы, IfcPipeSegment/IfcPipeFitting, IfcCableCarrierSegment/Fitting, IfcCableSegment (если действительно есть), IfcDistributionPort и IfcRelConnectsPorts; геометрию оптимизирует в cacheable GLB, семантику и локальные оси не теряет. Классификации и связи неизвестных/некорректных элементов помечать, не додумывать.
+- [ ] Разделить граф физической инфраструктуры: **pipe runs** (существующая трасса и её участки) и **raceways** (лотки/каналы/стояки, ёмкость, принадлежность цепей); не смешивать их с логическими Pipe/Cable проекта. Для кабеля route по существующим лоткам — расчётное предложение, если CAD не содержит точного cable run; по одному DWG-плану не заявлять физически известный маршрут.
+- [ ] UX: загрузить BIM → увидеть этажи/помещения и доступные трассы → перетащить оборудование → привязать совместимый порт/существующий route или показать 1–2 проверяемых кандидата → через highlight проследить путь до PLC/бака. Результат различает «проектная CAD-трасса», «подтверждено обследованием», «предложение» и «неизвестно».
+- [ ] Reimport/sync выполняет трёхстороннее сравнение (предыдущий CAD snapshot / новый CAD / локальные авторские привязки), по стабильным external IDs, preview→review→CAS source edit; не удаляет приборы или телеметрию из-за удаления CAD-элемента. Native коннектор допускает инкрементальные изменения, но обратная запись в CAD только отдельной подтверждённой операцией; никакого implicit publish/apply.
+- [ ] Начать с IFC adapter в project-owned plugin (IfcOpenShell/IfcConvert для геометрии, семантика отдельно). Существующий `ScadaImportPlan` не поддерживает безопасный повторный sync/imported binary assets, поэтому расширять общий import/change-plan контракт без мнимого «готово» и без скрытой global DB. Затем проверить Revit API или nanoCAD native adapter на одной реальной модели.
+- [ ] Приёмка: на независимых IFC fixture + реальной модели насосной (а) верны Z/оси/масштаб и привязка помещений; (б) трубы и кабельные трассы проходят через правильные отверстия и этажи; (в) граф реальных портов не выдумывает соединений; (г) изменение CAD-ревизии обновляет route без потери местных сигналов; (д) отсутствие кабельной деталировки явно обозначено; (е) 2D/3D и инспектор показывают одну source-linked трассу.
+
+Ориентиры: [IFC](https://technical.buildingsmart.org/standards/ifc/ifc-examples/), [IFC model tests](https://github.com/buildingSMART/IFC4.x-specification-models), [IfcOpenShell](https://docs.ifcopenshell.org/ifcopenshell-python/geometry_processing.html), [Revit MEP Connectors](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-API/files/Revit_API_Developers_Guide/Discipline_Specific_Functionality/MEP_Engineering/Revit_API_Revit_API_Developers_Guide_Discipline_Specific_Functionality_MEP_Engineering_Connectors_html.html), [Autodesk Data Exchange SDK](https://aps.autodesk.com/en/docs/dx-sdk/v8.0.0), [nanoCAD BIM Электро](https://www.nanocad.ru/products/bim/electro/).
+
 ## ARCH-1 — владение кодом между репозиториями
 
 Приоритет **P0**, выполнено 2026-10-05. Рефакторинг не вводит новые пакеты или
