@@ -89,20 +89,23 @@ try{
   await pace(1200);await screenshot('06-synced-tray.png');
   checks.push('CAD revision updates only CAD-owned source; identity and un-applied PLC state stay unchanged');
 
-  // The next normal engineering action is placing a real typed device.
-  await page.locator('[data-action="add-equipment"]').click();
-  await page.getByRole('dialog',{name:'Новое устройство'}).waitFor();
-  await page.locator('.creation-dialog input[pattern]').fill('P-01');
-  await page.locator('.creation-dialog input[required]:not([pattern])').fill('Насос подачи');
-  await page.getByRole('button',{name:'Предпросмотр',exact:true}).click();
-  await page.locator('.creation-preview').waitFor();
+  // One workflow: palette -> choose type -> ghost on original IFC background -> create -> inspector.
+  await page.locator('[data-action="add-entity"]').click();
+  await page.getByRole('dialog',{name:'Добавить сущность'}).waitFor();
+  await page.locator('[data-creation-template="pump"]').click();
+  const point=await page.locator('svg.scene').evaluate(svg=>{
+    const el=svg as SVGSVGElement,p=el.createSVGPoint();p.x=580;p.y=250;
+    const p2=p.matrixTransform(el.getScreenCTM()!);return{x:p2.x,y:p2.y};
+  });
+  await page.mouse.move(point.x,point.y);
+  await page.locator('[data-placement-preview="pump"]').waitFor();
   await screenshot('07-device-preview.png');await pace(850);
-  await page.getByRole('button',{name:'Создать устройство',exact:true}).click();
-  await seek(()=>project().equipment.some(e=>e.id==='P-01'),'Engineered pump was not created from typed source');
-  await page.getByRole('dialog',{name:'Новое устройство'}).waitFor({state:'hidden'});
-  // Device creation may open its authored file; return to the same physical object.
-  await page.getByRole('navigation',{name:'Рабочие области'}).getByRole('button',{name:'Объект',exact:true}).click();
-  await page.getByRole('button',{name:'2D',exact:true}).click();
+  await page.mouse.click(point.x,point.y);
+  await seek(()=>project().equipment.some(e=>e.id==='P-01'),'Pump creation did not update the authored project');
+  const properties=page.locator('[data-device-properties="P-01"]');await properties.waitFor();
+  await properties.getByRole('textbox',{name:'Название оборудования'}).fill('Насос подачи');
+  await properties.getByRole('button',{name:'Сохранить'}).click();
+  await seek(()=>project().equipment.some(e=>e.id==='P-01'&&typeof e.label==='string'&&e.label==='Насос подачи'),'Inspector did not persist the equipment label');
   await page.locator('[data-equipment="P-01"]').waitFor();
   await pace(800);await screenshot('08-equipment-on-cad.png');
   checks.push('Engineer adds actual typed pump equipment after importing CAD, without flattening its reference networks');
