@@ -10,6 +10,17 @@ interface Preview { plan: ScadaImportPlan; projectVersion: string; importer: Sca
 export function ScadaImport({importers,locale,onImported}:{importers:readonly ScadaImporter[];locale:Locale;onImported:()=>Promise<void>}) {
   const ru=locale==='ru',file=useRef<HTMLInputElement>(null),[preview,setPreview]=useState<Preview>(),[busy,setBusy]=useState(false),[error,setError]=useState(''),[done,setDone]=useState('');
   const accepts=[...new Set(importers.flatMap(importer=>importer.accepts))].join(',');
+  const cadOnly=importers.length>0&&importers.every(importer=>importer.accepts.includes('.ifc'));
+  const cadPreview=!!preview?.importer.accepts.includes('.ifc');
+  const statsLabel=(key:string):string=>{
+    const labels:Record<string,[string,string]>={
+      floors:['Этажи','Floors'],rooms:['Помещения','Rooms'],
+      pipes:['Трубы','Pipes'],trays:['Лотки','Cable trays'],
+      actualCableSegments:['Кабели в CAD','CAD cable segments'],
+      authoredPortConnections:['Связи портов','Port links'],
+    };
+    return labels[key]?.[ru?0:1]??key;
+  };
   const prepare=async(selected:File)=>{
     setBusy(true);setError('');setDone('');
     try{
@@ -35,14 +46,14 @@ export function ScadaImport({importers,locale,onImported}:{importers:readonly Sc
   };
   const blockers=preview?.plan.diagnostics.filter(item=>item.severity==='blocker').length??0;
   return <section className="scada-import">
-    <div className="scada-import-heading"><div><strong>{ru?'Миграция SCADA':'SCADA migration'}</strong><small>{importers.length?importers.map(item=>text(item.label,locale)).join(' · '):(ru?'Нет подключённых importer-плагинов':'No importer plugins connected')}</small></div><input ref={file} type="file" accept={accepts||'.zip'} hidden onChange={event=>{const selected=event.target.files?.[0];if(selected)void prepare(selected);event.target.value='';}}/><button type="button" disabled={busy||!importers.length} onClick={()=>file.current?.click()}>{busy?'…':ru?'Открыть проект':'Open project'}</button></div>
-    {preview&&<details className="import-inventory" open><summary>{text(preview.importer.label,locale)+' · '+preview.plan.files.length+' '+(ru?'файлов Saturn':'Saturn files')+' · '+(blockers?blockers+' blockers':(ru?'готово к применению':'ready to apply'))}</summary>
+    <div className="scada-import-heading"><div><strong>{cadOnly?(ru?'Файл IFC':'IFC file'):(ru?'Импорт проекта':'Project import')}</strong><small>{importers.length?importers.map(item=>text(item.label,locale)).join(' · '):(ru?'Нет подключённых importer-плагинов':'No importer plugins connected')}</small></div><input ref={file} type="file" accept={accepts||'.zip'} hidden onChange={event=>{const selected=event.target.files?.[0];if(selected)void prepare(selected);event.target.value='';}}/><button type="button" disabled={busy||!importers.length} onClick={()=>file.current?.click()}>{busy?'…':cadOnly?(ru?'Выбрать IFC…':'Select IFC…'):(ru?'Выбрать файл…':'Choose file…')}</button></div>
+    {preview&&<details className="import-inventory" open><summary>{(cadPreview?(preview.plan.mode==='sync'?(ru?'Обновление CAD':'CAD revision'):(ru?'Новая CAD-модель':'New CAD model')):text(preview.importer.label,locale))+' · '+(blockers?(ru?'ошибок: ':'blockers: ')+blockers:(ru?'готово к импорту':'ready to import'))}</summary>
       {preview.plan.summary&&<p>{text(preview.plan.summary,locale)}</p>}
-      {!!preview.plan.stats&&<div className="import-stats">{Object.entries(preview.plan.stats).map(([key,count])=><span key={key}>{key}: {count}</span>)}</div>}
+      {!!preview.plan.stats&&<div className="import-stats">{Object.entries(preview.plan.stats).map(([key,count])=><span key={key}>{statsLabel(key)}: {count}</span>)}</div>}
       <div className="import-file-list">{preview.plan.diagnostics.slice(0,80).map((item,index)=><div key={index} data-severity={item.severity}><code>{item.code}</code><small>{item.message[locale]}{item.path?' · '+item.path:''}</small></div>)}</div>
       {preview.plan.diagnostics.length>80&&<small>{ru?'Показаны первые 80 замечаний':'Showing first 80 diagnostics'}</small>}
-      <p>{ru?'Импорт записывает исходники проекта. Симулятор в dev-режиме может обновить предпросмотр автоматически; для реального объекта публикация и применение — отдельные действия.':'Import writes project source. The dev simulator may refresh its preview automatically; publishing and applying to a real asset are separate actions.'}</p>
-      <button type="button" className="primary" disabled={busy||blockers>0} onClick={()=>void apply()}>{ru?'Внести в исходники':'Write project source'}</button> <button type="button" disabled={busy} onClick={()=>setPreview(undefined)}>{ru?'Отмена':'Cancel'}</button>
+      <p>{cadPreview?(ru?'Проверенная пространственная подложка будет доступна в 2D и 3D. Исходники ПЛК, сигналы и оборудование сохраняются.':'The spatial reference will appear in 2D and 3D. PLC code, signals and equipment remain yours.'):(ru?'Импорт изменяет только исходники проекта; применение к оборудованию выполняется отдельно.':'Import edits project source only; deployment to equipment is separate.')}</p>
+      <button type="button" className="primary" disabled={busy||blockers>0} onClick={()=>void apply()}>{cadPreview?(preview.plan.mode==='sync'?(ru?'Обновить CAD-модель':'Sync CAD model'):(ru?'Импортировать модель':'Import model')):(ru?'Внести в исходники':'Write project source')}</button> <button type="button" disabled={busy} onClick={()=>setPreview(undefined)}>{ru?'Отмена':'Cancel'}</button>
     </details>}
     {error&&<p className="import-error" role="alert">{error}</p>}{done&&<p className="import-hint" role="status">{done}</p>}
   </section>;
