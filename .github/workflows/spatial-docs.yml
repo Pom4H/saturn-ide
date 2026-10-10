@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Require successful acceptance and record its exact scope
         env:
           GH_TOKEN: ${{ github.token }}
