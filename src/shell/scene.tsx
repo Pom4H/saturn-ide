@@ -16,6 +16,7 @@ export interface SceneProps {
   project:Project;displayProject?:Project;inactive?:readonly string[];routes:readonly PhysicalRoute[];snapshot:Snapshot;locale:Locale;selected:string;selectedPort?:string;selectedIds?:readonly string[];interaction?:'select'|'edit';focus?:string;fit?:number;zoom?:{step:number;factor:number};ports?:boolean;
   viewRestore?:{version:number;box?:[number,number,number,number];pose?:[number,number,number,number,number,number]};
   pipeLeakStates?:Readonly<Record<string,'suspected'|'normal'|'unmonitored'|'unavailable'>>;
+  cableIntegrityStates?:Readonly<Record<string,'suspected'|'observed'|'inactive'|'unavailable'|'unmonitored'>>;
   focusRouteId?:string;
   onViewBox?:(box:[number,number,number,number])=>void;onCameraPose?:(pose:[number,number,number,number,number,number])=>void;
   systemFocus?:string|null;focusSystem?:(id:string)=>void;
@@ -91,7 +92,7 @@ export function Scene(props:SceneProps){
     const points=end?[end]:route.points;if(!points.length)return;
     // An operator must see the whole suspect section and both terminating devices;
     // a pipe-only camera crop hides the pump/valve needed for field identification.
-    const evidenceEndpoints=props.pipeLeakStates&&edge&&!free?[edge.from,edge.to].flatMap(endpoint=>{
+    const evidenceEndpoints=(props.pipeLeakStates||props.cableIntegrityStates)&&edge&&!free?[edge.from,edge.to].flatMap(endpoint=>{
       if(!isAttached(endpoint))return [];
       const device=props.project.equipment.find(item=>item.id===endpoint.device);
       if(!device)return [];
@@ -100,7 +101,7 @@ export function Scene(props:SceneProps){
     }):[];
     const extent=[...points,...evidenceEndpoints];
     const minX=Math.min(...extent.map(p=>p.x)),minY=Math.min(...extent.map(p=>p.y)),maxX=Math.max(...extent.map(p=>p.x)),maxY=Math.max(...extent.map(p=>p.y));
-    const padX=props.pipeLeakStates?105:80,padY=props.pipeLeakStates?105:80;
+    const padX=props.pipeLeakStates||props.cableIntegrityStates?105:80,padY=props.pipeLeakStates||props.cableIntegrityStates?105:80;
     const width=Math.max(440,maxX-minX+2*padX),height=Math.max(340,maxY-minY+2*padY);
     setBox([(minX+maxX-width)/2,(minY+maxY-height)/2,width,height]);
   };
@@ -141,12 +142,13 @@ export function Scene(props:SceneProps){
     {!props.focus&&routes.map(route=>{
       const edge=[...props.project.pipes,...props.project.cables??[]].find(e=>e.id===route.id)!;
       const isPipe=route.kind==='pipe',d=isPipe&&route.valid?roundedPipePath(route.points,8,routingWaypoints(props.project,edge)):routePath(route),preview=props.cablePreview?.id===route.id;
-      return <g key={route.id} data-pipe={isPipe?route.id:undefined} data-cable={!isPipe?route.id:undefined} data-route-valid={route.valid} data-selected={props.selected===route.id||undefined} data-route-preview={preview||undefined} data-inactive={props.inactive?.includes(route.id)||undefined} data-leak-state={isPipe?props.pipeLeakStates?.[route.id]:undefined} onClick={()=>props.select(route.id)} className={preview?'preview-route':route.valid?(isPipe?'pipe':'cable'):'invalid-route'}>
+      return <g key={route.id} data-pipe={isPipe?route.id:undefined} data-cable={!isPipe?route.id:undefined} data-route-valid={route.valid} data-selected={props.selected===route.id||undefined} data-route-preview={preview||undefined} data-inactive={props.inactive?.includes(route.id)||undefined} data-leak-state={isPipe?props.pipeLeakStates?.[route.id]:undefined} data-cable-integrity={isPipe?undefined:props.cableIntegrityStates?.[route.id]} onClick={()=>props.select(route.id)} className={preview?'preview-route':route.valid?(isPipe?'pipe':'cable'):'invalid-route'}>
         <title>{route.id}: {endLabel(edge.from)} → {endLabel(edge.to)}{edge.kind==='cable'?` · ${cablePurposeLabel(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family,props.locale)}${edge.signal?.unit?` · ${edge.signal.unit}`:''}${!isConnected(edge)?props.locale==='ru'?' · свободный конец':' · disconnected':''}`:''}{preview?props.locale==='ru'?' · маршрут уточняется при отпускании':' · route resolves on release':route.error?` — ${routeIssueReason(route.error,props.locale)}`:''}</title>
         {props.selected===route.id&&<path d={d} fill="none" stroke="var(--accent)" strokeOpacity={.35} strokeWidth={isPipe?30:11} strokeLinejoin="round" pointerEvents="none"/>}
         <path data-route-diagnostic={!route.valid&&!preview||undefined} d={d} fill="none" stroke={route.valid?(isPipe?'var(--pipe-rim)':cableAppearance(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family).color):preview?'var(--warn)':'var(--bad)'} strokeWidth={!route.valid?2:isPipe?22:3} strokeLinecap="butt" vectorEffect={!route.valid?'non-scaling-stroke':undefined} strokeLinejoin="round" strokeDasharray={!route.valid?'6 6':!isConnected(edge)?'8 5':undefined}/>
         {isPipe&&route.valid&&<><path d={d} fill="none" stroke="var(--pipe-shell)" strokeWidth={18} strokeLinecap="butt" strokeLinejoin="round" pointerEvents="none"/><path className="pipe-fluid" d={d} fill="none" stroke="var(--pipe-fill)" strokeWidth={14} strokeLinecap="butt" strokeLinejoin="round" pointerEvents="none"/><path className="flow" d={d} fill="none" stroke="var(--flow)" strokeWidth={5} strokeLinecap="round" strokeDasharray="18 30"/></>}
         {isPipe&&route.valid&&props.pipeLeakStates?.[route.id]==='suspected'&&<path data-pipe-leak-overlay={route.id} d={d} fill="none" stroke="var(--bad)" strokeWidth={8} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="12 19" pointerEvents="none"/>}
+        {!isPipe&&route.valid&&props.cableIntegrityStates?.[route.id]==='suspected'&&<path data-cable-integrity-overlay={route.id} d={d} fill="none" stroke="var(--bad)" strokeWidth={9} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="9 13" pointerEvents="none"/>}
       </g>;
     })}
     {!props.focus&&systemPortPositions(props.project).map(({port,point})=><g key={`${port.system}.${port.port}`} data-route-port={`${port.system}.${port.port}`} data-z={point.z} transform={`translate(${point.x} ${point.y})`}>

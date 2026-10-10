@@ -12,8 +12,8 @@
 .hmi-pipe-options button{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;min-height:38px;padding:9px 10px;background:var(--editor);color:var(--text);border:1px solid var(--border);border-radius:var(--ui-radius-button)}
 .hmi-pipe-options button strong{font:12px var(--mono);overflow-wrap:anywhere}
 .hmi-pipe-options button span{font-size:11px;color:var(--muted);text-align:right}
-.hmi-pipe-options button[data-pipe-status="suspected"]{border-color:var(--bad)}
-.hmi-pipe-options button[data-pipe-status="suspected"] span{color:var(--bad)}
+.hmi-pipe-options button[data-pipe-status="suspected"],.hmi-pipe-options button[data-cable-status="suspected"]{border-color:var(--bad)}
+.hmi-pipe-options button[data-pipe-status="suspected"] span,.hmi-pipe-options button[data-cable-status="suspected"] span{color:var(--bad)}
 .hmi-pipe-options button[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:1px}
 .hmi-pipe-reading{border-top:1px solid var(--border);padding-top:11px;display:grid;gap:8px;font-size:12px}
 .hmi-pipe-reading h2{margin:0;font:600 14px var(--mono)}
@@ -25,3 +25,7 @@
 .hmi-pipe-reading p.hmi-pipe-caution{border-top:1px solid var(--border);padding-top:9px}
 @media(max-width:760px){.hmi-pipe-workspace{flex-direction:column}.hmi-pipe-diagram{flex:0 0 48%;min-height:170px}.hmi-pipe-list{flex:1;min-height:0;border-left:0;border-top:1px solid var(--border);padding:12px}.hmi-pipe-options{grid-template-columns:repeat(2,minmax(0,1fr))}.hmi-pipe-options button{flex-direction:column;align-items:flex-start}.hmi-pipe-options button span{text-align:left}.hmi-pipe-reading{padding-bottom:24px}}
 @media(max-width:420px){.hmi-pipe-nav{max-width:45%;overflow:hidden;text-overflow:ellipsis}.hmi-pipe-context{max-width:95px;overflow:hidden;text-overflow:ellipsis}}
+
+/* Two compact line-inspection destinations share the same operator HMI chrome. */
+.hmi>header>strong{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:600px){.hmi>header{gap:4px}.hmi-pipe-nav{padding:4px 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.hmi-pipe-context{min-width:0}}
