@@ -1,5 +1,5 @@
 import {test,expect} from 'bun:test';
-import {pipe,project,pump,tank,signal,diagnosePipeLeaks,validateProject,type Snapshot} from '../src/core';
+import {pipe,project,pump,tank,signal,diagnosePipeLeaks,validateProject,type Snapshot,type PipeLeakMonitor} from '../src/core';
 import {canonical} from '../src/core/artifact';
 import {decodeProject} from '../src/core/project-codec';
 import {semanticGraph} from '../src/semantic';
@@ -24,8 +24,8 @@ test('meter pair is collected, typed and survives artifact round trip',()=>{
   expect(Object.keys(station.signals)).toContain(inlet.id);
   expect(Object.keys(station.signals)).toContain(outlet.id);
   const decoded=decodeProject(canonical(station));
-  expect(decoded.pipes[0]!.leak!.inlet).toBe(decoded.signals[inlet.id]!);
-  expect(decoded.pipes[0]!.leak!.outlet).toBe(decoded.signals[outlet.id]!);
+  expect(decoded.pipes[0]!.leak!.inlet===decoded.signals[inlet.id]).toBe(true);
+  expect(decoded.pipes[0]!.leak!.outlet===decoded.signals[outlet.id]).toBe(true);
   const graph=semanticGraph(station);
   const pipeNode=graph.bySemanticId.get('connection:segment')!;
   expect(pipeNode.uses).toContain('signal:'+inlet.id);
@@ -54,7 +54,7 @@ test('uninstrumented pipe is explicitly unknown, not marked normal',()=>{
 });
 test('invalid meter contracts are rejected at source validation',()=>{
   const original=station.pipes[0]!;
-  const invalid=(leak:NonNullable<typeof original.leak>)=>({...station,pipes:[{...original,leak}]});
+  const invalid=(leak:PipeLeakMonitor)=>({...station,pipes:[{...original,leak}]});
   expect(()=>validateProject(invalid({...original.leak!,outlet:inlet}))).toThrow();
   expect(()=>validateProject(invalid({...original.leak!,maxLoss:0}))).toThrow();
   expect(()=>validateProject(invalid({...original.leak!,outlet:{...outlet,unit:'L/s'}}))).toThrow();

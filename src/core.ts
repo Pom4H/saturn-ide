@@ -275,7 +275,11 @@ type FluidFrom<F extends string=string> = ConnectionEnd<'fluid',F,'source'|'pass
 type FluidTo<F extends string=string> = ConnectionEnd<'fluid',F,'sink'|'passive'>;
 /** @ru Труба с жидкостью. Соединяет совместимые порты; source/sink задают направление оборудования, passive допускает явные fitting-узлы вроде tee().
  * @en Liquid pipe. Connect compatible ports; equipment source/sink keep direction while passive ends allow explicit fittings such as tee(). */
-export function pipe<const F extends string,const S extends Signal<number>=Signal<number>,const L extends PipeLeakMonitor|undefined=undefined>(id:string, options:{from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:readonly RouteWaypoint<'fluid'>[];leak?:L}):Omit<Pipe,'flow'|'leak'> & {flow:S;leak?:L} {
+type PipeSpec<F extends string,S extends Signal<number>>={from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:readonly RouteWaypoint<'fluid'>[]};
+/** No broad optional sensor type on ordinary pipes: preserve exact signal inference. */
+export function pipe<const F extends string,const S extends Signal<number>>(id:string,options:PipeSpec<F,S>&{leak?:never}):Omit<Pipe,'flow'|'leak'> & {flow:S};
+export function pipe<const F extends string,const S extends Signal<number>,const L extends PipeLeakMonitor>(id:string,options:PipeSpec<F,S>&{leak:L}):Omit<Pipe,'flow'|'leak'> & {flow:S;leak:L};
+export function pipe(id:string,options:PipeSpec<string,Signal<number>>&{leak?:PipeLeakMonitor}):Pipe {
   return {...options,...(options.via?{via:routeReferences(options.via)}:{}),id,kind:'pipe'};
 }
 /** @ru Кабель управления, питания или шины. Не труба и не зависимость вычисляемого сигнала.
