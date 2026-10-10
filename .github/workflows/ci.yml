@@ -111,6 +111,18 @@ jobs:
           path: saturn-ide/artifacts/pipe-leak-operator/
           if-no-files-found: ignore
           retention-days: 7
+      - name: Operator control-cable fault localization browser acceptance
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        timeout-minutes: 3
+        run: timeout --kill-after=10s 150s bun scripts/cable-integrity-browser-test.ts
+        working-directory: saturn-ide
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: operator-cable-integrity-evidence
+          path: saturn-ide/artifacts/cable-integrity-operator/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Object-first equipment creation and property editing
         timeout-minutes: 3
         run: timeout --kill-after=10s 150s bun scripts/entity-ux-browser-test.ts
