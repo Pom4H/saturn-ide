@@ -429,7 +429,7 @@ type UncertainMembers<T> = T extends object ? true extends Values<{
   [K in keyof T as string extends K ? never : number extends K ? never : K]:UncertainSignal<Extract<T[K],Signal>>
 }> ? true : false : false;
 type UncertainItem<T> = true extends IsUnion<T> | UncertainMembers<T> |
-  UncertainSignal<Extract<Field<T,'signal'> | Field<T,'flow'> | Field<Field<T,'leak'>,'inlet'|'outlet'>,Signal>> ? true : false;
+  UncertainSignal<Extract<Field<T,'signal'> | Field<T,'flow'>,Signal>> ? true : false;
 type UncertainArray<A> = A extends readonly unknown[] ? number extends A['length'] ? true :
   true extends IsUnion<A> | {[K in keyof A]:UncertainItem<A[K]>}[number] ? true : false : false;
 // Conditional branches and non-tuple collections may omit a referenced ID at runtime.
