@@ -1,0 +1,49 @@
+name: Spatial DSL workspace
+on:
+  push:
+    branches: [work/spatial-dsl-20261010]
+permissions:
+  contents: read
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: saturn-ide
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-examples
+          path: saturn-examples
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-plugins
+          ref: c1def4248a73011a5f05ec4b75ccc963da16839a
+          path: saturn-plugins
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - run: bun install --frozen-lockfile
+        working-directory: saturn-ide
+      - name: Export source and offline test toolchain (no Git credentials)
+        run: |
+          mkdir tooling
+          cp "$(command -v bun)" tooling/bun
+          git -C saturn-ide rev-parse HEAD > tooling/revision.txt
+          git -C saturn-examples rev-parse HEAD > tooling/examples-revision.txt
+          tar -czf source.tgz --exclude=.git --exclude=node_modules saturn-ide saturn-examples saturn-plugins
+          tar -czf toolchain.tgz saturn-ide/node_modules tooling
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spatial-source
+          path: source.tgz
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spatial-toolchain
+          path: toolchain.tgz
+          retention-days: 1
