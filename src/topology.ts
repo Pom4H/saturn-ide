@@ -139,7 +139,9 @@ function routeConnectionWithBoxes(project:Project,edge:Pipe|Cable,boxes:readonly
   // onto it, report that collision directly instead of blaming a port stub.
   if((!isAttached(edge.from)&&!empty(start))||(!isAttached(edge.to)&&!empty(end)))return fail('Free end overlaps equipment clearance');
   if(blocked(boxes,start,s,owner(edge.from))||blocked(boxes,t,end,owner(edge.to)))return fail('Terminal stub intersects equipment');
-  const via=[{...s,z:high},...routingWaypoints(project,edge),{...t,z:high}],points:Point[]=[start,s,{...s,z:high}];
+  const spatial=edge.via?.some(point=>point.kind==='route-port'||point.z!==undefined);
+  const first=spatial?s:{...s,z:high},last=spatial?t:{...t,z:high};
+  const via=[first,...routingWaypoints(project,edge),last],points:Point[]=[start,s,first];
   let budget=40000;
   for(let k=1;k<via.length;k++) {
     const from=via[k-1]!,to=via[k]!;
@@ -162,7 +164,7 @@ function routeConnectionWithBoxes(project:Project,edge:Pipe|Cable,boxes:readonly
     if(!visited.has(last))return fail('No collision-free route within budget');
     const segment:Point[]=[];let i=last;while(i!==first){segment.push(point(i));i=prev.get(i)!;}segment.push(from);points.push(...segment.reverse());
   }
-  points.push({...t,z:high},t,end);
+  points.push(last,t,end);
   result.points=compactPoints(points,routingWaypoints(project,edge));return result;
 }
 export function routeConnection(project:Project,edge:Pipe|Cable):PhysicalRoute {

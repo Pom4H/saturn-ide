@@ -206,3 +206,15 @@ test('collinear passages near a bend survive compaction and rendered bend insets
   const {path}=roundedRoute(route.points.map(vector),12,fixed.map(vector));
   for(const point of fixed)expect(path.curves.some(curve=>curve.getPoint(0).equals(vector(point))||curve.getPoint(1).equals(vector(point)))).toBe(true);
 });
+
+
+test('explicit passages do not force an unrelated high-level detour before the first opening',()=>{
+  const {model,water}=fixture();
+  const opening={x:200,y:50,z:220};
+  const changed={...model,pipes:[{...water,via:[opening]}]};
+  const route=assertRoute(changed,'water');
+  const index=route.points.findIndex(p=>p.x===opening.x&&p.y===opening.y&&p.z===opening.z);
+  expect(index).toBeGreaterThan(0);
+  const start=anchor(changed,water.from);
+  expect(route.points.slice(0,index+1).every(p=>p.z>=opening.z&&p.z<=start.z)).toBe(true);
+});
