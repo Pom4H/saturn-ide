@@ -41,7 +41,7 @@
 
 ## CAD-1 — импорт CAD/BIM как пространственной подложки и маршрутов
 
-Приоритет **P1**, исследование **2026-10-10**. Референсы: Bentley OpenPlant + Raceway and Cable Management, Revit MEP, nanoCAD BIM ВК/Электро/СКС, AutoCAD Plant 3D. Обменный старт — IFC 2x3/4/4.3 и реальные проверочные файлы; native API/Autodesk Data Exchange — отдельный следующий этап. Это **план**, не реализованный импорт.
+Приоритет **P1**, исследование **2026-10-10**. Референсы: Bentley OpenPlant + Raceway and Cable Management, Revit MEP, nanoCAD BIM ВК/Электро/СКС, AutoCAD Plant 3D. Обменный старт — IFC 2x3/4/4.3 и реальные проверочные файлы; native API/Autodesk Data Exchange — отдельный следующий этап. **Полный импорт ещё в плане; ограниченный IFC source kit реализован (см. первый инкремент ниже).**
 
 - [ ] Развести три независимых факта с provenance: физическое размещение/геометрия CAD; реальные или проектные гидравлические и электрические соединения; authored логика Saturn (signals, drivers, HMI). CAD mesh/GLB сам по себе не подтверждает сетевую топологию.
 - [ ] Сделать read-only CAD reference, а не ещё одну редактируемую модель объекта. Для импорта сохранять исходный файл/revision, source document key + IFC GlobalId/native element ID, единицы, систему осей, геодезическую/локальную привязку, placements и принадлежность IfcBuildingStorey/IfcSpace. В существующие x/y единицы схемы CAD-метры/миллиметры не подмешивать.
