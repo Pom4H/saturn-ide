@@ -275,7 +275,7 @@ type FluidFrom<F extends string=string> = ConnectionEnd<'fluid',F,'source'|'pass
 type FluidTo<F extends string=string> = ConnectionEnd<'fluid',F,'sink'|'passive'>;
 /** @ru Труба с жидкостью. Соединяет совместимые порты; source/sink задают направление оборудования, passive допускает явные fitting-узлы вроде tee().
  * @en Liquid pipe. Connect compatible ports; equipment source/sink keep direction while passive ends allow explicit fittings such as tee(). */
-export function pipe<const F extends string,const S extends Signal<number>=Signal<number>>(id:string, options:{from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:readonly RouteWaypoint<'fluid'>[];leak?:PipeLeakMonitor}):Pipe & {flow:S} {
+export function pipe<const F extends string,const S extends Signal<number>=Signal<number>,const L extends PipeLeakMonitor|undefined=undefined>(id:string, options:{from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:readonly RouteWaypoint<'fluid'>[];leak?:L}):Omit<Pipe,'flow'|'leak'> & {flow:S;leak?:L} {
   return {...options,...(options.via?{via:routeReferences(options.via)}:{}),id,kind:'pipe'};
 }
 /** @ru Кабель управления, питания или шины. Не труба и не зависимость вычисляемого сигнала.
