@@ -88,9 +88,9 @@
 
 - [x] Авторская `Cable.integrity` из двух независимых read-only `Signal<boolean>`; сигналы входят в один Project/Checked BuildArtifact/semantic graph. Измерение не является командой.
 - [x] Чистая диагностика `diagnoseCableIntegrity`: только актуальные согласованные показания. `suspected` = несоответствие на концах, `observed` = сигнал проходит при возбуждении, `inactive` = проверить нельзя; bad/offline/stale/missing/substituted/duplicate pair → unavailable.
-- [ ] Операторский HMI: общий SVG canvas + выбираемая линия/порты/замеры, мобильный UI, безопасная подсветка без автоматических управляющих команд. **Не считать выполненным до браузерной приёмки.**
-- [ ] Пример в pumping-station: simulated fault `sim.run-cable-break`, действительное отличие `PLC-01.outputObserved` от `P-01.inputObserved`, оператор видит `run-command` как подозрение, `valve-command` без датчиков отмечается отдельно.
-- [ ] CI evidence: нормальный сигнал, разрыв, возврат в норму, одновременный разрыв `discharge` трубы не путает диагностические списки; 390px screenshot, no JS errors, нет live-команд от UI диагностики.
+- [x] Код операторского HMI: общий 2D SVG canvas, выбор кабеля, подсветка, порты/замеры и мобильная верстка без управляющих команд. Браузерная приёмка отдельно ниже, **не проверено end-to-end**.
+- [x] Код примера `saturn-examples/pumping-station`: `sim.run-cable-break` и независимые `PLC-01.outputObserved` / `P-01.inputObserved`; `run-command` подозревается, `valve-command` без наблюдений. Source checks на 2026-10-10 вернули `startup_failure` до запуска заданий, результат тестов этим не подтверждён.
+- [ ] CI evidence: normal → fault → recovery на `run-command`, `discharge` остаётся самостоятельной диагностикой; 390px screenshot, без ошибок браузера и без команд из панели диагностики. Скрипт `scripts/cable-integrity-browser-test.ts` подключён к CI, но запуск IDE [в очереди](https://github.com/Pom4H/saturn-ide/actions/runs/38079778547), а `saturn-examples` [не стартовал](https://github.com/Pom4H/saturn-examples/actions/runs/38080005535); **успешная приёмка ещё не заявлена**.
 - [ ] Физические испытания на объекте: независимые измерения уровня на концах, отделение отказа контакта/клеммы/входа от повреждения жилы, маркировка кабеля и реальная привязка к монтажным планам.
 - [ ] Дальше: power voltage/current/protection, Ethernet/RS485 port health, TDR/OTDR distance, physical route attribution. Никаких фиктивных координат и процентных confidence.
 
