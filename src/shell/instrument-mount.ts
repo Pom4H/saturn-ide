@@ -1,13 +1,13 @@
-import type {Equipment,Point} from '../core';
+import {equipmentElevation,type Equipment,type Point,type Project} from '../core';
 import type {PhysicalRoute} from '../topology';
 
 /** The authored instrument identifies a pipe; the tap is projected onto its current routed path. */
-export function instrumentMount(equipment:Equipment,routes:readonly PhysicalRoute[]):{from:Point;to:Point}|null {
+export function instrumentMount(equipment:Equipment,routes:readonly PhysicalRoute[],project:Pick<Project,'systems'>={}):{from:Point;to:Point}|null {
   const pipeId=equipment.capabilities.instrument?.mount?.pipe;
   const route=routes.find(item=>item.id===pipeId&&item.kind==='pipe'&&item.valid);
   const diagram=equipment.capabilities.diagram;
   if(!route||!diagram||route.points.length<2)return null;
-  const from={x:equipment.x+diagram.width/2,y:equipment.y+diagram.height,z:equipment.z??0};
+  const from={x:equipment.x+diagram.width/2,y:equipment.y+diagram.height,z:equipmentElevation(project,equipment)};
   let to:Point|undefined,best=Infinity;
   for(let index=1;index<route.points.length;index++){
     const a=route.points[index-1]!,b=route.points[index]!;

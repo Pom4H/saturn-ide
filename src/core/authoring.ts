@@ -61,7 +61,7 @@ export function readAuthoringOperation(value:unknown):AuthoringOperation {
   if(value.kind==='endpoint'&&'end' in value&&(value.end==='from'||value.end==='to')&&'target' in value&&value.target&&typeof value.target==='object'){
     const t=value.target;
     if('device' in t&&'port' in t&&typeof t.device==='string'&&typeof t.port==='string')return {kind:'endpoint',id:value.id,end:value.end,target:{device:t.device,port:t.port}};
-    if('x' in t&&'y' in t&&'z' in t&&typeof t.x==='number'&&typeof t.y==='number'&&typeof t.z==='number'&&[t.x,t.y,t.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000)&&t.z>=0)return {kind:'endpoint',id:value.id,end:value.end,target:{x:t.x,y:t.y,z:t.z}};
+    if('x' in t&&'y' in t&&'z' in t&&typeof t.x==='number'&&typeof t.y==='number'&&typeof t.z==='number'&&[t.x,t.y,t.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000))return {kind:'endpoint',id:value.id,end:value.end,target:{x:t.x,y:t.y,z:t.z}};
   }
   throw new Error('Unsupported source operation');
 }

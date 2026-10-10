@@ -4,6 +4,8 @@ import {validateSchedule,type ReportSchedule} from './core/cron';
 import {validateScenarios,type Scenario} from './core/scenarios';
 export type {SimulationClock,SimulationClockState} from './core/simulation';
 export {scenario,wait,set,expectValue,expectRange,advance,validateScenarios,type Scenario,type ScenarioStep,type ScenarioWaitStep,type ScenarioCommandStep,type ScenarioExpectStep,type ScenarioAdvanceStep,type ScenarioExpectRangeStep} from './core/scenarios';
+import { routeReferences, systemElevation, equipmentElevation, type RouteWaypoint, type SystemPort, type SystemPortSpec, type SystemPorts } from './core/spatial';
+export { systemElevation, equipmentElevation, waypointPosition, systemPortPositions, type RoutePoint, type RoutePort, type RouteWaypoint, type SystemPort, type SystemPortSpec } from './core/spatial';
 export type Locale = 'en' | 'ru';
 /** Authored names and descriptions use ordinary strings. The locale map is accepted
  * only for compatibility with existing projects; UI language is a Shell concern. */
@@ -114,7 +116,8 @@ export interface Position {
   x: number;
   /** @ru Координата Y схемы. @en Diagram Y coordinate. */
   y: number;
-  /** @ru Высота основания, в единицах схемы. @en Base elevation in diagram units. */
+  /** @ru Высота основания над полом своей системы, в единицах схемы; без системы — абсолютная.
+   * @en Base elevation relative to the owning system floor, in diagram units; absolute when ungrouped. */
   z?: number;
   label: Text;
   /** Physical placement is independent from process-diagram x/y. */
@@ -241,14 +244,14 @@ export interface FreeEnd<M extends Medium=Medium,F extends string=string,R exten
 }
 export type ConnectionEnd<M extends Medium=Medium,F extends string=string,R extends Role=Role> = AttachedEnd<M,F,R> | FreeEnd<M,F,R>;
 export function isAttached<M extends Medium,F extends string,R extends Role>(end:ConnectionEnd<M,F,R>):end is AttachedEnd<M,F,R> { return !('kind' in end); }
-/** @ru Свободный конец трубы или кабеля. z=0 — пол. Не занимает порт и не образует связь с оборудованием.
- * @en A loose pipe/cable end. z=0 is the floor. It occupies no port and creates no equipment dependency. */
+/** @ru Свободный конец трубы или кабеля. Координаты мировые; z=0 — проектный ноль, подвал допускает z<0. Не занимает порт и не образует связь с оборудованием.
+ * @en A loose pipe/cable end. Coordinates are world-space; z=0 is the project datum and basement elevations may be negative. It occupies no port and creates no equipment dependency. */
 export function free<const M extends Medium,const F extends string,const R extends Role>(connector:ConnectionEnd<M,F,R>|Terminal<M,F,R>,position:Point):FreeEnd<M,F,R> {
-  if(![position.x,position.y,position.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000)||position.z<0)throw new Error('Invalid free end position');
+  if(![position.x,position.y,position.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000))throw new Error('Invalid free end position');
   return {kind:'free',terminal:'terminal' in connector?connector.terminal:connector,position:{...position}};
 }
 export const endLabel=(end:ConnectionEnd):string=>isAttached(end)?`${end.device}.${end.port}`:`free(${end.position.x}, ${end.position.y}, ${end.position.z})`;
-export interface Connection { id:string; from:ConnectionEnd; to:ConnectionEnd; via?:readonly {x:number;y:number}[] }
+export interface Connection { id:string; from:ConnectionEnd; to:ConnectionEnd; via?:readonly RouteWaypoint[] }
 export const isConnected=(edge:Connection):boolean=>isAttached(edge.from)&&isAttached(edge.to);
 export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number> }
 export interface Cable extends Connection { kind:'cable'; signal?:Signal }
@@ -256,8 +259,8 @@ type FluidFrom<F extends string=string> = ConnectionEnd<'fluid',F,'source'|'pass
 type FluidTo<F extends string=string> = ConnectionEnd<'fluid',F,'sink'|'passive'>;
 /** @ru Труба с жидкостью. Соединяет совместимые порты; source/sink задают направление оборудования, passive допускает явные fitting-узлы вроде tee().
  * @en Liquid pipe. Connect compatible ports; equipment source/sink keep direction while passive ends allow explicit fittings such as tee(). */
-export function pipe<const F extends string,const S extends Signal<number>=Signal<number>>(id:string, options:{from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:Connection['via']}):Pipe & {flow:S} {
-  return {...options,id,kind:'pipe'};
+export function pipe<const F extends string,const S extends Signal<number>=Signal<number>>(id:string, options:{from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:readonly RouteWaypoint<'fluid'>[]}):Pipe & {flow:S} {
+  return {...options,...(options.via?{via:routeReferences(options.via)}:{}),id,kind:'pipe'};
 }
 /** @ru Кабель управления, питания или шины. Не труба и не зависимость вычисляемого сигнала.
  * @en Control, power or bus cable. Not a pipe and not a computed-signal dependency. */
@@ -268,8 +271,8 @@ export function migrateLegacyConnection<T extends {from:ConnectionEnd;to:Connect
   if((unplugged!=='from'&&unplugged!=='to')||!looseEnd)throw new Error('Both unplugged and looseEnd are required for legacy cable migration');
   return {...rest,[unplugged]:free(rest[unplugged],looseEnd)};
 }
-export function cable<const M extends Exclude<Medium,'fluid'>, const F extends string,const S extends Signal=Signal>(id:string, options:{from:ConnectionEnd<M,F,'source'|'passive'>;to:ConnectionEnd<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:S;via?:Connection['via'];unplugged?:'from'|'to';looseEnd?:Point}):Cable & {signal?:S} {
-  return {...migrateLegacyConnection(options),id,kind:'cable'};
+export function cable<const M extends Exclude<Medium,'fluid'>, const F extends string,const S extends Signal=Signal>(id:string, options:{from:ConnectionEnd<M,F,'source'|'passive'>;to:ConnectionEnd<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:S;via?:readonly RouteWaypoint<NoInfer<M>>[];unplugged?:'from'|'to';looseEnd?:Point}):Cable & {signal?:S} {
+  return {...migrateLegacyConnection(options),...(options.via?{via:routeReferences(options.via)}:{}),id,kind:'cable'};
 }
 export interface Alarm { id:string; label:Text; signal:Signal<number>; above:number; hysteresis?:number }
 /** @ru Пороговая тревога с гистерезисом и квитированием. @en High-limit alarm with hysteresis and acknowledgement. */
@@ -301,8 +304,28 @@ export interface MonitoringMetric {
 }
 export interface MonitoringGroup { readonly id:string; readonly label:Text; readonly description?:Text; readonly metrics:readonly MonitoringMetric[] }
 /** Physical installation hierarchy, independent of monitoring dashboards. */
-export interface System { readonly id:string; readonly label:Text; readonly parent?:string }
-export function system(id:string,label:Text,parent?:string):System {return {id,label,...(parent?{parent}:{})};}
+export interface System {
+  readonly id:string; readonly label:Text; readonly parent?:string;
+  /** @ru Отметка пола относительно родительской системы (0 по умолчанию), в единицах схемы.
+   * @en Floor elevation relative to the parent system (default 0), in diagram units. */
+  readonly z?:number;
+  /** @ru Именованные проходы труб и кабелей; ссылки используются в via.
+   * @en Named pipe/cable passages, referenced from via. */
+  readonly ports?:Readonly<Record<string,SystemPort>>;
+}
+/** @ru Помещение/система. Z суммируется по иерархии; проходы не создают соединения между трассами.
+ * @en Room/system. Z accumulates through the hierarchy; shared passages do not join routes. */
+export function system<const I extends string,const P extends Readonly<Record<string,SystemPortSpec>>={}>(id:I,options:{label:Text;parent?:string;z?:number;ports?:P}):Omit<System,'id'|'ports'> & {readonly id:I;readonly ports:SystemPorts<P,I>};
+/** @ru Прежняя форма записи остаётся совместимой. @en Legacy label/parent form remains supported. */
+export function system(id:string,label:Text,parent?:string):System;
+export function system(id:string,labelOrOptions:Text|{label:Text;parent?:string;z?:number;ports?:Readonly<Record<string,SystemPortSpec>>},parent?:string):System {
+  if(typeof labelOrOptions==='string'||!('label' in labelOrOptions))return {id,label:labelOrOptions,...(parent?{parent}:{})};
+  const {ports,...options}=labelOrOptions;
+  requireThat(ports===undefined||!!ports&&typeof ports==='object'&&!Array.isArray(ports),'SYSTEM_PORTS','Invalid system ports','Неверные проходы системы');
+  return {id,...options,ports:Object.fromEntries(Object.entries(ports??{}).map(([port,spec])=>[
+    port,{kind:'route-port' as const,system:id,port,medium:spec.medium,position:{x:spec.x,y:spec.y,z:spec.z},...(spec.label===undefined?{}:{label:spec.label})},
+  ]))};
+}
 /** Project-owned kits export these plain declarations and the project imports them explicitly. */
 export function monitorMetric<const S extends Signal<number>>(id:string,source:S,options:Omit<MonitoringMetric,'id'|'signal'>={}):MonitoringMetric & {signal:S} {
   return {id,signal:source,...options};
@@ -451,11 +474,20 @@ export function validateProject(p:Project):void {
   const named=(value:unknown):value is Text=>typeof value==='string'&&!!value.trim()||!!value&&typeof value==='object'&&!Array.isArray(value)&&['en','ru'].every(locale=>typeof (value as Record<string,unknown>)[locale]==='string'&&!!String((value as Record<string,unknown>)[locale]).trim());
   for(const group of p.systems??[]){
     requireThat(!!group&&typeof group.id==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(group.id)&&!systems.has(group.id)&&named(group.label)&&(group.parent===undefined||typeof group.parent==='string'),'SYSTEM_SHAPE',`Invalid/duplicate system ${group?.id}`,`Неверная/повторяющаяся система ${group?.id}`);
+    requireThat(group.z===undefined||Number.isFinite(group.z)&&Math.abs(group.z)<=15000,'SYSTEM_Z',`Invalid floor elevation ${group.id}`,`Неверная отметка пола ${group.id}`);
+    requireThat(group.ports===undefined||!!group.ports&&typeof group.ports==='object'&&!Array.isArray(group.ports),'SYSTEM_PORTS',`Invalid passages ${group.id}`,`Неверные проходы ${group.id}`);
+    for(const [name,port] of Object.entries<SystemPort>(group.ports??{}))requireThat(
+      /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(name)&&!(name in Object.prototype)&&!!port&&port.kind==='route-port'&&port.system===group.id&&port.port===name
+      &&['fluid','control','power','bus'].includes(port.medium)&&!!port.position&&[port.position.x,port.position.y,port.position.z].every(v=>Number.isFinite(v)&&Math.abs(v)<=15000)
+      &&(port.label===undefined||named(port.label)),
+      'SYSTEM_PORT',`Invalid passage ${group.id}.${name}`,`Неверный проход ${group.id}.${name}`);
     systems.set(group.id,group);
   }
   for(const group of systems.values()){
     const seen=new Set([group.id]);let parent=group.parent;
     while(parent!==undefined){requireThat(systems.has(parent)&&!seen.has(parent),'SYSTEM_HIERARCHY',`Missing/cyclic system parent ${group.id}`,`Отсутствует/зациклен родитель системы ${group.id}`);seen.add(parent);parent=systems.get(parent)!.parent;}
+    const elevation=systemElevation(p,group.id);
+    requireThat(Number.isFinite(elevation)&&Math.abs(elevation)<=15000&&Object.values(group.ports??{}).every(port=>Math.abs(elevation+port.position.z)<=15000),'SYSTEM_Z',`System elevation out of bounds ${group.id}`,`Отметка системы вне диапазона ${group.id}`);
   }
   for(const item of p.enclosures??[]){
     requireThat(!!item&&typeof item.id==='string'&&/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(item.id)&&!enclosures.has(item.id)&&named(item.label)
@@ -485,6 +517,7 @@ export function validateProject(p:Project):void {
   for(const e of p.equipment){
     requireThat([e.x,e.y,e.z??0].every(v=>Number.isFinite(v)&&Math.abs(v)<=15000),'POSITION',`Invalid position ${e.id}`,`Неверная позиция ${e.id}`);
     requireThat(e.system===undefined||systems.has(e.system),'SYSTEM_MEMBERSHIP',`Unknown system for ${e.id}`,`Неизвестная система для ${e.id}`);
+    requireThat(Math.abs(equipmentElevation(p,e))<=15000,'POSITION',`Equipment elevation out of bounds ${e.id}`,`Отметка оборудования вне диапазона ${e.id}`);
     requireThat(/^[-a-zA-Z0-9_.]+$/.test(e.kind),'EQUIPMENT_CLASS',`Invalid equipment class ${e.kind}`,`Неверный класс оборудования ${e.kind}`);
     requireThat(typeof e.icon==='string'&&e.icon.length>0,'EQUIPMENT_ICON','Invalid equipment icon','Неверная иконка оборудования');
     for(const port of Object.values(e.ports)){
@@ -518,7 +551,7 @@ export function validateProject(p:Project):void {
     }
     const resolve=(end:ConnectionEnd)=>{
       if(!isAttached(end)){
-        requireThat(end.kind==='free'&&end.position&&[end.position.x,end.position.y,end.position.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000)&&end.position.z>=0&&end.terminal,'CONNECTION_FREE_END',`Invalid free end ${edge.id}`,`Неверный свободный конец ${edge.id}`);
+        requireThat(end.kind==='free'&&end.position&&[end.position.x,end.position.y,end.position.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000)&&end.terminal,'CONNECTION_FREE_END',`Invalid free end ${edge.id}`,`Неверный свободный конец ${edge.id}`);
         validateTerminal(end.terminal, `${edge.id}.free`);
         return end.terminal;
       }
@@ -530,7 +563,15 @@ export function validateProject(p:Project):void {
     requireThat((!a.valueType||!b.valueType||a.valueType===b.valueType)&&(!a.unit||!b.unit||a.unit===b.unit),'PORT_QUANTITY',`Incompatible quantities ${edge.id}`,`Несовместимые величины ${edge.id}`);
     requireThat(a.role!=='sink'&&b.role!=='source','PORT_DIRECTION',`Wrong direction ${edge.id}`,`Неверное направление ${edge.id}`);
     for(const [which,end,t] of [['from',edge.from,a],['to',edge.to,b]] as const){if(!isAttached(end))continue;const key=`${end.device}.${end.port}`,n=(degree.get(key)??0)+1;degree.set(key,n);requireThat(n<=t.max,'PORT_OCCUPIED',`Port occupied ${key}`,`Порт занят ${key}`);}
-    requireThat(!edge.via||edge.via.length<=16&&edge.via.every(v=>[v.x,v.y].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000)),'ROUTE_POINTS','Invalid routing points','Неверные точки трассы');
+    requireThat(edge.via===undefined||Array.isArray(edge.via)&&edge.via.length<=16,'ROUTE_POINTS','Invalid routing points','Неверные точки трассы');
+    for(const waypoint of edge.via??[]){
+      requireThat(!!waypoint&&typeof waypoint==='object'&&!Array.isArray(waypoint),'ROUTE_POINTS','Invalid routing point','Неверная точка трассы');
+      if(waypoint.kind==='route-port'){
+        const port=systems.get(waypoint.system)?.ports?.[waypoint.port];
+        requireThat(!!port&&port.kind==='route-port','ROUTE_PORT_UNKNOWN',`Unknown passage ${waypoint.system}.${waypoint.port}`,`Неизвестный проход ${waypoint.system}.${waypoint.port}`);
+        requireThat(port.medium===a.medium&&waypoint.medium===port.medium,'ROUTE_PORT_MEDIUM',`Incompatible passage on ${edge.id}`,`Несовместимая среда прохода ${edge.id}`);
+      }else requireThat(waypoint.kind===undefined&&[waypoint.x,waypoint.y,waypoint.z??0].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000),'ROUTE_POINTS','Invalid XYZ routing point','Неверная XYZ-точка трассы');
+    }
     if(edge.kind==='pipe')ref(edge.flow,'number');else if(edge.signal){
       ref(edge.signal);
       requireThat((!a.valueType||a.valueType===typeof edge.signal.initial)&&(!b.valueType||b.valueType===typeof edge.signal.initial),'PORT_VALUE_TYPE',`Wrong signal type on ${edge.id}`,`Неверный тип сигнала на ${edge.id}`);

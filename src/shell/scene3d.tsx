@@ -3,8 +3,8 @@ import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { isAttached, text, type ConnectionEnd, cableAppearance, equipmentSignal, interfaceProfile, type Endpoint, type Equipment, type Point } from '../core';
-import { anchor, connectionTip } from '../topology';
+import { equipmentElevation, systemPortPositions, isAttached, text, type ConnectionEnd, cableAppearance, equipmentSignal, interfaceProfile, type Endpoint, type Equipment, type Point } from '../core';
+import { anchor, connectionTip, routingWaypoints } from '../topology';
 import { geometryRevision } from './model/geometry-revision';
 import { connectionHandleVisible } from './model/connection-picking';
 import { systemLayout, systemTitleLines } from '../core/system-layout';
@@ -112,21 +112,31 @@ export default function Scene3D(props:SceneProps){
     const buildGroups=()=>{
       const groups=systemLayout(current.current.project);node.dataset.systemCount=String(groups.length);
       for(const group of groups){
-        const elevation=-1.8+Math.min(group.depth,8)*.08;
+        const elevation=group.z-1.8+Math.min(group.depth,8)*.08;
         const plate=mesh(groupWorld,new T.PlaneGeometry(group.width,group.height),new T.MeshBasicMaterial({color:group.depth?0xe7eff2:0xeef3f5,transparent:true,opacity:.82,depthWrite:false,side:T.DoubleSide}),group.x+group.width/2,elevation,group.y+group.height/2);
         resources.materials.add(plate.material as T.Material);plate.rotation.x=-Math.PI/2;plate.receiveShadow=false;plate.castShadow=false;plate.userData.system=group.id;
         const points=[new T.Vector3(group.x,elevation+.02,group.y),new T.Vector3(group.x+group.width,elevation+.02,group.y),new T.Vector3(group.x+group.width,elevation+.02,group.y+group.height),new T.Vector3(group.x,elevation+.02,group.y+group.height)];
         const borderGeometry=new T.BufferGeometry().setFromPoints(points),borderMaterial=new T.LineBasicMaterial({color:group.id===current.current.systemFocus?0x17879a:0xa8bec8});resources.geometries.add(borderGeometry);resources.materials.add(borderMaterial);groupBorders.set(group.id,borderMaterial);groupWorld.add(new T.LineLoop(borderGeometry,borderMaterial));
         const canvas=document.createElement('canvas');canvas.width=Math.max(428,Math.ceil(Math.min(group.width,720)*2));canvas.height=132;
-        const context=canvas.getContext('2d');if(!context)continue;context.scale(2,2);context.fillStyle='#65808d';context.font='11px monospace';context.fillText(`${group.id.toUpperCase()} · ${group.count}`,18,20);context.fillStyle='#325c6d';context.font='600 17px system-ui';
+        const context=canvas.getContext('2d');if(!context)continue;context.scale(2,2);context.fillStyle='#65808d';context.font='11px monospace';context.fillText(`${group.id.toUpperCase()} · ${group.count}${group.z?` · z=${group.z}`:''}`,18,20);context.fillStyle='#325c6d';context.font='600 17px system-ui';
         systemTitleLines(text(group.label,current.current.locale),group.width).forEach((line,index)=>context.fillText(line,18,42+index*20));
         const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;resources.textures.add(texture);
         const titleMaterial=new T.MeshBasicMaterial({map:texture,transparent:true,depthWrite:false,side:T.DoubleSide});resources.materials.add(titleMaterial);
         const title=mesh(groupWorld,new T.PlaneGeometry(canvas.width/2,66),titleMaterial,group.x+canvas.width/4,elevation+.04,group.y+33);title.rotation.x=-Math.PI/2;title.receiveShadow=false;title.castShadow=false;
       }
+      const passages=systemPortPositions(current.current.project);
+      for(const {port,point} of passages){
+        // A wireframe opening marks a route constraint, not an equipment socket.
+        const material=new T.MeshBasicMaterial({color:0x17879a,wireframe:true});resources.materials.add(material);
+        const marker=mesh(groupWorld,new T.BoxGeometry(22,22,22),material,point.x,point.z,point.y);
+        marker.name=`passage:${port.system}.${port.port}`;marker.castShadow=marker.receiveShadow=false;
+        marker.userData.routePort=`${port.system}.${port.port}`;
+      }
+      node.dataset.systemFloors=JSON.stringify(groups.map(group=>({id:group.id,z:group.z})));
+      node.dataset.routePorts=JSON.stringify(passages.map(({port,point})=>({id:`${port.system}.${port.port}`,...point})));
     };
     const buildEquipment=(e:Equipment)=>{
-      const root=new T.Group();root.position.set(e.x,(e.z??0)+(e.capabilities.instrument?.mount?42:0),e.y);root.userData.equipment=e.id;roots.set(e.id,root);equipmentWorld.add(root);
+      const root=new T.Group();root.position.set(e.x,equipmentElevation(current.current.project,e)+(e.capabilities.instrument?.mount?42:0),e.y);root.userData.equipment=e.id;roots.set(e.id,root);equipmentWorld.add(root);
       if(e.capabilities.instrument){
         const instrument=e.capabilities.instrument,diagram=e.capabilities.diagram!,form=instrument.form;
         root.userData.instrument=form;
@@ -314,10 +324,14 @@ export default function Scene3D(props:SceneProps){
         node.dataset.equipmentBuilds=String(++equipmentBuilds);
         node.dataset.instrumentCount=String(p.project.equipment.filter(e=>!!e.capabilities.instrument).length);
       }
-      const nextGroups=JSON.stringify([systemLayout(p.project),p.locale]);if(nextGroups!==groupRevision){groupRevision=nextGroups;groupBorders.clear();focusedSystem=undefined;dispose(groupResources);groupWorld.clear();resources=groupResources;buildGroups();}
+      const nextGroups=JSON.stringify([systemLayout(p.project),systemPortPositions(p.project),p.locale]);if(nextGroups!==groupRevision){groupRevision=nextGroups;groupBorders.clear();focusedSystem=undefined;dispose(groupResources);groupWorld.clear();resources=groupResources;buildGroups();}
       // Pose-only edits retain equipment meshes, display drivers, textures and animation state.
-      for(const e of p.project.equipment)roots.get(e.id)?.position.set(e.x,(e.z??0)+(e.capabilities.instrument?.mount?42:0),e.y);
-      const nextRoutes=JSON.stringify([p.routes,p.project.pipes,p.project.cables,p.interaction,p.cablePreview?.id]);
+      for(const e of p.project.equipment)roots.get(e.id)?.position.set(e.x,equipmentElevation(current.current.project,e)+(e.capabilities.instrument?.mount?42:0),e.y);
+      node.dataset.equipmentElevations=JSON.stringify([...roots].map(([id,root])=>({id,z:root.position.y})));
+      // The supporting world floor follows the lowest declared level, including basements.
+      const groundZ=Math.min(0,...systemLayout(p.project).map(group=>group.z),...p.project.equipment.map(e=>equipmentElevation(p.project,e)))*.01;
+      floor.position.y=groundZ-.02;grid.position.y=groundZ-.015;
+      const nextRoutes=JSON.stringify([p.routes,p.project.pipes,p.project.cables,p.project.systems,p.interaction,p.cablePreview?.id]);
       if(nextRoutes===routeRevision)return;
       routeRevision=nextRoutes;dispose(routeResources);routeWorld.clear();plugMeshes=[];resources=routeResources;
       node.dataset.routeBuilds=String(++routeBuilds);
@@ -332,7 +346,7 @@ export default function Scene3D(props:SceneProps){
         const cableMaterial=cable?new T.MeshStandardMaterial({color:cableAppearance(cable.from.terminal.medium as 'control'|'power'|'bus',cable.from.terminal.family).color,roughness:.65}):wire;
         if(cable)resources.materials.add(cableMaterial);
         const m=route.valid?(route.kind==='pipe'?pipeShell:cableMaterial):route.id===p.cablePreview?.id?pending:invalid;
-        const rounded=route.valid?roundedRoute(points,route.kind==='pipe'?12:6):null;
+        const rounded=route.valid?roundedRoute(points,route.kind==='pipe'?12:6,pipe||cable?routingWaypoints(p.project,(pipe??cable)!).map(vector):[]):null;
         if(rounded&&rounded.path.curves.length){
           const path=rounded.path;if(route.kind==='pipe')pipeBends+=rounded.bends;
           const segments=Math.max(24,Math.ceil(path.getLength()/4));
@@ -360,9 +374,9 @@ export default function Scene3D(props:SceneProps){
       }
       let mountedInstruments=0;
       for(const equipment of p.project.equipment){
-        const tap=instrumentMount(equipment,routes);if(!tap)continue;
+        const tap=instrumentMount(equipment,routes,p.project);if(!tap)continue;
         const centreZ=equipment.y+(equipment.capabilities.diagram?.height??0)/2;
-        const foot=new T.Vector3(tap.from.x,(equipment.z??0)+42,centreZ),raised=new T.Vector3(foot.x,tap.to.z,foot.z),junction=vector(tap.to);
+        const foot=new T.Vector3(tap.from.x,equipmentElevation(p.project,equipment)+42,centreZ),raised=new T.Vector3(foot.x,tap.to.z,foot.z),junction=vector(tap.to);
         tube(routeWorld,foot,raised,3.5,metal);tube(routeWorld,raised,junction,3.5,metal);
         mesh(routeWorld,new T.SphereGeometry(7,16,10),metal,junction.x,junction.y,junction.z);
         mountedInstruments++;
@@ -381,7 +395,7 @@ export default function Scene3D(props:SceneProps){
       controls.target.copy(center);camera.position.copy(center).addScaledVector(direction,distance);camera.far=Math.max(200,distance+size.length()*3);camera.updateProjectionMatrix();controls.update();
       node.dataset.focusedRoute=id;node.dataset.focusedRoutePart=free?'free-end':'connection';
     };
-    fit.current=()=>{if(dirty)synchronize();world.updateWorldMatrix(true,true);const box=new T.Box3();const group=systemLayout(current.current.project).find(item=>item.id===current.current.systemFocus);if(group)box.set(new T.Vector3((group.x-28)*.01,0,(group.y-28)*.01),new T.Vector3((group.x+group.width+28)*.01,2.5,(group.y+group.height+28)*.01));else{for(const root of roots.values())box.expandByObject(root);box.expandByObject(routeWorld);}if(box.isEmpty())return;const center=box.getCenter(new T.Vector3()),radius=box.getSize(new T.Vector3()).length()/2;
+    fit.current=()=>{if(dirty)synchronize();world.updateWorldMatrix(true,true);const box=new T.Box3();const group=systemLayout(current.current.project).find(item=>item.id===current.current.systemFocus);if(group)box.set(new T.Vector3((group.x-28)*.01,group.z*.01,(group.y-28)*.01),new T.Vector3((group.x+group.width+28)*.01,group.z*.01+2.5,(group.y+group.height+28)*.01));else{for(const root of roots.values())box.expandByObject(root);box.expandByObject(routeWorld);if(!roots.size||systemPortPositions(current.current.project).length)box.expandByObject(groupWorld);}if(box.isEmpty())return;const center=box.getCenter(new T.Vector3()),radius=box.getSize(new T.Vector3()).length()/2;
       if(node.clientWidth&&node.clientHeight)camera.aspect=node.clientWidth/node.clientHeight;
       const vertical=T.MathUtils.degToRad(camera.fov),horizontal=2*Math.atan(Math.tan(vertical/2)*camera.aspect);
       const direction=new T.Vector3(-.55,.85,1).normalize(),right=new T.Vector3(0,1,0).cross(direction).normalize(),up=direction.clone().cross(right).normalize();
@@ -434,7 +448,7 @@ export default function Scene3D(props:SceneProps){
       }
       let part:T.Object3D|null=hit??null,port=false,button=false;while(part){if(part.userData.port)port=true;if(part.userData.button)button=true;if(part.userData.equipment)break;part=part.parent;}
       if(!part)part=hitEquipment(e);if(!part||port||button)return;const id=String(part.userData.equipment),equipment=current.current.project.equipment.find(item=>item.id===id);if(!equipment)return;
-      const origin=ground(e,(equipment.z??0)*.01);if(!origin)return;gesture={kind:'equipment',pointer:e.pointerId,id,x:equipment.x,y:equipment.y,origin,moved:false,started:false};capture(e);
+      const origin=ground(e,equipmentElevation(current.current.project,equipment)*.01);if(!origin)return;gesture={kind:'equipment',pointer:e.pointerId,id,x:equipment.x,y:equipment.y,origin,moved:false,started:false};capture(e);
     };
     const pointerMove=(e:globalThis.PointerEvent)=>{if(!gesture||gesture.pointer!==e.pointerId)return;
       if(gesture.kind==='plug'){
@@ -442,7 +456,7 @@ export default function Scene3D(props:SceneProps){
         let point:T.Vector3|null;
         if(e.shiftKey){
           const scale=2*camera.position.distanceTo(controls.target)*Math.tan(T.MathUtils.degToRad(camera.fov)/2)/Math.max(1,node.clientHeight);
-          plug.height=Math.max(0,Math.min(150,plug.height-(e.clientY-plug.lastY)*scale));point=vector({...plug.point,z:plug.height*100}).multiplyScalar(.01);
+          plug.height=Math.max(-150,Math.min(150,plug.height-(e.clientY-plug.lastY)*scale));point=vector({...plug.point,z:plug.height*100}).multiplyScalar(.01);
         }else{
           point=ground(e,plug.height);
           if(point){if(plug.vertical)plug.offset.copy(vector(plug.point).multiplyScalar(.01).sub(point));point.add(plug.offset);point.y=plug.height;}
@@ -477,7 +491,8 @@ export default function Scene3D(props:SceneProps){
       }
       const g=gesture;if(Math.hypot(e.clientX-down[0]!,e.clientY-down[1]!)<4&&!g.started)return;
       if(!g.started){g.started=!!current.current.begin?.(g.id);if(!g.started){gesture=null;release(g.pointer);return;}}
-      const point=ground(e,(current.current.project.equipment.find(item=>item.id===g.id)?.z??0)*.01);if(!point)return;g.moved=true;
+      const equipment=current.current.project.equipment.find(item=>item.id===g.id);if(!equipment)return;
+      const point=ground(e,equipmentElevation(current.current.project,equipment)*.01);if(!point)return;g.moved=true;
       current.current.move?.(g.id,Math.round(g.x+(point.x-g.origin.x)*100),Math.round(g.y+(point.z-g.origin.z)*100));
     };
     const pointerUp=(e:globalThis.PointerEvent)=>{

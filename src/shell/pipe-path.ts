@@ -1,7 +1,7 @@
 import type { Point } from '../core';
 
 /** Round only the displayed centerline; the authored orthogonal route stays exact. */
-export function roundedPipePath(points:readonly Point[],radius=8):string {
+export function roundedPipePath(points:readonly Point[],radius=8,fixed:readonly Point[]=[]):string {
   // A height change projects to the same SVG point. Remove it before looking
   // for corners, otherwise both ends of the riser hide a real planar turn.
   points=points.filter((point,index)=>!index||point.x!==points[index-1]!.x||point.y!==points[index-1]!.y);
@@ -10,6 +10,7 @@ export function roundedPipePath(points:readonly Point[],radius=8):string {
   let path=`M${number(points[0]!.x)} ${number(points[0]!.y)}`;
   for(let i=1;i<points.length-1;i++){
     const before=points[i-1]!,corner=points[i]!,after=points[i+1]!;
+    if(fixed.some(point=>point.x===corner.x&&point.y===corner.y)){path+=`L${number(corner.x)} ${number(corner.y)}`;continue;}
     const incoming=Math.hypot(corner.x-before.x,corner.y-before.y);
     const outgoing=Math.hypot(after.x-corner.x,after.y-corner.y);
     if(!incoming||!outgoing)continue;

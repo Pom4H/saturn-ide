@@ -1,9 +1,9 @@
-import type { Project, Text } from '../core';
+import { systemElevation, type Project, type Text } from '../core';
 
 /** Presentation geometry derived from authored systems and equipment positions. */
 export interface SystemEnvelope {
   readonly id:string; readonly label:Text; readonly parent?:string; readonly depth:number;
-  readonly x:number; readonly y:number; readonly width:number; readonly height:number; readonly count:number;
+  readonly x:number; readonly y:number; readonly z:number; readonly width:number; readonly height:number; readonly count:number;
 }
 
 export function systemLayout(project:Pick<Project,'systems'|'equipment'>):SystemEnvelope[] {
@@ -16,7 +16,7 @@ export function systemLayout(project:Pick<Project,'systems'|'equipment'>):System
     const definition=byId.get(id)!;
     const children=(byParent.get(id)??[]).map(child=>visit(child.id,depth+1)).filter((group):group is SystemEnvelope=>!!group);
     const members=equipmentBySystem.get(id)??[];
-    const boxes=[...children,...members.map(equipment=>({
+    const boxes=[...children,...Object.values(definition.ports??{}).map(port=>({x:port.position.x-8,y:port.position.y-8,width:16,height:16})),...members.map(equipment=>({
       x:equipment.x-8,y:equipment.y-48,
       width:(equipment.capabilities.diagram?.width??160)+16,
       height:(equipment.capabilities.diagram?.height??150)+76,
@@ -25,7 +25,7 @@ export function systemLayout(project:Pick<Project,'systems'|'equipment'>):System
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
     for(const box of boxes){minX=Math.min(minX,box.x);minY=Math.min(minY,box.y);maxX=Math.max(maxX,box.x+box.width);maxY=Math.max(maxY,box.y+box.height);}
     const x=minX-24,y=minY-76;
-    const group:SystemEnvelope={id,label:definition.label,parent:definition.parent,depth,x,y,width:Math.max(214,maxX-x+24),height:maxY-y+24,count:members.length+children.reduce((sum,child)=>sum+child.count,0)};
+    const group:SystemEnvelope={id,label:definition.label,parent:definition.parent,depth,x,y,z:systemElevation(project,id),width:Math.max(214,maxX-x+24),height:maxY-y+24,count:members.length+children.reduce((sum,child)=>sum+child.count,0)};
     result.push(group);return group;
   };
   for(const root of byParent.get(undefined)??[])visit(root.id,0);
