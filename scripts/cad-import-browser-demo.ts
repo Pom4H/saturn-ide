@@ -89,6 +89,24 @@ try{
   await pace(1200);await screenshot('06-synced-tray.png');
   checks.push('CAD revision updates only CAD-owned source; identity and un-applied PLC state stay unchanged');
 
+  // The next normal engineering action is placing a real typed device.
+  await page.locator('[data-action="add-equipment"]').click();
+  await page.getByRole('dialog',{name:'Новое устройство'}).waitFor();
+  await page.locator('.creation-dialog input[pattern]').fill('P-01');
+  await page.locator('.creation-dialog input[required]:not([pattern])').fill('Насос подачи');
+  await page.getByRole('button',{name:'Предпросмотр',exact:true}).click();
+  await page.locator('.creation-preview').waitFor();
+  await screenshot('07-device-preview.png');await pace(850);
+  await page.getByRole('button',{name:'Создать устройство',exact:true}).click();
+  await seek(()=>project().equipment.some(e=>e.id==='P-01'),'Engineered pump was not created from typed source');
+  await page.getByRole('dialog',{name:'Новое устройство'}).waitFor({state:'hidden'});
+  // Device creation may open its authored file; return to the same physical object.
+  await page.getByRole('navigation',{name:'Рабочие области'}).getByRole('button',{name:'Объект',exact:true}).click();
+  await page.getByRole('button',{name:'2D',exact:true}).click();
+  await page.locator('[data-equipment="P-01"]').waitFor();
+  await pace(800);await screenshot('08-equipment-on-cad.png');
+  checks.push('Engineer adds actual typed pump equipment after importing CAD, without flattening its reference networks');
+
   assert.deepEqual(app.state().problems,[]);
   assert.deepEqual(errors,[]);
 }catch(error){
