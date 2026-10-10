@@ -99,6 +99,18 @@ jobs:
       - name: Importer browser acceptance
         run: bun scripts/importer-browser-test.ts
         working-directory: saturn-ide
+      - name: Operator pipe leak HMI browser acceptance
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        timeout-minutes: 3
+        run: timeout --kill-after=10s 150s bun scripts/pipe-leak-browser-test.ts
+        working-directory: saturn-ide
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: operator-pipe-leak-evidence
+          path: saturn-ide/artifacts/pipe-leak-operator/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Physical editor browser acceptance
         timeout-minutes: 3
         run: timeout --kill-after=10s 150s bun scripts/physical-interaction-browser-test.ts
