@@ -1,6 +1,6 @@
 # CAD следующего поколения: конкурентная карта и инженерные ориентиры для Saturn IDE
 
-Дата среза: **2026-10-10**. Назначение: контекст для принятия архитектурных и UX-решений, **не спецификация готовой CAD-функции**. Область: mechanical/code-first CAD, geometry kernels, ECAD, BIM/plant, цифровые двойники и industrial engineering IDE. «Все конкуренты» здесь означает **основные проверенные классы и репрезентативные продукты**, не исчерпывающий мировой реестр.
+Дата среза: **2026-10-10**. Назначение: контекст для принятия архитектурных и UX-решений, **не спецификация готовой CAD-функции**. Область: mechanical/code-first CAD, geometry kernels, ECAD, BIM/plant, цифровые двойники industrial engineering IDE и физические системы Modelica. «Все конкуренты» здесь означает **основные проверенные классы и репрезентативные продукты**, не исчерпывающий мировой реестр.
 
 ## 0. Как проверяли
 
@@ -22,6 +22,7 @@ Saturn конкурирует **не** с механическим CAD по ск
 3. **tscircuit/atopile**: типизированные инженерные связи, units, checks, промежуточные модели и вывод разных артефактов.
 4. **Speckle/Autodesk Tandem**: BIM/объект и эксплуатационные данные в общем навигационном контексте, provenance внешних моделей.
 5. **vcad/replicad/Truck**: готовые геометрические ядра и headless/agent APIs; при этом **не переносить выбор kernel в ядро Saturn**.
+6. **Modelica/4diac**: физические соединения с математической семантикой и приложение→устройство→deployment уже давно существуют; сравнивать полные инженерные сценарии.
 
 **Рекомендация**: сначала безопасный BIM/IFC exchange и семантические CAD-параметры для оборудования, затем ограниченный параметрический CAD-плагин. Не писать собственный B-Rep и не создавать второй authored Project.
 
@@ -65,6 +66,17 @@ Saturn конкурирует **не** с механическим CAD по ск
 | Industrial IDE | [Ignition 8.3](https://docs.inductiveautomation.com/docs/8.3/platform/designer) | designer/gateway/tags/history/reports/Perspective | [VENDOR] прямой SCADA engineering соперник |
 | Industrial IDE | [CODESYS](https://www.codesys.com/products/visualization/) | PLC IEC 61131-3 + visualization, OPC UA | [VENDOR] PLC+HMI reference |
 | Industrial IDE | [TwinCAT 3](https://www.beckhoff.com/en-en/products/automation/twincat/) | IDE PLC/program + target runtime | [VENDOR] target/engineering reference |
+
+| Physical system modeling | [OpenModelica / OMEdit](https://github.com/OpenModelica/OpenModelica) | text+diagram, acausal connectors, equation compiler, FMI/SSP simulation | [README+STANDARD] глубинный architectural reference |
+| Industrial distributed IDE | [Eclipse 4diac](https://github.com/eclipse-4diac/4diac-ide) | IEC 61499: function blocks → devices → distributed deployment | [README+VENDOR] прямой engineering-lifecycle конкурент |
+| Implicit CAD | [nTop](https://www.ntop.com/field-driven-design/) | signed-distance fields, lattice, physics-driven geometry | [VENDOR] принципиально другая геометрическая репрезентация |
+| Computational engineering | [LEAP71 PicoGK/ShapeKernel](https://github.com/leap71/LEAP71_ShapeKernel) | код → предметные геометрические примитивы → implicit/voxels | [README] domain-first reference, Apache-2.0 |
+| Web-native BIM | [That Open / web-ifc](https://github.com/ThatOpen/engine_web-ifc) | IFC parser/geometry in JS/WASM, regression model corpus | [README] кандидат CAD-1 benchmark, MPL-2.0 |
+| Parametric visual algorithm | [Rhino Grasshopper](https://developer.rhino3d.com/en/guides/grasshopper/gh-algorithms-and-data-structures/) | dataflow graph/parametric node programming | [VENDOR] сравнение кодового и графового UX |
+| Computational geometry service | [Rhino Compute](https://github.com/mcneel/compute.rhino3d) | headless geometry REST server | [README] external compute reference |
+| Physical system proprietary | [Simscape](https://www.mathworks.com/products/simscape.html) | механика/электрика/гидравлика в причинно-нейтральных схемах | [VENDOR] simulation fidelity benchmark |
+| Electrical design | [Horizon EDA](https://github.com/horizon-eda/horizon) | PCB редактор/библиотеки и их UX | [README] смежный ECAD |
+| Electrical drawings | [QElectroTech](https://github.com/qelectrotech/qelectrotech-source-mirror) | схемы щитов/электросети, символы | [README] изобразительные конвенции |
 
 Отдельно: [Fornjot](https://github.com/hannobraun/fornjot) (архивирован; последний push 2026-06), [CADmium](https://github.com/CADmium-Co/CADmium) (архивирован; последний push 2025-09): полезны как исторические исследования, но **не** брать базой поддерживаемой интеграции.
 
@@ -125,6 +137,20 @@ Saturn конкурирует **не** с механическим CAD по ск
 - [Ignition 8.3 docs](https://docs.inductiveautomation.com/docs/8.3/platform/tags): Tags связывают Gateway, HMI, alarms, historian; [Designer](https://docs.inductiveautomation.com/docs/8.3/platform/designer) собирает интерфейс, history и reports. Это полноценный SCADA-продукт, а не «куча тегов без модели».
 
 **Урок**: Saturn должен доказать одну согласованную инженерную работу от PLC порта до операторского предупреждения/отчёта с ревизией. Нельзя продавать просто «единый источник сигналов»: зрелые конкуренты уже дают части этой ценности.
+
+## 3b. Конкуренты за семантическую модель физического объекта — важная вторая волна
+
+**OpenModelica + Modelica** — концептуально ближе к Saturn, чем большинство механических CAD. [Modelica 3.6 specification](https://specification.modelica.org/maint/3.6/introduction1.html) описывает физические системы через дифференциальные/алгебраические/дискретные уравнения; [connector semantics](https://specification.modelica.org/maint/3.6/connectors-and-connections.html) определяет семантически проверяемый `connect(a,b)`, а не визуальную линию. [OMEdit](https://openmodelica.org/free-and-open-source-software/omconnectioneditoromedit/) редактирует текстовую и графическую модели, запускает simulation; [OpenModelica README](https://github.com/OpenModelica/OpenModelica/blob/master/README.md) указывает compiler, GUI и FMI/SSP co-simulation. **Следствие:** утверждение «модель как код + диаграмма» не уникально. Наше отличие может быть в непрерывной source→checked→published→applied цепочке, связанной с реальными сигналами, командами, отчетами и CI. Не реализовывать собственный DAE compiler ради маркетингового лозунга; физические модели, если нужны, подключаются как проверяемые project-owned simulation adapters (с отдельным simulation state).
+
+**Eclipse 4diac** [official](https://eclipse.dev/4diac/4diac_ide/) / [repo](https://github.com/eclipse-4diac/4diac-ide) — важный прямой конкурент модели «инженерная программа → устройства → deployment». В IEC 61499 сначала задаётся сеть function blocks приложения, после чего она распределяется на контроллеры. Имеются monitoring/debug/test. **Проверять Saturn относительно такого полного сценария**, а не только относительно SCADA-экранов. Стандартный функциональный блок и типизированные подключения — серьёзный образец повторного использования, но не повод переписать TS DSL на IEC 61499.
+
+**nTop / LEAP71** показывают другое направление: engineering logic → implicit fields/voxels → сложная геометрия. [nTop field-driven design](https://www.ntop.com/field-driven-design/) использует геометрические поля и результаты анализа для создания деталей; [LEAP71 ShapeKernel README](https://github.com/leap71/LEAP71_ShapeKernel) отделяет low-level `PicoGK` от доменных Computational Engineering Models. **Следствие:** exact B-Rep — не универсальное CAD представление. Для корпуса/фланца нужен STEP/exact CAD; для тепловой решётки/сложной генеративной детали может подойти implicit/voxel plugin. Saturn core должен требовать `geometryCapabilities` и объявленные форматы, а не всеядное `Solid` без семантики.
+
+**That Open web-ifc** [repo](https://github.com/ThatOpen/engine_web-ifc) реализует IFC в JavaScript/WASM, включая чтение свойств/геометрии и corpus для regression. Сравнить с текущим project-owned IFC importer на идентичных IFC fixture по времени загрузки, unit/placement fidelity, сохранности GlobalId/ports, memory и оффлайн-режиму; не добавлять второй IFC parser без конкретной потребности.
+
+**Вторичные references**: [Rhino/Grasshopper](https://developer.rhino3d.com/en/guides/grasshopper/gh-algorithms-and-data-structures/) — параметрическое редактирование через dataflow; [Simscape](https://www.mathworks.com/products/simscape.html) — physical blocks и equation-based simulation; [Rhino Compute](https://github.com/mcneel/compute.rhino3d) — headless geometry service. Ни один из них не доказывает runtime/industrial safety Saturn.
+
+**Архитектурный вывод:** `diagram/layout topology`, `exact B-Rep`, `implicit geometry`, `equation/simulation model` и `plant runtime` — пять разных представлений/исполнителей одного намерения инженера. Связывать их через идентичности, units и проверенные преобразования; **не смешивать данные и допущения**. Сначала один проверяемый domain scenario, затем новое ядро или адаптер.
 
 ## 4. Границы текущего Saturn (проверено по исходникам, без запуска тестов)
 
