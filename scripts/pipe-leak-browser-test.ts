@@ -9,7 +9,7 @@ import {fixture} from '../tests/helpers';
 const root=resolve(import.meta.dir,'..'),output=join(root,'artifacts/pipe-leak-operator');
 mkdirSync(output,{recursive:true});
 const work=fixture(),app=await createApp({projectDir:work.root,dataDir:work.dir,databaseUrl:':memory:',port:0,preview:'simulation'});
-const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,channel:process.env.CI&&!process.env.CHROMIUM_PATH?'chrome':undefined,args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader']});
 const context=await browser.newContext({viewport:{width:1360,height:850}});
 const page=await context.newPage(),errors:string[]=[];
 page.on('pageerror',error=>errors.push(error.message));
