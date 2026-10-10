@@ -4,7 +4,7 @@
 
 ## 0. Как проверяли
 
-- **[CODE]** — прочитан конкретный файл GitHub, ссылка в тексте. Подтверждает только прочитанный участок, не end-to-end работоспособность.
+- **[CODE]** — прочитан конкретный файл GitHub (или указанный небольшой участок исходника), ссылка в тексте. Подтверждает только прочитанный участок, не end-to-end работоспособность.
 - **[README]** — заявление авторов проекта в README/документации. Не является независимым performance/UX-тестом.
 - **[VENDOR]** — официальное описание коммерческого продукта; исходный код не аудирован.
 - **[SATURN]** — проверен текущий исходник/контракт нашего репозитория. Тесты заново в этом исследовании **не запускались**.
@@ -66,7 +66,7 @@ Saturn конкурирует **не** с механическим CAD по ск
 | Industrial IDE | [CODESYS](https://www.codesys.com/products/visualization/) | PLC IEC 61131-3 + visualization, OPC UA | [VENDOR] PLC+HMI reference |
 | Industrial IDE | [TwinCAT 3](https://www.beckhoff.com/en-en/products/automation/twincat/) | IDE PLC/program + target runtime | [VENDOR] target/engineering reference |
 
-Отдельно: [Fornjot](https://github.com/hannobraun/fornjot) (архивирован 2026-06), [CADmium](https://github.com/CADmium-Co/CADmium) (архивирован 2025-09): полезны как исторические исследования, но **не** брать базой поддерживаемой интеграции.
+Отдельно: [Fornjot](https://github.com/hannobraun/fornjot) (архивирован; последний push 2026-06), [CADmium](https://github.com/CADmium-Co/CADmium) (архивирован; последний push 2025-09): полезны как исторические исследования, но **не** брать базой поддерживаемой интеграции.
 
 ## 3. Важные реализации, глубже README
 
