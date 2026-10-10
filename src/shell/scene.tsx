@@ -84,8 +84,20 @@ export function Scene(props:SceneProps){
     const edge=[...props.project.pipes,...props.project.cables??[]].find(item=>item.id===id);
     const end=free&&edge?(!isAttached(edge.from)?connectionTip(props.project,edge,'from'):!isAttached(edge.to)?connectionTip(props.project,edge,'to'):undefined):undefined;
     const points=end?[end]:route.points;if(!points.length)return;
-    const minX=Math.min(...points.map(p=>p.x)),minY=Math.min(...points.map(p=>p.y)),maxX=Math.max(...points.map(p=>p.x)),maxY=Math.max(...points.map(p=>p.y));
-    const width=Math.max(440,maxX-minX+160),height=Math.max(340,maxY-minY+160);setBox([(minX+maxX-width)/2,(minY+maxY-height)/2,width,height]);
+    // An operator must see the whole suspect section and both terminating devices;
+    // a pipe-only camera crop hides the pump/valve needed for field identification.
+    const evidenceEndpoints=props.pipeLeakStates&&edge&&!free?[edge.from,edge.to].flatMap(endpoint=>{
+      if(!isAttached(endpoint))return [];
+      const device=props.project.equipment.find(item=>item.id===endpoint.device);
+      if(!device)return [];
+      const size=visual(device);
+      return [{x:device.x-24,y:device.y-45},{x:device.x+size.width+24,y:device.y+size.height+45}];
+    }):[];
+    const extent=[...points,...evidenceEndpoints];
+    const minX=Math.min(...extent.map(p=>p.x)),minY=Math.min(...extent.map(p=>p.y)),maxX=Math.max(...extent.map(p=>p.x)),maxY=Math.max(...extent.map(p=>p.y));
+    const padX=props.pipeLeakStates?105:80,padY=props.pipeLeakStates?105:80;
+    const width=Math.max(440,maxX-minX+2*padX),height=Math.max(340,maxY-minY+2*padY);
+    setBox([(minX+maxX-width)/2,(minY+maxY-height)/2,width,height]);
   };
   useEffect(()=>{if(props.focusRouteId&&!props.focus)focusRoute(props.focusRouteId);},[props.focusRouteId]);
   const coordinate=(event:PointerEvent)=>{const p=svg.current!.createSVGPoint();p.x=event.clientX;p.y=event.clientY;return p.matrixTransform(svg.current!.getScreenCTM()!.inverse());};
