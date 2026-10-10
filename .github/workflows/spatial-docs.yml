@@ -1,0 +1,70 @@
+name: Record spatial DSL evidence
+on:
+  push:
+    branches: [work/spatial-dsl-20261010]
+    paths: [.github/workflows/spatial-docs.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  record:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require successful acceptance and record its exact scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,pathlib,subprocess,time,urllib.request
+          url='https://api.github.com/repos/Pom4H/saturn-ide/actions/runs/38017277180'
+          req=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          for attempt in range(30):
+              with urllib.request.urlopen(req) as response:run=json.load(response)
+              if run['status']=='completed':break
+              time.sleep(2)
+          assert run['conclusion']=='success',run['conclusion']
+          assert run['head_sha']=='6b965f931404485711e7b8130a5ca79144217b09'
+          subprocess.run(['git','diff','--exit-code','316bee007cc280dbf2af7e1088b62ea4969db63e','HEAD','--','src','tests','scripts'],check=True)
+          p=pathlib.Path('ROADMAP.md');s=p.read_text()
+          assert subprocess.check_output(['git','hash-object','ROADMAP.md'],text=True).strip()=='bd169c727cddcc83cdf74eefd57f2cd7b7faf94e'
+          s=s.replace('63 теста / 13 файлов, 512 expect-вызовов','64 теста / 13 файлов, 511 expect-вызовов')
+          s=s.replace('- [ ] Сквозная браузерная приёмка на CI: правка высоты/прохода в реальном source,','- [x] Сквозная браузерная приёмка на CI: правка высоты/прохода в реальном source,')
+          s=s.replace('Контракт, рабочий пример и ограничения: [spatial-routing.md](docs/spatial-routing.md).','Проверено: [CI 38017277180](https://github.com/Pom4H/saturn-ide/actions/runs/38017277180),\nполный `bun run check`, `bun test tests` с SQLite/PostgreSQL 18 и протоколами,\nреальная браузерная приёмка; source `316bee007cc280dbf2af7e1088b62ea4969db63e`.\nКонтракт, рабочий пример и ограничения: [spatial-routing.md](docs/spatial-routing.md).')
+          p.write_text(s)
+          p=pathlib.Path('docs/verification.md');s=p.read_text()
+          s+='''
+
+          ## 2026-10-10 — SPATIAL-1: room elevations and spatial passages
+
+          Verified source: `316bee007cc280dbf2af7e1088b62ea4969db63e`.
+          [Acceptance run 38017277180](https://github.com/Pom4H/saturn-ide/actions/runs/38017277180)
+          passed on Ubuntu 24.04, Bun 1.4.2, PostgreSQL 18 and Chrome.
+          The run applies the reviewed final routing refinement before testing that source.
+
+          `bun run check` passed both repository TypeScript compilers and the architecture guard.
+          The complete `bun test tests` suite passed with the normal SQLite, PostgreSQL and
+          protocol fixtures. The local spatial regression selection passed 64 tests in 13 files.
+
+          `scripts/spatial-browser-test.ts` uses an actual temporary TypeScript project and host,
+          not renderer mocks. Evidence `spatial-browser-evidence` contains four actual frames
+          and `report.json`: 2D and 3D use the same floor/passage positions; source edits move
+          actual equipment meshes and reroute pipes/cables without changing mesh identities
+          or camera pose; raised equipment remains pickable and drag cancellation preserves
+          source. Published/applied revisions remain null throughout this authoring scenario.
+          The final route refinement avoids a hidden high-level detour before an explicit
+          passage; legacy XY-only routes retain their previous automatic height.
+
+          This proves the coordinate contract and editor behavior, not volumetric building
+          collisions, dimensional calibration, hardware commissioning or full legacy 3D parity.
+          See [spatial routing](spatial-routing.md) for the coordinate convention and limits.
+          '''
+          p.write_text(s)
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ROADMAP.md docs/verification.md
+          git commit -m 'docs: record verified room elevations and spatial passage acceptance'
+          git push origin HEAD:work/spatial-dsl-20261010
