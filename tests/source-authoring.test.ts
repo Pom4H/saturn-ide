@@ -117,5 +117,7 @@ test('free endpoint algebra covers pipes, both ends, independent position and ma
   const tube=pipe('loose-pipe',{from:free(a.ports.outlet,{x:30,y:440,z:0}),to:free(b.ports.inlet,{x:400,y:440,z:0}),flow});
   const p=project({id:'floor',label:'Floor',equipment:[a,b],pipes:[tube]});validateProject(p);expect(routeConnections(p)[0]?.valid).toBe(true);
   const invalid=structuredClone(p);Object.assign(invalid.pipes[0]!.from.terminal,{role:'invented'});expect(()=>validateProject(invalid)).toThrow('Invalid port');
-  expect(()=>free(a.ports.outlet,{x:0,y:0,z:-1})).toThrow();
+  // Free ends use the same world datum as room floors, including basements.
+  expect(free(a.ports.outlet,{x:0,y:0,z:-1}).position.z).toBe(-1);
+  expect(()=>free(a.ports.outlet,{x:0,y:0,z:-15001})).toThrow();
 });

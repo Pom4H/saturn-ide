@@ -118,3 +118,15 @@ jobs:
             saturn-ide/artifacts/importer-failure.png
             saturn-ide/artifacts/importer-video/
           if-no-files-found: ignore
+      - name: Spatial rooms and physical passages browser acceptance
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        timeout-minutes: 3
+        run: timeout --kill-after=10s 150s bun scripts/spatial-browser-test.ts
+        working-directory: saturn-ide
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spatial-browser-evidence
+          path: saturn-ide/artifacts/spatial/
+          if-no-files-found: ignore
+          retention-days: 3

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { endLabel, isAttached, isConnected, cableAppearance, interfaceProfile, text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
-import { anchor, connectionTip, routePath, type PhysicalRoute } from '../topology';
+import { systemPortPositions, endLabel, isAttached, isConnected, cableAppearance, interfaceProfile, text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
+import { anchor, connectionTip, routingWaypoints, routePath, type PhysicalRoute } from '../topology';
 import { useSvgMotion } from './svg-motion';
 import { roundedPipePath } from './pipe-path';
 import { Symbol } from './symbols';
@@ -99,17 +99,17 @@ export function Scene(props:SceneProps){
     onPointerDown={event=>{if(props.focus)return;pan.current={x:event.clientX,y:event.clientY,box};svg.current!.setPointerCapture(event.pointerId);}}
     onPointerMove={event=>{const d=drag.current;if(plug.current){const p=coordinate(event);if(Math.hypot(p.x-plug.current.x,p.y-plug.current.y)>3)plug.current.moved=true;const target=nearestPort(event,plug.current.targets,plug.current.target);plug.current.target=target;const next=target?anchor(props.project,target):{x:p.x,y:p.y,z:props.cablePreview?.z??0};setHoveredPort(target?`${target.device}.${target.port}`:'');props.moveCable?.(next.x,next.y,next.z);}else if(d){const p=coordinate(event);if(Math.hypot(p.x-d.sx,p.y-d.sy)>3)d.moved=true;if(d.moved)props.move?.(d.id,Math.round(d.x+p.x-d.sx),Math.round(d.y+p.y-d.sy));}else if(pan.current){const p=pan.current,r=svg.current!.getBoundingClientRect(),scale=Math.max(p.box[2]!/r.width,p.box[3]!/r.height);setBox([p.box[0]!-(event.clientX-p.x)*scale,p.box[1]!-(event.clientY-p.y)*scale,p.box[2]!,p.box[3]!]);}}}
     onPointerUp={event=>{finishPlug(event);finish(false);}} onPointerCancel={()=>{finishPlug(undefined,true);finish(true);}} onLostPointerCapture={()=>{finishPlug(undefined,true);finish(true);}} onKeyDown={event=>{if(event.key==='Escape'){finishPlug(undefined,true);finish(true);}}}>
-    {!props.focus&&groups.map(group=><g key={group.id} data-system={group.id} data-system-depth={group.depth} data-focused={props.systemFocus===group.id||undefined} className="scene-system">
+    {!props.focus&&groups.map(group=><g key={group.id} data-system={group.id} data-system-depth={group.depth} data-system-z={group.z} data-focused={props.systemFocus===group.id||undefined} className="scene-system">
       <rect className="scene-system-plate" x={group.x} y={group.y} width={group.width} height={group.height} rx={8}/>
       <g className="scene-system-heading" role="button" tabIndex={0} aria-label={`${props.locale==='ru'?'Приблизить систему':'Focus system'}: ${text(group.label,props.locale)}, ${group.count}`} onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();props.focusSystem?.(group.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();props.focusSystem?.(group.id);}}}>
         <rect x={group.x+1} y={group.y+1} width={group.width-2} height={66} fill="transparent"/>
-        <text className="scene-system-id" x={group.x+18} y={group.y+20}>{group.id.toUpperCase()} · {group.count}</text>
+        <text className="scene-system-id" x={group.x+18} y={group.y+20}>{group.id.toUpperCase()} · {group.count}{group.z?` · z=${group.z}`:''}</text>
         {systemTitleLines(text(group.label,props.locale),group.width).map((line,index)=><text className="scene-system-title" key={index} x={group.x+18} y={group.y+42+index*20}>{line}</text>)}
       </g>
     </g>)}
     {!props.focus&&routes.map(route=>{
       const edge=[...props.project.pipes,...props.project.cables??[]].find(e=>e.id===route.id)!;
-      const isPipe=route.kind==='pipe',d=isPipe&&route.valid?roundedPipePath(route.points):routePath(route),preview=props.cablePreview?.id===route.id;
+      const isPipe=route.kind==='pipe',d=isPipe&&route.valid?roundedPipePath(route.points,8,routingWaypoints(props.project,edge)):routePath(route),preview=props.cablePreview?.id===route.id;
       return <g key={route.id} data-pipe={isPipe?route.id:undefined} data-cable={!isPipe?route.id:undefined} data-route-valid={route.valid} data-selected={props.selected===route.id||undefined} data-route-preview={preview||undefined} data-inactive={props.inactive?.includes(route.id)||undefined} onClick={()=>props.select(route.id)} className={preview?'preview-route':route.valid?(isPipe?'pipe':'cable'):'invalid-route'}>
         <title>{route.id}: {endLabel(edge.from)} → {endLabel(edge.to)}{edge.kind==='cable'?` · ${cablePurposeLabel(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family,props.locale)}${edge.signal?.unit?` · ${edge.signal.unit}`:''}${!isConnected(edge)?props.locale==='ru'?' · свободный конец':' · disconnected':''}`:''}{preview?props.locale==='ru'?' · маршрут уточняется при отпускании':' · route resolves on release':route.error?` — ${routeIssueReason(route.error,props.locale)}`:''}</title>
         {props.selected===route.id&&<path d={d} fill="none" stroke="var(--accent)" strokeOpacity={.35} strokeWidth={isPipe?30:11} strokeLinejoin="round" pointerEvents="none"/>}
@@ -117,7 +117,12 @@ export function Scene(props:SceneProps){
         {isPipe&&route.valid&&<><path d={d} fill="none" stroke="var(--pipe-shell)" strokeWidth={18} strokeLinecap="butt" strokeLinejoin="round" pointerEvents="none"/><path className="pipe-fluid" d={d} fill="none" stroke="var(--pipe-fill)" strokeWidth={14} strokeLinecap="butt" strokeLinejoin="round" pointerEvents="none"/><path className="flow" d={d} fill="none" stroke="var(--flow)" strokeWidth={5} strokeLinecap="round" strokeDasharray="18 30"/></>}
       </g>;
     })}
-    {!props.focus&&base.map(e=>{const tap=instrumentMount(e,routes);if(!tap)return null;const {from,to}=tap,turnY=from.y+(to.y-from.y)*.55,d=`M${from.x} ${from.y}V${turnY}H${to.x}V${to.y}`;return <g key={`${e.id}-mount`} data-instrument-mount={e.id} pointerEvents="none"><path d={d} fill="none" stroke={instrumentStyle.rim} strokeWidth={8} strokeLinejoin="round"/><path d={d} fill="none" stroke={instrumentStyle.metal} strokeWidth={5} strokeLinejoin="round"/><circle cx={to.x} cy={to.y} r={7} fill={instrumentStyle.metal} stroke={instrumentStyle.rim} strokeWidth={2}/></g>;})}
+    {!props.focus&&systemPortPositions(props.project).map(({port,point})=><g key={`${port.system}.${port.port}`} data-route-port={`${port.system}.${port.port}`} data-z={point.z} transform={`translate(${point.x} ${point.y})`}>
+      <title>{`${port.system}.${port.port}${port.label?` · ${text(port.label,props.locale)}`:''} · ${port.medium} · X=${point.x}, Y=${point.y}, Z=${point.z}`}</title>
+      <rect x={-11} y={-11} width={22} height={22} rx={2} fill="none" stroke="var(--accent)" strokeWidth={2} strokeDasharray="4 2"/>
+      <text x={16} y={-14} fill="var(--text)" fontSize={11}>{port.port} · z={point.z}</text>
+    </g>)}
+    {!props.focus&&base.map(e=>{const tap=instrumentMount(e,routes,props.project);if(!tap)return null;const {from,to}=tap,turnY=from.y+(to.y-from.y)*.55,d=`M${from.x} ${from.y}V${turnY}H${to.x}V${to.y}`;return <g key={`${e.id}-mount`} data-instrument-mount={e.id} pointerEvents="none"><path d={d} fill="none" stroke={instrumentStyle.rim} strokeWidth={8} strokeLinejoin="round"/><path d={d} fill="none" stroke={instrumentStyle.metal} strokeWidth={5} strokeLinejoin="round"/><circle cx={to.x} cy={to.y} r={7} fill={instrumentStyle.metal} stroke={instrumentStyle.rim} strokeWidth={2}/></g>;})}
     {base.map(e=>{const g=visual(e);return <g key={e.id} data-equipment={e.id} data-inactive={props.inactive?.includes(e.id)||undefined} transform={`translate(${e.x} ${e.y})`} className={`equipment ${props.selectedIds?.includes(e.id)||!props.selectedIds&&props.selected===e.id?'selected':''}`} onPointerDown={event=>start(event,e)} role="button" tabIndex={0} aria-label={`${e.id} ${text(e.label,props.locale)}`} onKeyDown={event=>{if(event.key==='Enter')props.select(e.id,event.shiftKey);}}>
       <rect className="selection" x={-12} y={-28} width={g.width+24} height={g.height+64} rx={4}/><text className="equipment-id" x={0} y={-13}>{e.id}</text>
       {e.capabilities.diagram?.svg?<g data-device-svg={e.kind} dangerouslySetInnerHTML={{__html:e.capabilities.diagram.svg}}/>:<Symbol equipment={e} snapshot={props.snapshot} locale={props.locale}/>} 

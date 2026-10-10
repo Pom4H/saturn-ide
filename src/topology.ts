@@ -1,4 +1,4 @@
-import { isAttached, reportSignals, type ConnectionEnd, type Cable, type Endpoint, type Equipment, type Pipe, type Point, type Project } from './core';
+import { equipmentElevation, systemElevation, waypointPosition, isAttached, reportSignals, type ConnectionEnd, type Cable, type Endpoint, type Equipment, type Pipe, type Point, type Project } from './core';
 export interface PhysicalRoute {id:string;kind:'pipe'|'cable';points:Point[];valid:boolean;error?:string}
 interface Box {id:string;x:number;y:number;right:number;bottom:number}
 export const connections=(project:Project)=>([...project.pipes,...project.cables??[]]);
@@ -12,7 +12,12 @@ export function anchor(project:Project,end:ConnectionEnd):Point {
   if(!isAttached(end))return {...end.position};
   const e=project.equipment.find(e=>e.id===end.device);const p=e&&(e.ports as Record<string,Endpoint>)[end.port];
   if(!e||!p)throw new Error(`Unknown port ${end.device}.${end.port}`);
-  return {x:e.x+p.terminal.x,y:e.y+p.terminal.y,z:(e.z??0)+p.terminal.z};
+  return {x:e.x+p.terminal.x,y:e.y+p.terminal.y,z:equipmentElevation(project,e)+p.terminal.z};
+}
+/** Resolve current passage geometry once per edge, including the legacy automatic height. */
+export function routingWaypoints(project:Project,edge:Pipe|Cable):Point[] {
+  const automaticZ=Math.max(anchor(project,edge.from).z,anchor(project,edge.to).z);
+  return (edge.via??[]).map(point=>waypointPosition(project,point,automaticZ));
 }
 /** The same world-space tip is used by routing, picking and source gestures. */
 export function connectionTip(project:Project,edge:Pipe|Cable,end:'from'|'to'):Point {
@@ -26,12 +31,12 @@ function terminalLead(project:Project,edge:Pipe|Cable,end:'from'|'to',boxes:read
   return {...pt,x:side==='left'?r.x:side==='right'?r.right:pt.x,y:side==='up'?r.y:side==='down'?r.bottom:pt.y};
 }
 const samePoint=(a:Point,b:Point)=>a.x===b.x&&a.y===b.y&&a.z===b.z;
-function compactPoints(points:readonly Point[]):Point[] {
+function compactPoints(points:readonly Point[],fixed:readonly Point[]=[]):Point[] {
   const result:Point[]=[];
   for(const p of points){
     const a=result.at(-1),b=result.at(-2);
     if(a&&samePoint(a,p))continue;
-    if(a&&b){
+    if(a&&b&&!fixed.some(point=>samePoint(a,point))){
       const u=[a.x-b.x,a.y-b.y,a.z-b.z],v=[p.x-a.x,p.y-a.y,p.z-a.z];
       // Never remove the turning point of a reversal/backtracking segment.
       if(u.filter(n=>n!==0).length===1&&v.filter(n=>n!==0).length===1&&u.some((n,i)=>n*v[i]!>0))result.pop();
@@ -45,14 +50,18 @@ function bridges(a:Point,b:Point):Point[][] {
   return axes.map(order=>{let point={...a};return [point,...order.map(axis=>{point={...point,[axis]:b[axis]};return point;})];});
 }
 const pathLength=(points:readonly Point[])=>points.slice(1).reduce((sum,p,i)=>sum+Math.hypot(p.x-points[i]!.x,p.y-points[i]!.y,p.z-points[i]!.z),0);
-function keepsWaypoints(points:readonly Point[],via:Pipe['via']):boolean {
+function keepsWaypoints(points:readonly Point[],via:readonly Point[]):boolean {
   let cursor=0;
-  for(const waypoint of via??[]){
+  for(const waypoint of via){
     let found=false;
-    for(let i=cursor;i<points.length-1;i++){
-      const a=points[i]!,b=points[i+1]!;
-      if((a.x===b.x&&a.x===waypoint.x&&waypoint.y>=Math.min(a.y,b.y)&&waypoint.y<=Math.max(a.y,b.y))||
-        (a.y===b.y&&a.y===waypoint.y&&waypoint.x>=Math.min(a.x,b.x)&&waypoint.x<=Math.max(a.x,b.x))){cursor=i;found=true;break;}
+    for(let i=Math.floor(cursor);i<points.length-1;i++){
+      const a=points[i]!,b=points[i+1]!,delta=[b.x-a.x,b.y-a.y,b.z-a.z];
+      const length2=delta.reduce((sum,v)=>sum+v*v,0);
+      if(!length2)continue;
+      const t=((waypoint.x-a.x)*delta[0]!+(waypoint.y-a.y)*delta[1]!+(waypoint.z-a.z)*delta[2]!)/length2;
+      if(t < -1e-7 || t > 1+1e-7 || i+t < cursor-1e-7)continue;
+      if(Math.hypot(a.x+t*delta[0]!-waypoint.x,a.y+t*delta[1]!-waypoint.y,a.z+t*delta[2]!-waypoint.z)>1e-7)continue;
+      cursor=i+Math.max(0,Math.min(1,t));found=true;break;
     }
     if(!found)return false;
   }
@@ -70,7 +79,7 @@ function retargetRoute(project:Project,edge:Pipe|Cable,old:PhysicalRoute,boxes:r
   const start=connectionTip(project,edge,'from'),end=connectionTip(project,edge,'to');
   const from=terminalLead(project,edge,'from',boxes),to=terminalLead(project,edge,'to',boxes);
   if(blocked(boxes,start,from,owner(edge.from))||blocked(boxes,to,end,owner(edge.to)))return;
-  const interior=old.points.slice(1,-1);
+  const interior=old.points.slice(1,-1),waypoints=routingWaypoints(project,edge);
   // A straight two-point route has no corridor to retain.
   if(!interior.length)return;
   // The former repair could accumulate hundreds of tiny bends. Replanning one
@@ -99,10 +108,10 @@ function retargetRoute(project:Project,edge:Pipe|Cable,old:PhysicalRoute,boxes:r
       for(const prefix of bridges(from,first))for(const suffix of bridges(last,to)){
         // Start with terminal stubs: routeClear may ignore the owning equipment
         // only on those outward segments.
-        const middle=compactPoints([...prefix,...kept,...suffix]);
-        const points=compactPoints([start,...middle,end]);
+        const middle=compactPoints([...prefix,...kept,...suffix],waypoints);
+        const points=compactPoints([start,...middle,end],waypoints);
         const candidate={...old,points},length=pathLength(points),score=length+points.length*4;
-        if(retraces(points)||retraces(compactPoints(points.map(point=>({...point,z:0}))))||!routeClear(candidate,boxes,edge)||!keepsWaypoints(points,edge.via))continue;
+        if(retraces(points)||retraces(compactPoints(points.map(point=>({...point,z:0}))))||!routeClear(candidate,boxes,edge)||!keepsWaypoints(points,waypoints))continue;
         if(score<trimFallbackScore){trimFallback=candidate;trimFallbackScore=score;}
         if(length>maxLength||score>=bestScore-1e-7)continue;
         best=candidate;bestScore=score;
@@ -130,26 +139,33 @@ function routeConnectionWithBoxes(project:Project,edge:Pipe|Cable,boxes:readonly
   // onto it, report that collision directly instead of blaming a port stub.
   if((!isAttached(edge.from)&&!empty(start))||(!isAttached(edge.to)&&!empty(end)))return fail('Free end overlaps equipment clearance');
   if(blocked(boxes,start,s,owner(edge.from))||blocked(boxes,t,end,owner(edge.to)))return fail('Terminal stub intersects equipment');
-  const via=[{...s,z:high},...(edge.via??[]).map(p=>({...p,z:high})),{...t,z:high}],points:Point[]=[start,s,{...s,z:high}];
+  const spatial=edge.via?.some(point=>point.kind==='route-port'||point.z!==undefined);
+  const first=spatial?s:{...s,z:high},last=spatial?t:{...t,z:high};
+  const via=[first,...routingWaypoints(project,edge),last],points:Point[]=[start,s,first];
   let budget=40000;
   for(let k=1;k<via.length;k++) {
     const from=via[k-1]!,to=via[k]!;
     if(!empty(from)||!empty(to))return fail('Waypoint inside equipment');
     const xs=[...new Set([from.x,to.x,...boxes.flatMap(r=>[r.x,r.right])])].sort((a,b)=>a-b),ys=[...new Set([from.y,to.y,...boxes.flatMap(r=>[r.y,r.bottom])])].sort((a,b)=>a-b),nx=xs.length;
-    const index=(p:Point)=>ys.indexOf(p.y)*nx+xs.indexOf(p.x),point=(i:number):Point=>({x:xs[i%nx]!,y:ys[Math.floor(i/nx)]!,z:high});
+    // Only the leg's two authored elevations enter the visibility grid. The
+    // existing XY obstacle policy remains conservative; there are no invented
+    // equipment volumes or hidden intermediate routing heights.
+    const zs=[...new Set([from.z,to.z])],ny=ys.length,plane=nx*ny;
+    const index=(p:Point)=>zs.indexOf(p.z)*plane+ys.indexOf(p.y)*nx+xs.indexOf(p.x);
+    const point=(i:number):Point=>({x:xs[i%nx]!,y:ys[Math.floor(i/nx)%ny]!,z:zs[Math.floor(i/plane)]!});
     const first=index(from),last=index(to),dist=new Map([[first,0]]),prev=new Map<number,number>(),visited=new Set<number>();
     const heap:{i:number;f:number}[]=[];
     const push=(v:{i:number;f:number})=>{heap.push(v);let n=heap.length-1;while(n>0){const p=(n-1)>>1;if(heap[p]!.f<=v.f)break;heap[n]=heap[p]!;n=p;}heap[n]=v;};
     const pop=()=>{const first=heap[0]!,v=heap.pop()!;if(heap.length){let n=0;while(n*2+1<heap.length){let c=n*2+1;if(c+1<heap.length&&heap[c+1]!.f<heap[c]!.f)c++;if(heap[c]!.f>=v.f)break;heap[n]=heap[c]!;n=c;}heap[n]=v;}return first;};
-    const h=(p:Point)=>Math.abs(p.x-to.x)+Math.abs(p.y-to.y);push({i:first,f:h(from)});
-    while(heap.length&&budget-->0){const {i}=pop();if(visited.has(i))continue;visited.add(i);if(i===last)break;const p=point(i),x=i%nx,y=Math.floor(i/nx);
-      for(const n of [x>0?i-1:-1,x+1<nx?i+1:-1,y>0?i-nx:-1,y+1<ys.length?i+nx:-1]){if(n<0||visited.has(n))continue;const q=point(n);if(blocked(boxes,p,q))continue;const d=dist.get(i)!+Math.abs(q.x-p.x)+Math.abs(q.y-p.y);if(d<(dist.get(n)??Infinity)){dist.set(n,d);prev.set(n,i);push({i:n,f:d+h(q)});}}
+    const h=(p:Point)=>Math.abs(p.x-to.x)+Math.abs(p.y-to.y)+Math.abs(p.z-to.z);push({i:first,f:h(from)});
+    while(heap.length&&budget-->0){const {i}=pop();if(visited.has(i))continue;visited.add(i);if(i===last)break;const p=point(i),x=i%nx,y=Math.floor(i/nx)%ny,z=Math.floor(i/plane);
+      for(const n of [x>0?i-1:-1,x+1<nx?i+1:-1,y>0?i-nx:-1,y+1<ny?i+nx:-1,z>0?i-plane:-1,z+1<zs.length?i+plane:-1]){if(n<0||visited.has(n))continue;const q=point(n);if(blocked(boxes,p,q))continue;const d=dist.get(i)!+Math.abs(q.x-p.x)+Math.abs(q.y-p.y)+Math.abs(q.z-p.z);if(d<(dist.get(n)??Infinity)){dist.set(n,d);prev.set(n,i);push({i:n,f:d+h(q)});}}
     }
     if(!visited.has(last))return fail('No collision-free route within budget');
     const segment:Point[]=[];let i=last;while(i!==first){segment.push(point(i));i=prev.get(i)!;}segment.push(from);points.push(...segment.reverse());
   }
-  points.push({...t,z:high},t,end);
-  result.points=compactPoints(points);return result;
+  points.push(last,t,end);
+  result.points=compactPoints(points,routingWaypoints(project,edge));return result;
 }
 export function routeConnection(project:Project,edge:Pipe|Cable):PhysicalRoute {
   const boxes=boxesFor(project,edge.kind==='pipe'?14:9);
@@ -174,11 +190,14 @@ export function routeConnections(project:Project,previous?:{project:Project;rout
     const oldEdge=priorEdges.get(edge.id),oldRoute=priorRoutes.get(edge.id);
     if(!previous||!oldEdge||!oldRoute||!oldRoute.valid||edge.kind!==oldEdge.kind||
       JSON.stringify(edge.from)!==JSON.stringify(oldEdge.from)||JSON.stringify(edge.to)!==JSON.stringify(oldEdge.to)||
-      JSON.stringify(edge.via??[])!==JSON.stringify(oldEdge.via??[]))return routeConnection(project,edge);
+      JSON.stringify(edge.via??[])!==JSON.stringify(oldEdge.via??[])||
+      JSON.stringify(routingWaypoints(project,edge))!==JSON.stringify(routingWaypoints(previous.project,oldEdge)))return routeConnection(project,edge);
     const oldFrom=previous.project.equipment.find(e=>e.id===owner(edge.from)),oldTo=previous.project.equipment.find(e=>e.id===owner(edge.to));
     const nextFrom=project.equipment.find(e=>e.id===owner(edge.from)),nextTo=project.equipment.find(e=>e.id===owner(edge.to));
     if(!oldFrom||!oldTo||!nextFrom||!nextTo||oldFrom.kind!==nextFrom.kind||oldTo.kind!==nextTo.kind||
-      JSON.stringify(oldFrom.ports)!==JSON.stringify(nextFrom.ports)||JSON.stringify(oldTo.ports)!==JSON.stringify(nextTo.ports))return routeConnection(project,edge);
+      JSON.stringify(oldFrom.ports)!==JSON.stringify(nextFrom.ports)||JSON.stringify(oldTo.ports)!==JSON.stringify(nextTo.ports)||
+      systemElevation(previous.project,oldFrom.system)!==systemElevation(project,nextFrom.system)||
+      systemElevation(previous.project,oldTo.system)!==systemElevation(project,nextTo.system))return routeConnection(project,edge);
     const points=oldRoute.points,start=connectionTip(project,edge,'from'),end=connectionTip(project,edge,'to');
     const boxes=boxesFor(project,edge.kind==='pipe'?14:9);
     if(points.length<2||!samePoint(points[0]!,start)||!samePoint(points.at(-1)!,end))return retargetRoute(project,edge,oldRoute,boxes)??routeConnection(project,edge);

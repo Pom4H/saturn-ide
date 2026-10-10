@@ -1591,3 +1591,28 @@ pass, including real 2D/3D frames, normal cable animation and native WebGL fallb
 The user-facing video remains gated on successful relevant CI for the pushed
 changes. Native Windows execution and real remote Git credentials are separate
 checks; neither is inferred from Linux or fixture-browser evidence.
+
+
+## 2026-10-10 — SPATIAL-1: room elevations and spatial passages
+
+Verified source: `316bee007cc280dbf2af7e1088b62ea4969db63e`.
+[Acceptance run 38017277180](https://github.com/Pom4H/saturn-ide/actions/runs/38017277180)
+passed on Ubuntu 24.04, Bun 1.4.2, PostgreSQL 18 and Chrome.
+The run applies the reviewed final routing refinement before testing that source.
+
+`bun run check` passed both repository TypeScript compilers and the architecture guard.
+The complete `bun test tests` suite passed with the normal SQLite, PostgreSQL and
+protocol fixtures. The local spatial regression selection passed 64 tests in 13 files.
+
+`scripts/spatial-browser-test.ts` uses an actual temporary TypeScript project and host,
+not renderer mocks. Evidence `spatial-browser-evidence` contains four actual frames
+and `report.json`: 2D and 3D use the same floor/passage positions; source edits move
+actual equipment meshes and reroute pipes/cables without changing mesh identities
+or camera pose; raised equipment remains pickable and drag cancellation preserves
+source. Published/applied revisions remain null throughout this authoring scenario.
+The final route refinement avoids a hidden high-level detour before an explicit
+passage; legacy XY-only routes retain their previous automatic height.
+
+This proves the coordinate contract and editor behavior, not volumetric building
+collisions, dimensional calibration, hardware commissioning or full legacy 3D parity.
+See [spatial routing](spatial-routing.md) for the coordinate convention and limits.

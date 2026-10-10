@@ -94,7 +94,7 @@ export function authoringChanges(files: readonly AuthoredFile[], frame: Authorin
       if (frame.inactive.some(item => item.source.id === edge.id)) enabled(edge.id, edge.kind, true);
     } else {
       const point = operation.target;
-      if (![point.x, point.y, point.z].every(n => Number.isFinite(n) && Math.abs(n) <= 15000) || point.z < 0) throw new Error('Invalid free position');
+      if (![point.x, point.y, point.z].every(n => Number.isFinite(n) && Math.abs(n) <= 15000)) throw new Error('Invalid free position');
       // Canonical free() accepts an existing end too. Add a normal named import, not hidden runtime state.
       let name: string | undefined;
       for (const statement of tree.statements) if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && ['@saturn/core', 'saturn-ide/core', 'saturn-ide'].includes(statement.moduleSpecifier.text)) {

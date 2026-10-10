@@ -55,6 +55,10 @@ Equipment definitions own their ports, signals and capabilities. Instances remai
 project objects. The Shell projects the same model into source, diagram, signals, HMI,
 reports, deployment and runtime views.
 
+Groups may declare floor elevations and typed pipe/cable passages. `via` accepts
+world-space XYZ points or references to `room.ports.*`; room/equipment/terminal
+elevations share the same hierarchy. See [spatial routing](docs/spatial-routing.md).
+
 Moving equipment on the diagram rewrites its authored coordinates in TypeScript. Connections
 reroute before drop; the source is saved only after the gesture completes.
 
