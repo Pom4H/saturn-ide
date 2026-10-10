@@ -38,11 +38,13 @@ export function semanticGraph(project:Project):SemanticGraph {
   }
   for(const edge of [...project.pipes,...project.cables??[]]){
     const signal=edge.kind==='pipe'?edge.flow:edge.signal;
+    const leak=edge.kind==='pipe'?edge.leak:undefined;
     const describe=(end:ConnectionEnd)=>isAttached(end)?{kind:'attached',device:equipmentIds.get(end.device)??end.device,port:end.port}:{kind:'free',position:end.position,terminal:end.terminal};
-    drafts.push({semanticId:`connection:${edge.id}`,kind:'connection',id:edge.id,label:edge.id,signature:sig({kind:edge.kind,from:describe(edge.from),to:describe(edge.to),via:(edge.via??[]).map(point=>point.kind==='route-port'?{...point,position:waypointPosition(project,point)}:point)}),uses:[
+    drafts.push({semanticId:`connection:${edge.id}`,kind:'connection',id:edge.id,label:edge.id,signature:sig({kind:edge.kind,from:describe(edge.from),to:describe(edge.to),via:(edge.via??[]).map(point=>point.kind==='route-port'?{...point,position:waypointPosition(project,point)}:point),leak:leak?{inlet:signalIdentity(leak.inlet),outlet:signalIdentity(leak.outlet),maxLoss:leak.maxLoss,maxSkewMs:leak.maxSkewMs??1000}:null}),uses:[
       ...(edge.via??[]).flatMap(point=>point.kind==='route-port'?[`system:${point.system}`]:[]),
       ...[edge.from,edge.to].flatMap(end=>isAttached(end)?[equipmentIds.get(end.device)??`equipment:${end.device}`]:[]),
       ...(signal?[signalIds.get(signal.id)??signalIdentity(signal)]:[]),
+      ...(leak?[leak.inlet,leak.outlet].map(s=>signalIds.get(s.id)??signalIdentity(s)):[]),
     ]});
   }
   for(const alarm of project.alarms)drafts.push({semanticId:`alarm:${alarm.id}`,kind:'alarm',id:alarm.id,label:alarm.label,signature:sig({above:alarm.above,hysteresis:alarm.hysteresis??null}),uses:[signalIds.get(alarm.signal.id)??signalIdentity(alarm.signal)]});

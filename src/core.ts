@@ -9,6 +9,8 @@ export type {SimulationClock,SimulationClockState} from './core/simulation';
 export {scenario,wait,set,expectValue,expectRange,advance,validateScenarios,type Scenario,type ScenarioStep,type ScenarioWaitStep,type ScenarioCommandStep,type ScenarioExpectStep,type ScenarioAdvanceStep,type ScenarioExpectRangeStep} from './core/scenarios';
 import { routeReferences, systemElevation, equipmentElevation, type RouteWaypoint, type SystemPort, type SystemPortSpec, type SystemPorts } from './core/spatial';
 export { systemElevation, equipmentElevation, waypointPosition, systemPortPositions, type RoutePoint, type RoutePort, type RouteWaypoint, type SystemPort, type SystemPortSpec } from './core/spatial';
+export { diagnosePipeLeaks } from './core/pipe-leak';
+export type { PipeLeakFinding, PipeLeakState, PipeLeakReason } from './core/pipe-leak';
 export type Locale = 'en' | 'ru';
 /** Authored names and descriptions use ordinary strings. The locale map is accepted
  * only for compatibility with existing projects; UI language is a Shell concern. */
@@ -256,13 +258,24 @@ export function free<const M extends Medium,const F extends string,const R exten
 export const endLabel=(end:ConnectionEnd):string=>isAttached(end)?`${end.device}.${end.port}`:`free(${end.position.x}, ${end.position.y}, ${end.position.z})`;
 export interface Connection { id:string; from:ConnectionEnd; to:ConnectionEnd; via?:readonly RouteWaypoint[] }
 export const isConnected=(edge:Connection):boolean=>isAttached(edge.from)&&isAttached(edge.to);
-export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number> }
+/** @ru Два физических расходомера на границах одного участка трубы.
+ * Одна оценка по давлению или общий датчик на нескольких участках не локализуют разрыв.
+ * @en Two physical meters bracketing one pipe segment, never inferred from shared flow/pressure. */
+export interface PipeLeakMonitor {
+  readonly inlet:Signal<number>;
+  readonly outlet:Signal<number>;
+  /** Maximum permissible inlet minus outlet, expressed in the common sensor flow unit. */
+  readonly maxLoss:number;
+  /** Maximum difference between measurement receipt timestamps. Default: 1000 ms. */
+  readonly maxSkewMs?:number;
+}
+export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number>; leak?:PipeLeakMonitor }
 export interface Cable extends Connection { kind:'cable'; signal?:Signal }
 type FluidFrom<F extends string=string> = ConnectionEnd<'fluid',F,'source'|'passive'>;
 type FluidTo<F extends string=string> = ConnectionEnd<'fluid',F,'sink'|'passive'>;
 /** @ru Труба с жидкостью. Соединяет совместимые порты; source/sink задают направление оборудования, passive допускает явные fitting-узлы вроде tee().
  * @en Liquid pipe. Connect compatible ports; equipment source/sink keep direction while passive ends allow explicit fittings such as tee(). */
-export function pipe<const F extends string,const S extends Signal<number>=Signal<number>>(id:string, options:{from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:readonly RouteWaypoint<'fluid'>[]}):Pipe & {flow:S} {
+export function pipe<const F extends string,const S extends Signal<number>=Signal<number>>(id:string, options:{from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:readonly RouteWaypoint<'fluid'>[];leak?:PipeLeakMonitor}):Pipe & {flow:S} {
   return {...options,...(options.via?{via:routeReferences(options.via)}:{}),id,kind:'pipe'};
 }
 /** @ru Кабель управления, питания или шины. Не труба и не зависимость вычисляемого сигнала.
@@ -381,7 +394,10 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
   };
   for(const item of Object.values(definition.signals??{}))add(item);
   for(const equipment of definition.equipment??[])for(const value of Object.values(equipment))add(value);
-  for(const edge of [...definition.pipes??[],...definition.cables??[]])add(edge.kind==='pipe'?edge.flow:edge.signal);
+  for(const edge of [...definition.pipes??[],...definition.cables??[]]) {
+    add(edge.kind==='pipe'?edge.flow:edge.signal);
+    if(edge.kind==='pipe'&&edge.leak){add(edge.leak.inlet);add(edge.leak.outlet);}
+  }
   for(const alarm of definition.alarms??[])add(alarm.signal);
   for(const report of definition.reports??[])for(const signal of reportSignals(report))add(signal);
   for(const group of definition.monitoring??[])for(const metric of group.metrics)add(metric.signal);
@@ -400,7 +416,7 @@ type ReportSignals<R> = Items<Field<R,'signals'>> | Field<Values<Field<R,'column
 type ScreenSignals<H> = Field<Items<Field<H,'elements'>>,'signal'>;
 type ReferencedSignals<P> = Extract<
   Values<Field<P,'signals'>> | SignalMembers<Items<Field<P,'equipment'>>> |
-  Field<Items<Field<P,'pipes'>>,'flow'> | Field<Items<Field<P,'cables'>>,'signal'> |
+  Field<Items<Field<P,'pipes'>>,'flow'> | Field<Field<Items<Field<P,'pipes'>>,'leak'>,'inlet'|'outlet'> | Field<Items<Field<P,'cables'>>,'signal'> |
   Field<Items<Field<P,'alarms'>>,'signal'> | ReportSignals<Items<Field<P,'reports'>>> |
   Field<Items<Field<Items<Field<P,'monitoring'>>,'metrics'>>,'signal'> |
   Field<Items<Field<Items<Field<P,'scenarios'>>,'steps'>>,'signal'> |
@@ -413,7 +429,7 @@ type UncertainMembers<T> = T extends object ? true extends Values<{
   [K in keyof T as string extends K ? never : number extends K ? never : K]:UncertainSignal<Extract<T[K],Signal>>
 }> ? true : false : false;
 type UncertainItem<T> = true extends IsUnion<T> | UncertainMembers<T> |
-  UncertainSignal<Extract<Field<T,'signal'> | Field<T,'flow'>,Signal>> ? true : false;
+  UncertainSignal<Extract<Field<T,'signal'> | Field<T,'flow'> | Field<Field<T,'leak'>,'inlet'|'outlet'>,Signal>> ? true : false;
 type UncertainArray<A> = A extends readonly unknown[] ? number extends A['length'] ? true :
   true extends IsUnion<A> | {[K in keyof A]:UncertainItem<A[K]>}[number] ? true : false : false;
 // Conditional branches and non-tuple collections may omit a referenced ID at runtime.
@@ -576,7 +592,16 @@ export function validateProject(p:Project):void {
         requireThat(port.medium===a.medium&&waypoint.medium===port.medium,'ROUTE_PORT_MEDIUM',`Incompatible passage on ${edge.id}`,`Несовместимая среда прохода ${edge.id}`);
       }else requireThat(waypoint.kind===undefined&&[waypoint.x,waypoint.y,waypoint.z??0].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000),'ROUTE_POINTS','Invalid XYZ routing point','Неверная XYZ-точка трассы');
     }
-    if(edge.kind==='pipe')ref(edge.flow,'number');else if(edge.signal){
+    if(edge.kind==='pipe'){
+      ref(edge.flow,'number');
+      if(edge.leak){
+        const {inlet,outlet,maxLoss,maxSkewMs}=edge.leak;
+        ref(inlet,'number');ref(outlet,'number');
+        requireThat(inlet.id!==outlet.id,'PIPE_LEAK_SENSORS',`Pipe ${edge.id} has identical inlet and outlet meters`,`У трубы ${edge.id} одинаковые датчики на входе и выходе`);
+        requireThat(!!inlet.unit&&inlet.unit===outlet.unit&&inlet.dimension===outlet.dimension&&inlet.dimension==='flow','PIPE_LEAK_UNITS',`Pipe ${edge.id} requires matching measured flow units`,`Трубе ${edge.id} нужны датчики расхода с одинаковыми единицами`);
+        requireThat(Number.isFinite(maxLoss)&&maxLoss>0&&(!maxSkewMs||Number.isSafeInteger(maxSkewMs)&&maxSkewMs>=1&&maxSkewMs<=60000),'PIPE_LEAK_LIMIT',`Invalid leak comparison on ${edge.id}`,`Неверный порог/интервал сравнения расхода на ${edge.id}`);
+      }
+    }else if(edge.signal){
       ref(edge.signal);
       requireThat((!a.valueType||a.valueType===typeof edge.signal.initial)&&(!b.valueType||b.valueType===typeof edge.signal.initial),'PORT_VALUE_TYPE',`Wrong signal type on ${edge.id}`,`Неверный тип сигнала на ${edge.id}`);
       requireThat((!a.unit||a.unit===edge.signal.unit)&&(!b.unit||b.unit===edge.signal.unit)&&(!a.unit||!b.unit||a.unit===b.unit),'PORT_UNIT',`Wrong signal unit on ${edge.id}`,`Неверная единица сигнала на ${edge.id}`);
