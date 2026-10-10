@@ -35,6 +35,7 @@ import { ProjectPlugins } from '../workspace/plugins';
 import { applyImportPlan } from '../workspace/importers';
 import type { ScadaImportPlan } from '../core/importer';
 import { deviceTemplates, previewDevice, previewHmi, suggestDevicePosition } from '../workspace/scaffold';
+import { patchDeviceProperties, type DevicePropertiesPatch } from '../workspace/device-properties';
 import { previewCableDisconnect, previewCableEndpoint } from '../workspace/cable-edit';
 import { createWorkerHost } from './worker';
 import type { JobReceipt } from '../core/jobs';
@@ -297,6 +298,21 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
           if(field(b,'projectVersion')!==preview.projectVersion)throw new HttpError(409,'Project changed; preview again');
           const file=workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);
           savedVersions.set(file.path,file.version);savedVersions.set('project.ts',workspace.read('project.ts').version);await reload();return json({file,state:state()});
+        }
+        if(path==='/api/devices/properties'){
+          const id=field(b,'id'),position=state().positions[id];
+          if(!authoringProject().equipment.some(e=>e.id===id)||!position)throw new HttpError(409,'Equipment does not have an unambiguous editable declaration');
+          const current=workspace.read(position.path);
+          if(field(b,'sourceVersion')!==current.version)throw new HttpError(409,'Equipment source changed; reload Properties before editing');
+          const system=b.system;
+          if(system!==undefined&&system!==null&&(!((authoringProject().systems??[]).some(room=>room.id===system))))throw new HttpError(409,'Unknown room');
+          const patch:DevicePropertiesPatch={
+            ...(b.label!==undefined?{label:b.label as string,locale:b.locale as DevicePropertiesPatch['locale']}:{}),
+            ...(b.x!==undefined?{x:b.x as number}:{}),...(b.y!==undefined?{y:b.y as number}:{}),
+            ...(b.z!==undefined?{z:b.z as number}:{}),...(b.system!==undefined?{system:b.system as string|null}:{}),
+          };
+          const source=patchDeviceProperties(current.source,id,patch);
+          const saved=workspace.save(current.path,source,current.version);savedVersions.set(saved.path,saved.version);await reload();return json({file:saved,state:state()});
         }
         if(path==='/api/authoring/plan')return json(await planSourceOperation(workspace,draft?.authoring,b,appRoot,dataDir));
         if(path==='/api/trash/move'){

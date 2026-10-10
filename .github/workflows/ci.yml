@@ -111,6 +111,17 @@ jobs:
           path: saturn-ide/artifacts/pipe-leak-operator/
           if-no-files-found: ignore
           retention-days: 7
+      - name: Object-first equipment creation and property editing
+        timeout-minutes: 3
+        run: timeout --kill-after=10s 150s bun scripts/entity-ux-browser-test.ts
+        working-directory: saturn-ide
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: object-first-creation-evidence
+          path: saturn-ide/artifacts/entity-ux/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Physical editor browser acceptance
         timeout-minutes: 3
         run: timeout --kill-after=10s 150s bun scripts/physical-interaction-browser-test.ts

@@ -5,12 +5,13 @@ import type {DocumentBuffer} from './model/documents';
 import type {PluginStatus} from './dependencies';
 import {Control} from './controls';
 import {ResourceIcon} from './icons';
+import {DevicePropertyEditor} from './device-property-editor';
 import {measurementTime,signalHealth} from '../core/operational';
 import {durationLabel,healthReasonLabels,qualityLabels,semanticKindLabel,signalOriginLabel,signalPolicy} from './signal-presentation';
 import {portInterfaceLabel,portMediumLabel,portRoleLabel,portValueTypeLabel} from './port-presentation';
 import {canonical} from '../core/artifact';
 export interface DetailTarget {kind:ResourceKind|'signal'|'connection'|'alarm'|'screen';id:string}
-interface Props {editor:EditorId;activeSource:string;target:DetailTarget;project:Project;authoringProject?:Project;snapshot:Snapshot;catalog:ResourceCatalog;documents:ReadonlyMap<string,DocumentBuffer>;plugins:readonly PluginStatus[];locale:Locale;now:number;connected:boolean;revision:string;operator:boolean;close:()=>void;open:(resource:ProjectResource,editor?:EditorId)=>void;signal:(id:string)=>void;send:(id:string,value:Value)=>Promise<void>;deviceEdit?:ReactNode;deviceEditId?:string}
+interface Props {editor:EditorId;activeSource:string;target:DetailTarget;project:Project;authoringProject?:Project;snapshot:Snapshot;catalog:ResourceCatalog;documents:ReadonlyMap<string,DocumentBuffer>;plugins:readonly PluginStatus[];locale:Locale;now:number;connected:boolean;revision:string;operator:boolean;close:()=>void;open:(resource:ProjectResource,editor?:EditorId)=>void;signal:(id:string)=>void;send:(id:string,value:Value)=>Promise<void>;deviceEdit?:ReactNode;deviceEditId?:string;propertiesSaved?:()=>Promise<void>;sourceDirty?:boolean}
 const labels:Record<DetailTarget['kind'],[string,string]>={project:['Проект','Project'],device:['Оборудование','Equipment'],signal:['Сигнал','Signal'],connection:['Соединение','Connection'],alarm:['Тревога','Alarm'],report:['Отчёт','Report'],screen:['Экран HMI','HMI screen'],hmi:['Исходник HMI','HMI source'],target:['Цель развёртывания','Deployment target'],plugin:['Расширение','Extension'],file:['Файл','File']};
 const shortRevision=(revision:string)=>revision.replace(/^sha256:/,'').slice(0,12)||'—';
 const format=(v:unknown,locale:Locale)=>v===undefined||v===null?'—':typeof v==='number'?v.toLocaleString(locale,{maximumFractionDigits:4}):String(v);
@@ -75,6 +76,7 @@ export function ResourceDetails(props:Props){
    {appliedOnly&&<p className="detail-note" role="status">{t('Объект остаётся в Applied, но удалён из Checked. Здесь показана действующая версия.','This object remains in Applied but was removed from Checked. Its active version is shown here.')}</p>}
    {device&&<>
     {device.knowledge.summary&&<p>{text(device.knowledge.summary,locale)}</p>}
+    {!operator&&props.editor==='diagram'&&source&&props.propertiesSaved&&section(t('Изменить','Edit'),<DevicePropertyEditor key={device.id} device={device} systems={checked.systems??[]} locale={locale} sourcePath={source.path} disabled={!!props.sourceDirty||!!sourceBuffer&&(sourceBuffer.saving||sourceBuffer.draft!==sourceBuffer.source)} onSaved={props.propertiesSaved}/>)}
     {section(t('Параметры','Parameters'),fields([[t('Тип','Type'),device.kind],[t('Положение','Position'),`${device.x}, ${device.y}`],[t('Сигналов','Signals'),equipmentSignals(device).length],[t('Портов','Ports'),Object.keys(device.ports).length]]))}
     {appliedDevice&&equipmentSignals(appliedDevice).filter(s=>s.writable).map(s=><div className="detail-control" key={s.id}><strong>{text(s.label??s.id,locale)} · Applied</strong><Control signal={s} sample={snapshot.samples[s.id]} locale={locale} enabled={connected} send={props.send}/></div>)}
     {section(t('Сигналы','Signals'),equipmentSignals(device).map(signalLink))}

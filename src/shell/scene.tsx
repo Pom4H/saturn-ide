@@ -11,6 +11,7 @@ import './scene3d-route-issue.css';
 import { compatiblePorts } from './model/compatible-ports';
 import { systemLayout, systemTitleLines } from '../core/system-layout';
 import { cablePurposeLabel, portInterfaceLabel, portRoleLabel } from './port-presentation';
+import { placementAt, templateDimensions } from './model/entity-placement';
 export interface SceneProps {
   project:Project;displayProject?:Project;inactive?:readonly string[];routes:readonly PhysicalRoute[];snapshot:Snapshot;locale:Locale;selected:string;selectedPort?:string;selectedIds?:readonly string[];interaction?:'select'|'edit';focus?:string;fit?:number;zoom?:{step:number;factor:number};ports?:boolean;
   viewRestore?:{version:number;box?:[number,number,number,number];pose?:[number,number,number,number,number,number]};
@@ -18,6 +19,7 @@ export interface SceneProps {
   focusRouteId?:string;
   onViewBox?:(box:[number,number,number,number])=>void;onCameraPose?:(pose:[number,number,number,number,number,number])=>void;
   systemFocus?:string|null;focusSystem?:(id:string)=>void;
+  placing?:{template:string;label:string}|null;place?:(position:{x:number;y:number})=>void;cancelPlace?:()=>void;
   select:(id:string,additive?:boolean)=>void;begin?:(id:string)=>boolean;move?:(id:string,x:number,y:number)=>void;end?:(cancel:boolean)=>void;
   openSource?:(id:string)=>void;canOpenSource?:(id:string)=>boolean;
   cablePreview?:{id:string;end:'from'|'to';x:number;y:number;z:number}|null;
@@ -58,6 +60,8 @@ export function Scene(props:SceneProps){
   const plug=useRef<{id:string;end:'from'|'to';x:number;y:number;moved:boolean;targets:readonly Endpoint[];target?:Endpoint}|null>(null);
   const [availablePorts,setAvailablePorts]=useState<readonly Endpoint[]>([]),[hoveredPort,setHoveredPort]=useState(''),[dragError,setDragError]=useState('');
   const pan=useRef<{x:number;y:number;box:number[]}|null>(null);
+  const [placementGhost,setPlacementGhost]=useState<ReturnType<typeof placementAt>|null>(null);
+  useEffect(()=>{if(!props.placing)setPlacementGhost(null);},[props.placing]);
   useSvgMotion(svg,props.project,props.snapshot,props.focus);
   const base=props.focus?props.project.equipment.filter(e=>e.id===props.focus):props.project.equipment;
   const groups=useMemo(()=>systemLayout(props.project),[props.project]);
@@ -71,6 +75,7 @@ export function Scene(props:SceneProps){
     const x=Math.min(0,...base.map(e=>e.x-50),...groups.map(g=>g.x-24),...cadPoints.map(p=>p.x-20)),y=Math.min(0,...base.map(e=>e.y-60),...groups.map(g=>g.y-24),...cadPoints.map(p=>p.y-20));
     return [x,y,Math.max(850,...base.map(e=>e.x+visual(e).width+60),...groups.map(g=>g.x+g.width+24),...cadPoints.map(p=>p.x+20))-x,Math.max(460,...base.map(e=>e.y+visual(e).height+60),...groups.map(g=>g.y+g.height+24),...cadPoints.map(p=>p.y+20))-y];
   };
+  const choosePlacement=(event:PointerEvent)=>placementAt(coordinate(event),props.placing!.template,props.project.equipment.map(e=>({x:e.x,y:e.y,width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150})));
   const [box,setBox]=useState(bounds);
   useEffect(()=>setBox(bounds()),[props.fit,props.focus,props.systemFocus,props.project.id]);
   useEffect(()=>{if(!props.zoom||props.zoom.factor===1||props.focus)return;setBox(([x=0,y=0,w=850,h=460])=>[x+w*(1-props.zoom!.factor)/2,y+h*(1-props.zoom!.factor)/2,w*props.zoom!.factor,h*props.zoom!.factor]);},[props.zoom?.step]);
@@ -112,10 +117,12 @@ export function Scene(props:SceneProps){
   const startPlug=(event:PointerEvent,id:string,end:'from'|'to')=>{props.select(id);if(props.interaction!=='edit'||event.button!==0)return;event.stopPropagation();const p=coordinate(event),edge=[...props.project.pipes,...props.project.cables??[]].find(item=>item.id===id);if(!edge)return;let targets:Endpoint[];try{targets=compatiblePorts(props.displayProject??props.project,id,end);}catch(reason){setDragError(reason instanceof Error?reason.message:String(reason));return;}setDragError('');if(!props.beginCable?.(id,end,p.x,p.y,connectionTip(props.project,edge,end).z))return;plug.current={id,end,x:p.x,y:p.y,moved:false,targets};setAvailablePorts(targets);setHoveredPort('');svg.current!.setPointerCapture(event.pointerId);};
   const finishPlug=(event:PointerEvent|undefined,cancel=false)=>{const current=plug.current;if(!current)return;plug.current=null;setAvailablePorts([]);setHoveredPort('');const target=event&&current.moved?nearestPort(event,current.targets,current.target):undefined;props.endCable?.(target?{device:target.device,port:target.port}:undefined,cancel||!current.moved);};
   const finish=(cancel:boolean)=>{pan.current=null;if(drag.current){const d=drag.current;drag.current=null;props.end?.(cancel||!d.moved);}};
-  return <div className="scene-frame"><svg ref={svg} className="scene" viewBox={box.join(' ')} aria-label={props.locale==='ru'?'Мнемосхема':'Process diagram'} tabIndex={0}
+  return <div className="scene-frame"><svg ref={svg} className="scene" viewBox={box.join(' ')} aria-label={props.locale==='ru'?'Мнемосхема':'Process diagram'} data-placement-mode={props.placing?.template} style={{cursor:props.placing?'crosshair':undefined}} tabIndex={0}
+    onPointerDownCapture={event=>{if(!props.placing||event.button!==0)return;event.stopPropagation();event.preventDefault();const position=choosePlacement(event);if(position.valid)props.place?.(position);}}
+    onPointerLeave={()=>{if(props.placing)setPlacementGhost(null);}}
     onPointerDown={event=>{if(props.focus)return;pan.current={x:event.clientX,y:event.clientY,box};svg.current!.setPointerCapture(event.pointerId);}}
-    onPointerMove={event=>{const d=drag.current;if(plug.current){const p=coordinate(event);if(Math.hypot(p.x-plug.current.x,p.y-plug.current.y)>3)plug.current.moved=true;const target=nearestPort(event,plug.current.targets,plug.current.target);plug.current.target=target;const next=target?anchor(props.project,target):{x:p.x,y:p.y,z:props.cablePreview?.z??0};setHoveredPort(target?`${target.device}.${target.port}`:'');props.moveCable?.(next.x,next.y,next.z);}else if(d){const p=coordinate(event);if(Math.hypot(p.x-d.sx,p.y-d.sy)>3)d.moved=true;if(d.moved)props.move?.(d.id,Math.round(d.x+p.x-d.sx),Math.round(d.y+p.y-d.sy));}else if(pan.current){const p=pan.current,r=svg.current!.getBoundingClientRect(),scale=Math.max(p.box[2]!/r.width,p.box[3]!/r.height);setBox([p.box[0]!-(event.clientX-p.x)*scale,p.box[1]!-(event.clientY-p.y)*scale,p.box[2]!,p.box[3]!]);}}}
-    onPointerUp={event=>{finishPlug(event);finish(false);}} onPointerCancel={()=>{finishPlug(undefined,true);finish(true);}} onLostPointerCapture={()=>{finishPlug(undefined,true);finish(true);}} onKeyDown={event=>{if(event.key==='Escape'){finishPlug(undefined,true);finish(true);}}}>
+    onPointerMove={event=>{if(props.placing){setPlacementGhost(choosePlacement(event));return;}const d=drag.current;if(plug.current){const p=coordinate(event);if(Math.hypot(p.x-plug.current.x,p.y-plug.current.y)>3)plug.current.moved=true;const target=nearestPort(event,plug.current.targets,plug.current.target);plug.current.target=target;const next=target?anchor(props.project,target):{x:p.x,y:p.y,z:props.cablePreview?.z??0};setHoveredPort(target?`${target.device}.${target.port}`:'');props.moveCable?.(next.x,next.y,next.z);}else if(d){const p=coordinate(event);if(Math.hypot(p.x-d.sx,p.y-d.sy)>3)d.moved=true;if(d.moved)props.move?.(d.id,Math.round(d.x+p.x-d.sx),Math.round(d.y+p.y-d.sy));}else if(pan.current){const p=pan.current,r=svg.current!.getBoundingClientRect(),scale=Math.max(p.box[2]!/r.width,p.box[3]!/r.height);setBox([p.box[0]!-(event.clientX-p.x)*scale,p.box[1]!-(event.clientY-p.y)*scale,p.box[2]!,p.box[3]!]);}}}
+    onPointerUp={event=>{finishPlug(event);finish(false);}} onPointerCancel={()=>{finishPlug(undefined,true);finish(true);}} onLostPointerCapture={()=>{finishPlug(undefined,true);finish(true);}} onKeyDown={event=>{if(event.key==='Escape'){if(props.placing)props.cancelPlace?.();else {finishPlug(undefined,true);finish(true);}}}}>
     {!props.focus&&groups.map(group=><g key={group.id} data-system={group.id} data-system-depth={group.depth} data-system-z={group.z} data-focused={props.systemFocus===group.id||undefined} className="scene-system">
       <rect className="scene-system-plate" x={group.x} y={group.y} width={group.width} height={group.height} rx={8}/>
       <g className="scene-system-heading" role="button" tabIndex={0} aria-label={`${props.locale==='ru'?'Приблизить систему':'Focus system'}: ${text(group.label,props.locale)}, ${group.count}`} onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();props.focusSystem?.(group.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();props.focusSystem?.(group.id);}}}>
@@ -173,6 +180,7 @@ export function Scene(props:SceneProps){
       </g>;})}
     </g>}
     {props.cablePreview&&(()=>{const route=routes.find(item=>item.id===props.cablePreview!.id),fixed=props.cablePreview.end==='from'?route?.points.at(-1):route?.points[0];return fixed?<g pointerEvents="none" data-cable-preview={props.cablePreview.id}><path d={`M${fixed.x} ${fixed.y} L${props.cablePreview.x} ${props.cablePreview.y}`} stroke="#ec9d45" strokeWidth={4} strokeDasharray="9 5" fill="none"/><circle cx={props.cablePreview.x} cy={props.cablePreview.y} r={7} fill="#ec9d45"/></g>:null;})()}
+    {props.placing&&placementGhost&&(()=>{const size=templateDimensions(props.placing.template);return <g data-placement-preview={props.placing.template} data-placement-valid={placementGhost.valid} transform={`translate(${placementGhost.x} ${placementGhost.y})`} pointerEvents="none" opacity={.78}><rect width={size.width} height={size.height} rx={7} fill="var(--accent-soft)" stroke={placementGhost.valid?'var(--accent)':'var(--bad)'} strokeWidth={3} strokeDasharray="12 6"/><text x={size.width/2} y={size.height/2} textAnchor="middle" fontSize={16} fill="var(--text)">{props.placing.label}</text><text x={size.width/2} y={size.height/2+26} textAnchor="middle" fontSize={12} fill={placementGhost.valid?'var(--good)':'var(--bad)'}>{placementGhost.valid?(props.locale==='ru'?'Установить':'Place'):(props.locale==='ru'?'Место занято':'Occupied')}</text></g>;})()}
     {dragError&&<g role="status" aria-label={props.locale==='ru'?'Не удалось проверить порты':'Could not check ports'} pointerEvents="none"><rect x={box[0]!+10} y={box[1]!+10} width={Math.min(680,box[2]!-20)} height={48} rx={7} fill="var(--raised)" stroke="var(--bad)"/><text x={box[0]!+24} y={box[1]!+40} fill="var(--bad)" fontSize={17}>{props.locale==='ru'?'Проверьте модель перед изменением соединения':'Check the model before editing the connection'}</text><title>{dragError}</title></g>}
   </svg>{!props.focus&&invalidRoutes.length>0&&<details open={routesExpanded} onToggle={event=>setRoutesExpanded(event.currentTarget.open)} className="scene3d-route-issue" data-route-issue="true" aria-label={props.locale==='ru'?'Проблемы маршрутов':'Route issues'}>
     <summary><strong>{props.locale==='ru'?'Маршрут требует правки':'Route needs editing'} · {invalidRoutes.length}</strong></summary>
