@@ -35,7 +35,8 @@ jobs:
           import base64,gzip,hashlib,json,pathlib,subprocess
           root=pathlib.Path.cwd()
           envelope=json.loads(pathlib.Path('spatial-changes.json').read_text())
-          data=gzip.decompress(base64.b64decode(envelope['gzipBase64']))
+          encoded=''.join((root/part).read_text() for part in envelope['parts'])
+          data=gzip.decompress(base64.b64decode(encoded))
           assert hashlib.sha256(data).hexdigest()==envelope['sha256']
           changes=json.loads(data)
           paths=[]
