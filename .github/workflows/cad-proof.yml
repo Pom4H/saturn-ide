@@ -26,6 +26,12 @@ jobs:
           path: saturn-examples
           ref: 24352afa2d9cc9eafcd19b624679fc24745f66bc
           ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-plugins
+          path: saturn-plugins
+          ref: 962cc4e3dfa1d4702016d784dbe6c5c8bb2c7750
+          ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
@@ -35,6 +41,8 @@ jobs:
         run: |
           mkdir -p saturn-ide/node_modules/@saturn
           ln -s ../.. saturn-ide/node_modules/@saturn/core
+          ln -s ../saturn-ide/node_modules saturn-examples/node_modules
+          ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
       - name: Typecheck IDE
         run: bun run check
         working-directory: saturn-ide
