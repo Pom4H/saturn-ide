@@ -24,8 +24,8 @@ test('meter pair is collected, typed and survives artifact round trip',()=>{
   expect(Object.keys(station.signals)).toContain(inlet.id);
   expect(Object.keys(station.signals)).toContain(outlet.id);
   const decoded=decodeProject(canonical(station));
-  expect(decoded.pipes[0]!.leak!.inlet).toBe(decoded.signals[inlet.id]);
-  expect(decoded.pipes[0]!.leak!.outlet).toBe(decoded.signals[outlet.id]);
+  expect(decoded.pipes[0]!.leak!.inlet).toBe(decoded.signals[inlet.id]!);
+  expect(decoded.pipes[0]!.leak!.outlet).toBe(decoded.signals[outlet.id]!);
   const graph=semanticGraph(station);
   const pipeNode=graph.bySemanticId.get('connection:segment')!;
   expect(pipeNode.uses).toContain('signal:'+inlet.id);
