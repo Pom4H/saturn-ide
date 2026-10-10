@@ -32,9 +32,12 @@ jobs:
         working-directory: saturn-ide
         run: |
           python3 - <<'PY'
-          import hashlib,json,pathlib,subprocess
+          import base64,gzip,hashlib,json,pathlib,subprocess
           root=pathlib.Path.cwd()
-          changes=json.loads(pathlib.Path('spatial-changes.json').read_text())
+          envelope=json.loads(pathlib.Path('spatial-changes.json').read_text())
+          data=gzip.decompress(base64.b64decode(envelope['gzipBase64']))
+          assert hashlib.sha256(data).hexdigest()==envelope['sha256']
+          changes=json.loads(data)
           paths=[]
           for change in changes:
               path=root/change['path']
