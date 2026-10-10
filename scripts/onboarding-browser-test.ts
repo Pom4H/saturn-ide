@@ -105,6 +105,7 @@ try {
   const palette = page.getByRole('dialog', { name: 'Добавить сущность', exact: true });
   await expect(palette).toBeVisible();
   await palette.locator('[data-creation-template="pump"]').click();
+  await page.getByRole('button',{name:'2D',exact:true}).click();
   const diagram = page.locator('svg.scene');
   const coords = await diagram.evaluate(el => {
     const svg = el as SVGSVGElement;

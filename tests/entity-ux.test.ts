@@ -1,11 +1,14 @@
 import {expect,test} from 'bun:test';
-import {placementAt,nextEntityId} from '../src/shell/model/entity-placement';
+import {placementAt,nextEntityId,templateDimensions,previewEquipment} from '../src/shell/model/entity-placement';
 import {patchDeviceProperties} from '../src/workspace/device-properties';
 
 test('click placement snaps and avoids equipment footprints',()=>{
- expect(placementAt({x:153,y:175},'pump',[])).toEqual({x:80,y:100,valid:true});
+ expect(placementAt({x:153,y:175},'pump',[])).toEqual({x:40,y:100,valid:true});
  expect(placementAt({x:153,y:175},'pump',[{x:90,y:90,width:160,height:150}]).valid).toBe(false);
  expect(placementAt({x:600,y:300},'pump',[{x:90,y:90,width:160,height:150}]).valid).toBe(true);
+ expect(templateDimensions('pump')).toEqual({width:220,height:170});
+ expect(templateDimensions('tank')).toEqual({width:170,height:230});
+ expect(previewEquipment('pump','Насос')?.kind).toBe('pump');
  expect(nextEntityId('pump',['P-01','P-03'])).toBe('P-02');
  expect(nextEntityId('plc',['PLC-01'])).toBe('PLC-02');
 });

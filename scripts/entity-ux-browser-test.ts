@@ -30,6 +30,7 @@ try{
   await page.getByRole('dialog',{name:'Добавить сущность'}).waitFor();
   await snap('01-types');
   await page.locator('[data-creation-template="pump"]').click();
+  await page.getByRole('button',{name:'2D',exact:true}).click();
   assert.equal(await page.locator('svg.scene').getAttribute('data-placement-mode'),'pump');
   const before=readFileSync(sourcePath,'utf8');
   const placement=await canvasPoint(500,260);await page.mouse.move(placement.x,placement.y);

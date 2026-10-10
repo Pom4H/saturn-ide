@@ -11,7 +11,7 @@ import './scene3d-route-issue.css';
 import { compatiblePorts } from './model/compatible-ports';
 import { systemLayout, systemTitleLines } from '../core/system-layout';
 import { cablePurposeLabel, portInterfaceLabel, portRoleLabel } from './port-presentation';
-import { placementAt, templateDimensions } from './model/entity-placement';
+import { placementAt, templateDimensions, previewEquipment } from './model/entity-placement';
 export interface SceneProps {
   project:Project;displayProject?:Project;inactive?:readonly string[];routes:readonly PhysicalRoute[];snapshot:Snapshot;locale:Locale;selected:string;selectedPort?:string;selectedIds?:readonly string[];interaction?:'select'|'edit';focus?:string;fit?:number;zoom?:{step:number;factor:number};ports?:boolean;
   viewRestore?:{version:number;box?:[number,number,number,number];pose?:[number,number,number,number,number,number]};
@@ -180,7 +180,12 @@ export function Scene(props:SceneProps){
       </g>;})}
     </g>}
     {props.cablePreview&&(()=>{const route=routes.find(item=>item.id===props.cablePreview!.id),fixed=props.cablePreview.end==='from'?route?.points.at(-1):route?.points[0];return fixed?<g pointerEvents="none" data-cable-preview={props.cablePreview.id}><path d={`M${fixed.x} ${fixed.y} L${props.cablePreview.x} ${props.cablePreview.y}`} stroke="#ec9d45" strokeWidth={4} strokeDasharray="9 5" fill="none"/><circle cx={props.cablePreview.x} cy={props.cablePreview.y} r={7} fill="#ec9d45"/></g>:null;})()}
-    {props.placing&&placementGhost&&(()=>{const size=templateDimensions(props.placing.template);return <g data-placement-preview={props.placing.template} data-placement-valid={placementGhost.valid} transform={`translate(${placementGhost.x} ${placementGhost.y})`} pointerEvents="none" opacity={.78}><rect width={size.width} height={size.height} rx={7} fill="var(--accent-soft)" stroke={placementGhost.valid?'var(--accent)':'var(--bad)'} strokeWidth={3} strokeDasharray="12 6"/><text x={size.width/2} y={size.height/2} textAnchor="middle" fontSize={16} fill="var(--text)">{props.placing.label}</text><text x={size.width/2} y={size.height/2+26} textAnchor="middle" fontSize={12} fill={placementGhost.valid?'var(--good)':'var(--bad)'}>{placementGhost.valid?(props.locale==='ru'?'Установить':'Place'):(props.locale==='ru'?'Место занято':'Occupied')}</text></g>;})()}
+    {props.placing&&placementGhost&&(()=>{const size=templateDimensions(props.placing.template),preview=previewEquipment(props.placing.template,props.placing.label);return <g data-placement-preview={props.placing.template} data-placement-valid={placementGhost.valid} transform={`translate(${placementGhost.x} ${placementGhost.y})`} pointerEvents="none" opacity={.8}>
+      <rect x={-7} y={-7} width={size.width+14} height={size.height+14} rx={6} fill="var(--panel)" fillOpacity={.55} stroke={placementGhost.valid?'var(--accent)':'var(--bad)'} strokeWidth={2} strokeDasharray="10 5"/>
+      {preview?<Symbol equipment={preview} snapshot={props.snapshot} locale={props.locale}/>:<text x={size.width/2} y={size.height/2} textAnchor="middle" fontSize={16} fill="var(--text)">{props.placing.label}</text>}
+      <rect x={0} y={size.height+15} width={size.width} height={25} rx={4} fill="var(--panel)" fillOpacity={.94}/>
+      <text x={size.width/2} y={size.height+32} textAnchor="middle" fontSize={12} fontWeight={600} fill={placementGhost.valid?'var(--good)':'var(--bad)'}>{placementGhost.valid?props.placing.label:(props.locale==='ru'?'Место занято':'Occupied')}</text>
+    </g>;})()}
     {dragError&&<g role="status" aria-label={props.locale==='ru'?'Не удалось проверить порты':'Could not check ports'} pointerEvents="none"><rect x={box[0]!+10} y={box[1]!+10} width={Math.min(680,box[2]!-20)} height={48} rx={7} fill="var(--raised)" stroke="var(--bad)"/><text x={box[0]!+24} y={box[1]!+40} fill="var(--bad)" fontSize={17}>{props.locale==='ru'?'Проверьте модель перед изменением соединения':'Check the model before editing the connection'}</text><title>{dragError}</title></g>}
   </svg>{!props.focus&&invalidRoutes.length>0&&<details open={routesExpanded} onToggle={event=>setRoutesExpanded(event.currentTarget.open)} className="scene3d-route-issue" data-route-issue="true" aria-label={props.locale==='ru'?'Проблемы маршрутов':'Route issues'}>
     <summary><strong>{props.locale==='ru'?'Маршрут требует правки':'Route needs editing'} · {invalidRoutes.length}</strong></summary>
