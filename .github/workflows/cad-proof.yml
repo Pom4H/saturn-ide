@@ -1,0 +1,62 @@
+name: CAD import UX proof
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/cad-import-browser-demo.ts'
+      - 'tests/fixtures/cad-demo.ifc'
+      - '.github/workflows/cad-proof.yml'
+permissions:
+  contents: read
+concurrency:
+  group: saturn-cad-proof-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: saturn-ide
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-examples
+          path: saturn-examples
+          ref: 24352afa2d9cc9eafcd19b624679fc24745f66bc
+          ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - run: bun install --frozen-lockfile
+        working-directory: saturn-ide
+      - name: Expose public Saturn core to project-owned IFC parser
+        run: |
+          mkdir -p saturn-ide/node_modules/@saturn
+          ln -s ../.. saturn-ide/node_modules/@saturn/core
+      - name: Typecheck IDE
+        run: bun run check
+        working-directory: saturn-ide
+      - name: Install browser and video encoder
+        run: |
+          bunx playwright install chromium ffmpeg
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+        working-directory: saturn-ide
+      - name: Record CAD workflow in actual browser
+        run: timeout --kill-after=10s 240s bun scripts/cad-import-browser-demo.ts
+        working-directory: saturn-ide
+      - name: Produce H.264 MP4 for playback
+        if: always()
+        shell: bash
+        run: |
+          if test -f saturn-ide/artifacts/cad-import/saturn-cad-ux.webm; then
+            ffmpeg -y -hide_banner -loglevel error -i saturn-ide/artifacts/cad-import/saturn-cad-ux.webm -c:v libx264 -preset fast -crf 26 -pix_fmt yuv420p -movflags +faststart saturn-ide/artifacts/cad-import/saturn-cad-ux.mp4 || true
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saturn-cad-real-ux
+          path: saturn-ide/artifacts/cad-import/
+          if-no-files-found: error
+          retention-days: 14
