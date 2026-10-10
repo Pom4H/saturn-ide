@@ -41,13 +41,13 @@ try{
   await page.goto(new URL('?page=dependencies',app.server.url).toString());
   await page.locator('.scada-import-heading').getByText('Пример формата',{exact:true}).waitFor();
   await page.evaluate(()=>localStorage.setItem('saturn.locale','en'));await page.reload();
-  await page.getByRole('button',{name:'Open project',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Choose file…',exact:true}).waitFor();
   await page.locator('.scada-import-heading').getByText('Пример формата',{exact:true}).waitFor();
   await page.screenshot({path:'artifacts/dsl-labels/importer-en.png'});
   await page.evaluate(()=>localStorage.setItem('saturn.locale','ru'));await page.reload();
   const archive=zipSync({'SYSTEM.JSON':strToU8(JSON.stringify({name:'Imported system',address:'temperature'}))});
   await page.locator('.scada-import input[type=file]').setInputFiles({name:'system.zip',mimeType:'application/zip',buffer:Buffer.from(archive)});
-  await page.getByText(/Пример формата · 1 файлов Saturn/).waitFor({timeout:15000});
+  await page.getByText(/Пример формата · готово к импорту/).waitFor({timeout:15000});
   await page.getByText('screens: 1').waitFor();
   await page.getByText('signals: 1').waitFor();
   await page.getByText('Импорт измерений объекта',{exact:true}).waitFor();
