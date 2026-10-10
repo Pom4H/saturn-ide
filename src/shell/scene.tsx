@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { systemPortPositions, endLabel, isAttached, isConnected, cableAppearance, interfaceProfile, text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
+import { cadRunPlans, systemPortPositions, endLabel, isAttached, isConnected, cableAppearance, interfaceProfile, text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
 import { anchor, connectionTip, routingWaypoints, routePath, type PhysicalRoute } from '../topology';
 import { useSvgMotion } from './svg-motion';
 import { roundedPipePath } from './pipe-path';
@@ -59,13 +59,15 @@ export function Scene(props:SceneProps){
   useSvgMotion(svg,props.project,props.snapshot,props.focus);
   const base=props.focus?props.project.equipment.filter(e=>e.id===props.focus):props.project.equipment;
   const groups=useMemo(()=>systemLayout(props.project),[props.project]);
+  const cadRoutes=useMemo(()=>cadRunPlans(props.project),[props.project.cad]);
   const visual=(e:Equipment)=>({width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150});
   const bounds=()=>{
     if(props.focus&&base[0]){const e=base[0],g=visual(e);return [e.x-18,e.y-30,g.width+36,g.height+70];}
     const chosen=groups.find(group=>group.id===props.systemFocus);
     if(chosen)return [chosen.x-28,chosen.y-28,chosen.width+56,chosen.height+56];
-    const x=Math.min(0,...base.map(e=>e.x-50),...groups.map(g=>g.x-24)),y=Math.min(0,...base.map(e=>e.y-60),...groups.map(g=>g.y-24));
-    return [x,y,Math.max(850,...base.map(e=>e.x+visual(e).width+60),...groups.map(g=>g.x+g.width+24))-x,Math.max(460,...base.map(e=>e.y+visual(e).height+60),...groups.map(g=>g.y+g.height+24))-y];
+    const cadPoints=cadRoutes.flatMap(route=>route.points);
+    const x=Math.min(0,...base.map(e=>e.x-50),...groups.map(g=>g.x-24),...cadPoints.map(p=>p.x-20)),y=Math.min(0,...base.map(e=>e.y-60),...groups.map(g=>g.y-24),...cadPoints.map(p=>p.y-20));
+    return [x,y,Math.max(850,...base.map(e=>e.x+visual(e).width+60),...groups.map(g=>g.x+g.width+24),...cadPoints.map(p=>p.x+20))-x,Math.max(460,...base.map(e=>e.y+visual(e).height+60),...groups.map(g=>g.y+g.height+24),...cadPoints.map(p=>p.y+20))-y];
   };
   const [box,setBox]=useState(bounds);
   useEffect(()=>setBox(bounds()),[props.fit,props.focus,props.systemFocus,props.project.id]);
@@ -106,6 +108,13 @@ export function Scene(props:SceneProps){
         <text className="scene-system-id" x={group.x+18} y={group.y+20}>{group.id.toUpperCase()} · {group.count}{group.z?` · z=${group.z}`:''}</text>
         {systemTitleLines(text(group.label,props.locale),group.width).map((line,index)=><text className="scene-system-title" key={index} x={group.x+18} y={group.y+42+index*20}>{line}</text>)}
       </g>
+    </g>)}
+    {!props.focus&&cadRoutes.map(run=><g key={`cad-${run.guid}`} data-cad-run={run.guid} data-cad-network={run.network} pointerEvents="none">
+      <title>{`CAD / IFC · ${run.label} · ${run.network} · ${run.source} · проектная пространственная модель`}</title>
+      <path d={run.points.map((point,index)=>`${index?'L':'M'}${point.x} ${point.y}`).join(' ')} fill="none"
+        stroke={run.network==='pipe'?'#5f91a5':run.network==='raceway'?'#b58c5d':'#a79a7f'}
+        strokeOpacity={.7} strokeWidth={run.network==='raceway'?12:run.network==='pipe'?7:2.5}
+        strokeLinecap="round" strokeLinejoin="round" strokeDasharray="6 4" />
     </g>)}
     {!props.focus&&routes.map(route=>{
       const edge=[...props.project.pipes,...props.project.cables??[]].find(e=>e.id===route.id)!;

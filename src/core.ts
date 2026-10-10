@@ -1,3 +1,6 @@
+import { cadReferenceValid, type CadReference } from './core/cad';
+export { cadRunPlans } from './core/cad';
+export type { CadReference, CadRunPlan } from './core/cad';
 import {validateQueryReport,type QueryReport,type ReportSchema,type SchemaRow} from './core/reporting';
 export * from './core/reporting';
 import {validateSchedule,type ReportSchedule} from './core/cron';
@@ -333,7 +336,7 @@ export function monitorMetric<const S extends Signal<number>>(id:string,source:S
 export function monitor<const O extends Omit<MonitoringGroup,'id'>>(id:string,options:O):MonitoringGroup & O {return {id,...options};}
 export interface Project {
   id:string; label:Text; signals:Record<string,Signal>; equipment:Equipment[]; pipes:Pipe[]; cables?:Cable[];
-  alarms:Alarm[]; hmi?:Hmi; hmis?:HmiInterface[]; reports?:Report[]; monitoring?:readonly MonitoringGroup[]; systems?:readonly System[]; enclosures?:readonly Enclosure[]; scenarios?:readonly Scenario[];
+  alarms:Alarm[]; hmi?:Hmi; hmis?:HmiInterface[]; reports?:Report[]; monitoring?:readonly MonitoringGroup[]; systems?:readonly System[]; enclosures?:readonly Enclosure[]; scenarios?:readonly Scenario[]; cad?:readonly CadReference[];
 }
 export type ProjectDefinition = Omit<Project,'signals'|'equipment'|'pipes'|'hmi'|'hmis'|'alarms'> & {signals?:Record<string,Signal>;equipment?:Equipment[];pipes?:Pipe[];hmi?:Hmi|AutoHmi;hmis?:HmiIntent[];alarms?:Alarm[]};
 export type MountCheck = {readonly valid:true} | {readonly valid:false;readonly code:string;readonly message:Record<Locale,string>};
@@ -467,6 +470,7 @@ function validateTerminal(t:Terminal,label:string):void {
 export function validateProject(p:Project):void {
   requireThat(p && typeof p.id==='string' && p.signals && Array.isArray(p.equipment)&&Array.isArray(p.pipes)&&Array.isArray(p.alarms),'PROJECT_SHAPE','Invalid project export','Неверный экспорт проекта');
   validateScenarios(p);
+  requireThat(p.cad===undefined||Array.isArray(p.cad)&&p.cad.length<=4&&p.cad.every(cadReferenceValid),'CAD_REFERENCE','Invalid CAD spatial reference','Неверная ссылка на пространственную модель CAD');
   requireThat(p.monitoring===undefined||Array.isArray(p.monitoring)&&p.monitoring.length<=32&&p.monitoring.every(group=>group&&typeof group==='object'&&typeof group.id==='string'&&Array.isArray(group.metrics)&&group.metrics.length>0&&group.metrics.length<=32),'MONITOR_LIMIT','Invalid monitoring group size','Неверный размер группы мониторинга');
   requireThat(p.systems===undefined||Array.isArray(p.systems),'SYSTEM_SHAPE','Invalid installation systems','Неверные системы установки');
   requireThat(p.enclosures===undefined||Array.isArray(p.enclosures),'ENCLOSURE_SHAPE','Invalid enclosures','Неверные шкафы/корпуса');
@@ -675,4 +679,4 @@ export { defineProtocol } from './core/acquisition';
 export type { Observation, Observe, ProtocolDefinition, ProtocolSession, ProtocolChannel, ProtocolEndpoint, ProtocolSource } from './core/acquisition';
 
 export { defineImporter } from './core/importer';
-export type { ImportDiagnostic, ImportGeneratedFile, ImportLabel, ImportSeverity, ImportSourceFile, ScadaImporter, ScadaImportPlan, ScadaImportSource } from './core/importer';
+export type { ImportDiagnostic, ImportGeneratedFile, ImportLabel, ImportSeverity, ImportSourceFile, ScadaImporter, ScadaImportPlan, ScadaImportSource, ScadaImportContext } from './core/importer';

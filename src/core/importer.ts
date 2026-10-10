@@ -29,12 +29,16 @@ export interface ImportDiagnostic {
 }
 
 export interface ImportGeneratedFile {
+  /** CAS revision for a generated file that is intentionally refreshed, never user-owned code. */
+  readonly previousVersion?: string;
   /** Generated files are confined to imports/<importer-id>/. */
   readonly path: string;
   readonly source: string;
 }
 
 export interface ScadaImportPlan {
+  /** create: new importer namespace; sync: CAS-update managed files without rewriting project.ts. */
+  readonly mode?: 'create'|'sync';
   readonly importer: string;
   readonly sourceFingerprint: string;
   /** Replacement authored root. Applying a plan is an explicit source edit, never a live apply. */
@@ -45,6 +49,12 @@ export interface ScadaImportPlan {
   readonly summary?: Text;
 }
 
+export interface ScadaImportContext {
+  readonly projectSource: string;
+  readonly projectVersion: string;
+  readonly files: readonly {readonly path:string;readonly source:string;readonly version:string}[];
+}
+
 export interface ScadaImporter {
   readonly id: string;
   readonly label: Text;
@@ -52,7 +62,7 @@ export interface ScadaImporter {
   readonly accepts: readonly string[];
   /** 0 means not recognized. Higher scores win when several installed importers match. */
   detect(source: ScadaImportSource): number;
-  import(source: ScadaImportSource): ScadaImportPlan | Promise<ScadaImportPlan>;
+  import(source: ScadaImportSource, context?: ScadaImportContext): ScadaImportPlan | Promise<ScadaImportPlan>;
 }
 
 /** Importers are ordinary project-owned source. This validates metadata only; no global registry is created. */

@@ -3,7 +3,7 @@ import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { equipmentElevation, systemPortPositions, isAttached, text, type ConnectionEnd, cableAppearance, equipmentSignal, interfaceProfile, type Endpoint, type Equipment, type Point } from '../core';
+import { cadRunPlans, equipmentElevation, systemPortPositions, isAttached, text, type ConnectionEnd, cableAppearance, equipmentSignal, interfaceProfile, type Endpoint, type Equipment, type Point } from '../core';
 import { anchor, connectionTip, routingWaypoints } from '../topology';
 import { geometryRevision } from './model/geometry-revision';
 import { connectionHandleVisible } from './model/connection-picking';
@@ -68,7 +68,7 @@ export default function Scene3D(props:SceneProps){
     scene.add(new T.HemisphereLight(0xeaf5ff,0x8a999a,1.5));
     const sun=new T.DirectionalLight(0xfff4df,3);sun.position.set(-3,9,4);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-10;sun.shadow.camera.right=10;sun.shadow.camera.top=10;sun.shadow.camera.bottom=-10;sun.shadow.normalBias=.025;sun.shadow.camera.updateProjectionMatrix();scene.add(sun);
     const world=new T.Group();world.scale.setScalar(.01);scene.add(world);
-    const groupWorld=new T.Group(),equipmentWorld=new T.Group(),routeWorld=new T.Group();world.add(groupWorld,equipmentWorld,routeWorld);
+    const groupWorld=new T.Group(),cadWorld=new T.Group(),equipmentWorld=new T.Group(),routeWorld=new T.Group();world.add(groupWorld,cadWorld,equipmentWorld,routeWorld);
     const metal=new T.MeshStandardMaterial({color:0xa6bec8,metalness:.72,roughness:.32}),paint=new T.MeshStandardMaterial({color:0x3c6572,metalness:.28,roughness:.4}),dark=new T.MeshStandardMaterial({color:0x29404c,metalness:.45,roughness:.5});
     const water=new T.MeshPhysicalMaterial({color:0x3fb2c8,metalness:0,roughness:.18,transparent:true,opacity:.68,depthWrite:false,side:T.DoubleSide});
     const casing=new T.MeshStandardMaterial({color:0xc8dfe5,metalness:.65,roughness:.35,side:T.DoubleSide}),amber=new T.MeshStandardMaterial({color:0xd6ab60,metalness:.4,roughness:.36}),wire=new T.MeshStandardMaterial({color:0x977e59,roughness:.65}),invalid=new T.MeshBasicMaterial({color:0xc95751}),pending=new T.MeshBasicMaterial({color:0xf2a13e});
@@ -82,9 +82,9 @@ export default function Scene3D(props:SceneProps){
     const portHaloGeometry=new T.SphereGeometry(13,16,12),portHaloMaterial=new T.MeshBasicMaterial({color:0x258ebb,wireframe:true,depthTest:false}),portHalo=new T.Mesh(portHaloGeometry,portHaloMaterial);portHalo.visible=false;portHalo.renderOrder=10;world.add(portHalo);
     const phases=new Map<string,number>();
     const allocate=()=>({geometries:new Set<T.BufferGeometry>(),textures:new Set<T.Texture>(),materials:new Set<T.Material>(),updaters:[] as ((dt:number)=>void)[]});
-    const groupResources=allocate(),routeResources=allocate(),deviceResources=new Map<string,ReturnType<typeof allocate>>(),deviceRevisions=new Map<string,string>();let resources=groupResources;
+    const groupResources=allocate(),routeResources=allocate(),cadResources=allocate(),deviceResources=new Map<string,ReturnType<typeof allocate>>(),deviceRevisions=new Map<string,string>();let resources=groupResources;
     const dispose=(scope:ReturnType<typeof allocate>)=>{for(const geometry of scope.geometries)geometry.dispose();for(const texture of scope.textures)texture.dispose();for(const material of scope.materials)material.dispose();scope.geometries.clear();scope.textures.clear();scope.materials.clear();scope.updaters.length=0;};
-    const roots=new Map<string,T.Group>(),groupBorders=new Map<string,T.LineBasicMaterial>();let plugMeshes:T.Mesh[]=[],equipmentRevision='',routeRevision='',equipmentBuilds=0,routeBuilds=0,groupRevision='',dirty=true,focusedSystem:string|null|undefined;
+    const roots=new Map<string,T.Group>(),groupBorders=new Map<string,T.LineBasicMaterial>();let plugMeshes:T.Mesh[]=[],equipmentRevision='',routeRevision='',equipmentBuilds=0,routeBuilds=0,groupRevision='',cadRevision='',dirty=true,focusedSystem:string|null|undefined;
     const buttonDrivers=new Map<string,{refresh:(snapshot:SceneProps['snapshot'])=>void;press:(key:'up'|'down'|'left'|'right')=>void}>(),buttonScreens=new Map<string,T.CanvasTexture>(),buttonCanvases=new Map<string,HTMLCanvasElement>();
     const displayUnavailable=(id:string,canvas:HTMLCanvasElement,reason:unknown)=>{
       const message=reason instanceof Error?reason.message:String(reason);unavailableDisplay(canvas,current.current.locale);
@@ -331,6 +331,19 @@ export default function Scene3D(props:SceneProps){
       // The supporting world floor follows the lowest declared level, including basements.
       const groundZ=Math.min(0,...systemLayout(p.project).map(group=>group.z),...p.project.equipment.map(e=>equipmentElevation(p.project,e)))*.01;
       floor.position.y=groundZ-.02;grid.position.y=groundZ-.015;
+      // IFC axes are read-only physical references, not authored Saturn Pipe/Cable.
+      const nextCad=JSON.stringify(p.project.cad??[]);
+      if(nextCad!==cadRevision){
+        cadRevision=nextCad;dispose(cadResources);cadWorld.clear();resources=cadResources;
+        const runs=cadRunPlans(p.project);
+        node.dataset.cadAxes=String(runs.length);
+        for(const run of runs){
+          const geometry=new T.BufferGeometry().setFromPoints(run.points.map(vector));
+          const material=new T.LineDashedMaterial({color:run.network==='pipe'?0x59869b:run.network==='raceway'?0xb08b5e:0x988870,transparent:true,opacity:.72,dashSize:10,gapSize:6,depthWrite:false});
+          cadResources.geometries.add(geometry);cadResources.materials.add(material);
+          const line=new T.Line(geometry,material);line.computeLineDistances();line.userData.cadGuid=run.guid;cadWorld.add(line);
+        }
+      }
       const nextRoutes=JSON.stringify([p.routes,p.project.pipes,p.project.cables,p.project.systems,p.interaction,p.cablePreview?.id]);
       if(nextRoutes===routeRevision)return;
       routeRevision=nextRoutes;dispose(routeResources);routeWorld.clear();plugMeshes=[];resources=routeResources;
@@ -395,7 +408,7 @@ export default function Scene3D(props:SceneProps){
       controls.target.copy(center);camera.position.copy(center).addScaledVector(direction,distance);camera.far=Math.max(200,distance+size.length()*3);camera.updateProjectionMatrix();controls.update();
       node.dataset.focusedRoute=id;node.dataset.focusedRoutePart=free?'free-end':'connection';
     };
-    fit.current=()=>{if(dirty)synchronize();world.updateWorldMatrix(true,true);const box=new T.Box3();const group=systemLayout(current.current.project).find(item=>item.id===current.current.systemFocus);if(group)box.set(new T.Vector3((group.x-28)*.01,group.z*.01,(group.y-28)*.01),new T.Vector3((group.x+group.width+28)*.01,group.z*.01+2.5,(group.y+group.height+28)*.01));else{for(const root of roots.values())box.expandByObject(root);box.expandByObject(routeWorld);if(!roots.size||systemPortPositions(current.current.project).length)box.expandByObject(groupWorld);}if(box.isEmpty())return;const center=box.getCenter(new T.Vector3()),radius=box.getSize(new T.Vector3()).length()/2;
+    fit.current=()=>{if(dirty)synchronize();world.updateWorldMatrix(true,true);const box=new T.Box3();const group=systemLayout(current.current.project).find(item=>item.id===current.current.systemFocus);if(group)box.set(new T.Vector3((group.x-28)*.01,group.z*.01,(group.y-28)*.01),new T.Vector3((group.x+group.width+28)*.01,group.z*.01+2.5,(group.y+group.height+28)*.01));else{for(const root of roots.values())box.expandByObject(root);box.expandByObject(routeWorld);box.expandByObject(cadWorld);if(!roots.size||systemPortPositions(current.current.project).length)box.expandByObject(groupWorld);}if(box.isEmpty())return;const center=box.getCenter(new T.Vector3()),radius=box.getSize(new T.Vector3()).length()/2;
       if(node.clientWidth&&node.clientHeight)camera.aspect=node.clientWidth/node.clientHeight;
       const vertical=T.MathUtils.degToRad(camera.fov),horizontal=2*Math.atan(Math.tan(vertical/2)*camera.aspect);
       const direction=new T.Vector3(-.55,.85,1).normalize(),right=new T.Vector3(0,1,0).cross(direction).normalize(),up=direction.clone().cross(right).normalize();
@@ -569,7 +582,7 @@ export default function Scene3D(props:SceneProps){
         node.dataset.equipmentScreens=JSON.stringify(updateLabels(rect,projectPoint));
       }
     }frame=requestAnimationFrame(tick);};frame=requestAnimationFrame(tick);
-    return()=>{pointerCancel();window.removeEventListener('blur',pointerCancel);cancelAnimationFrame(frame);resize.disconnect();theme.removeEventListener('change',applyTheme);renderer.domElement.removeEventListener('pointerdown',pointerDown,true);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerup',pointerUp);renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('lostpointercapture',pointerCancel);renderer.domElement.removeEventListener('dblclick',focusEquipment);clearTimeout(cameraTimer);restoreCamera.current=()=>{};controls.dispose();for(const helper of selections.values()){helper.geometry.dispose();helper.material.dispose();}portHaloGeometry.dispose();portHaloMaterial.dispose();targetGeometry.dispose();targetAvailable.dispose();targetSelected.dispose();dragGeometry.dispose();dragMaterial.dispose();environment.dispose();for(const scope of deviceResources.values())dispose(scope);dispose(groupResources);dispose(routeResources);for(const m of materials)m.dispose();floor.geometry.dispose();floor.material.dispose();grid.geometry.dispose();for(const m of Array.isArray(grid.material)?grid.material:[grid.material])m.dispose();renderer.dispose();renderer.domElement.remove();labelLayer.remove();rebuild.current=()=>{};fit.current=()=>{};};
+    return()=>{pointerCancel();window.removeEventListener('blur',pointerCancel);cancelAnimationFrame(frame);resize.disconnect();theme.removeEventListener('change',applyTheme);renderer.domElement.removeEventListener('pointerdown',pointerDown,true);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerup',pointerUp);renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('lostpointercapture',pointerCancel);renderer.domElement.removeEventListener('dblclick',focusEquipment);clearTimeout(cameraTimer);restoreCamera.current=()=>{};controls.dispose();for(const helper of selections.values()){helper.geometry.dispose();helper.material.dispose();}portHaloGeometry.dispose();portHaloMaterial.dispose();targetGeometry.dispose();targetAvailable.dispose();targetSelected.dispose();dragGeometry.dispose();dragMaterial.dispose();environment.dispose();for(const scope of deviceResources.values())dispose(scope);dispose(groupResources);dispose(routeResources);dispose(cadResources);for(const m of materials)m.dispose();floor.geometry.dispose();floor.material.dispose();grid.geometry.dispose();for(const m of Array.isArray(grid.material)?grid.material:[grid.material])m.dispose();renderer.dispose();renderer.domElement.remove();labelLayer.remove();rebuild.current=()=>{};fit.current=()=>{};};
   },[]);
   useEffect(()=>rebuild.current(),[props.project,props.routes,props.interaction,props.cablePreview?.id,props.locale]);useEffect(()=>fit.current(),[props.fit,props.systemFocus]);
   return error ? <div className="scene3d-fallback"><Scene {...props}/><p role="status">{props.locale==='ru'?'3D недоступна. Продолжаем в 2D.':'3D unavailable. Continuing in 2D.'}</p></div> : <div ref={host} className="scene3d" aria-label="3D process model">

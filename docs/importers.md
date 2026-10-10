@@ -78,3 +78,27 @@ manifest-defined plugin kinds.
 
 Format-specific parsers, compatibility tables and migration evidence belong to the extension
 that implements the importer, not to Saturn IDE.
+
+## IFC spatial imports and safe reimport
+
+The `ifc-spatial` project-owned kit lives in `Pom4H/saturn-plugins/importers/ifc`.
+The first import attaches `cadSystems` and a **read-only** `cadReference` to the normal
+`project({...})` root without replacing existing authored equipment, cables, signals
+or HMI. IFC pipe/cable-tray Axis geometry remains a *CAD reference*, not a live Pipe
+or Cable. For actual connections the importer uses only IFC's authored port relations.
+
+A second upload with the same IFC Project `GlobalId` returns an import plan in
+`mode: 'sync'`. `import/context?importer=ifc-spatial` supplies only that importer's
+managed files plus the root source and revisions. `manifest.json` records generated
+file hashes from the prior import. The plugin verifies these hashes before proposing
+updates, and the host checks each file's `previousVersion` plus the current
+`project.ts` version at commit time. A collision blocks the entire plan. Sync plans
+must use unchanged project root source. New and updated source files are committed
+through the existing Workspace; no publishing/apply or controller command occurs.
+
+The workspace API and exporter are deterministic source transactions, not a new
+CAD authoring database. A crash in the middle of multi-file filesystem operations
+is not crash-atomic across all files; the next import still requires review.
+Geometry is a read-only 2D/3D line reference with explicit metres→schematic units
+projection; BIM meshes, actual cable assignment to trays, penetrations, georeferencing
+and a live CAD connector are not yet implemented.

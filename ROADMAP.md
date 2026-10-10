@@ -52,6 +52,8 @@
 
 Ориентиры: [IFC](https://technical.buildingsmart.org/standards/ifc/ifc-examples/), [IFC model tests](https://github.com/buildingSMART/IFC4.x-specification-models), [IfcOpenShell](https://docs.ifcopenshell.org/ifcopenshell-python/geometry_processing.html), [Revit MEP Connectors](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-API/files/Revit_API_Developers_Guide/Discipline_Specific_Functionality/MEP_Engineering/Revit_API_Revit_API_Developers_Guide_Discipline_Specific_Functionality_MEP_Engineering_Connectors_html.html), [Autodesk Data Exchange SDK](https://aps.autodesk.com/en/docs/dx-sdk/v8.0.0), [nanoCAD BIM Электро](https://www.nanocad.ru/products/bim/electro/).
 
+**Первый инкремент, 2026-10-10:** IFC STEP source kit: этажи/помещения, экспортированные осевые линии труб/лотков, порты и только явно заданные связи; исходные IFC GlobalId и единицы; read-only проекции осей в 2D/3D; CAS-синхронизация с сохранением authored `project.ts`. Первая приёмка на синтетическом IFC fixture. Нативный CAD API, GLB/BRep/стены и отверстия, georeferencing, физические назначенные кабели и реальная BIM-модель остаются незавершёнными.
+
 ## ARCH-1 — владение кодом между репозиториями
 
 Приоритет **P0**, выполнено 2026-10-05. Рефакторинг не вводит новые пакеты или

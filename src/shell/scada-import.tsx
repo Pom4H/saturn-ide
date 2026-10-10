@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Locale, Problem } from '../core';
 import { text } from '../core';
-import type { ScadaImporter, ScadaImportPlan } from '../core/importer';
+import type { ScadaImporter, ScadaImportContext, ScadaImportPlan } from '../core/importer';
 import { api } from './api';
 import { readImportSource } from './import-source';
 
@@ -13,12 +13,13 @@ export function ScadaImport({importers,locale,onImported}:{importers:readonly Sc
   const prepare=async(selected:File)=>{
     setBusy(true);setError('');setDone('');
     try{
-      const [{projectVersion},source]=await Promise.all([api<{projectVersion:string}>('import/context'),readImportSource(selected)]);
+      const source=await readImportSource(selected);
       const ranked=importers.map(importer=>({importer,score:importer.detect(source)})).filter(item=>Number.isFinite(item.score)&&item.score>0).sort((a,b)=>b.score-a.score);
       const importer=ranked[0]?.importer;if(!importer)throw new Error(ru?'Ни один установленный плагин импорта не распознал проект':'No installed importer recognized this project');
-      const plan=await importer.import(source);
+      const context=await api<ScadaImportContext>('import/context?importer='+encodeURIComponent(importer.id));
+      const plan=await importer.import(source,context);
       if(plan.importer!==importer.id||plan.sourceFingerprint!==source.fingerprint)throw new Error('Importer returned an inconsistent plan');
-      setPreview({plan,projectVersion,importer});
+      setPreview({plan,projectVersion:context.projectVersion,importer});
     }catch(reason){setPreview(undefined);setError(reason instanceof Error?reason.message:String(reason));}
     finally{setBusy(false);}
   };
@@ -28,7 +29,7 @@ export function ScadaImport({importers,locale,onImported}:{importers:readonly Sc
       const result=await api<{problems:readonly Problem[]}>('import/apply',{plan:preview.plan,projectVersion:preview.projectVersion});
       await onImported();
       if(result.problems.length)setError((ru?'Исходники созданы, но проект требует исправлений: ':'Source was created, but the project has build issues: ')+result.problems.map(item=>item.message[locale]).join('; '));
-      else{setDone(ru?'Миграция записана в исходники проекта. Проверьте изменения в Git; публикация выполняется отдельно.':'Migration was written to project source. Review the Git diff; publishing is a separate action.');setPreview(undefined);}
+      else{setDone(ru?'CAD/SCADA исходники сохранены. Проверьте изменения в Git; публикация выполняется отдельно.':'CAD/SCADA source was saved. Review the Git diff; publishing is a separate action.');setPreview(undefined);}
     }catch(reason){setError(reason instanceof Error?reason.message:String(reason));}
     finally{setBusy(false);}
   };
