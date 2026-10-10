@@ -119,12 +119,12 @@
 .import-file-list{max-height:180px;overflow:auto}.import-file-list>div{display:flex;gap:10px;justify-content:space-between}.import-file-list code{overflow-wrap:anywhere}.import-file-list small{color:var(--text-muted,var(--muted))}.import-file-list [data-severity="blocker"] small,.import-error{color:var(--danger)}.import-file-list [data-severity="warning"] small{color:var(--warning)}
 .import-stats{display:flex;gap:8px;flex-wrap:wrap}
 /* CAD stays a first-class object action, not a plugin migration hidden in navigation. */
-.cad-import-trigger{min-height:31px;padding:0 13px;border:1px solid var(--border);border-radius:5px;background:var(--surface);font-size:12px;font-weight:600;white-space:nowrap}
+.cad-import-trigger{min-height:31px;padding:0 13px;border:1px solid var(--border);border-radius:5px;background:var(--panel);font-size:12px;font-weight:600;white-space:nowrap}
 .cad-import-trigger:hover,.cad-empty-import:hover{border-color:var(--accent)}
 .cad-source-indicator{font:11px/1.4 var(--ui);color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
-.cad-empty-import{margin-inline-start:8px;min-height:40px;padding:0 14px;border:1px solid var(--border);border-radius:5px;background:var(--surface);pointer-events:auto;font-size:13px}
+.cad-empty-import{margin-inline-start:8px;min-height:40px;padding:0 14px;border:1px solid var(--border);border-radius:5px;background:var(--panel);pointer-events:auto;font-size:13px}
 .cad-import-backdrop{position:fixed;inset:0;background:rgba(15,25,31,.47);z-index:70;display:grid;place-items:center;padding:16px;overscroll-behavior:contain}
-.cad-import-dialog{width:min(580px,100%);max-height:min(88vh,880px);overflow:auto;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:9px;box-shadow:0 24px 100px #10202b30;padding:24px;display:grid;gap:18px}
+.cad-import-dialog{width:min(580px,100%);max-height:min(88vh,880px);overflow:auto;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:9px;box-shadow:0 24px 100px #10202b30;padding:24px;display:grid;gap:18px}
 .cad-import-dialog-header{display:flex;align-items:flex-start;gap:20px;justify-content:space-between;padding-bottom:16px;border-bottom:1px solid var(--border)}
 .cad-import-dialog-header strong{font-size:19px;letter-spacing:-.025em;font-weight:650}
 .cad-import-dialog-header p{font-size:12px;line-height:1.6;color:var(--muted);margin:5px 0 0}
@@ -137,7 +137,7 @@
 .cad-import-dialog .import-inventory summary{font-weight:600;cursor:pointer}
 .cad-import-dialog .import-inventory>p{line-height:1.55;margin:0}
 .cad-import-dialog .import-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
-.cad-import-dialog .import-stats>span{padding:8px 9px;border:1px solid var(--border);border-radius:5px;background:var(--surface);font-size:12px;font-variant-numeric:tabular-nums}
+.cad-import-dialog .import-stats>span{padding:8px 9px;border:1px solid var(--border);border-radius:5px;background:var(--panel);font-size:12px;font-variant-numeric:tabular-nums}
 .cad-import-dialog .import-file-list{display:grid;gap:8px;max-height:190px}
 .cad-import-dialog .import-file-list>div{display:grid;gap:3px;font-size:12px}
 .cad-import-dialog .import-file-list code{font-size:11px}
