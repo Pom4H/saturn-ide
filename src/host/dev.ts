@@ -206,7 +206,15 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
           if (path === '/api/releases') return json({ key, source: draft?.artifact.provenance ?? null, checked: draft?.artifact.hash ?? null, ...await revisions.state(), phase: manager.phase, error: manager.error });
           if(path==='/api/deployment/template')return json(inspectDeployment(workspace));
           if(path==='/api/plugins')return json(plugins.list());
-          if(path==='/api/import/context')return json({projectVersion:workspace.read('project.ts').version});
+          if(path==='/api/import/context'){
+            const importer=url.searchParams.get('importer')??'';
+            if(!/^[a-z][a-z0-9-]{0,63}$/.test(importer))throw new HttpError(400,'Invalid importer id');
+            const project=workspace.read('project.ts');
+            const owned=workspace.list().filter(name=>name.startsWith('imports/'+importer+'/'));
+            if(owned.length>500)throw new HttpError(413,'Importer namespace exceeds 500 files');
+            const files=owned.map(name=>workspace.read(name));
+            return json({projectSource:project.source,projectVersion:project.version,files});
+          }
           if(path==='/api/templates')return json(deviceTemplates.map(({signals,...item})=>item));
           if(path==='/api/trash')return json(trash.list());
           if (path === '/api/files') return json(workspace.list());
