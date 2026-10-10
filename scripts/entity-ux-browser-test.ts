@@ -40,7 +40,7 @@ try{
   await snap('02-placement');await page.mouse.click(placement.x,placement.y);
   await until(async()=>current().equipment.some(device=>device.id==='P-01'),'Pump was not created from single placement click');
   assert.equal(readFileSync(sourcePath,'utf8').includes('device_P_01'),true);
-  assert.equal((await page.locator('svg.scene').getAttribute('data-placement-mode'))??'', '');
+  await until(async()=>!(await page.locator('svg.scene').getAttribute('data-placement-mode')),'Placement mode remained active after source save');
   await page.locator('[data-device-properties="P-01"]').waitFor();
   await snap('03-properties');
   await page.getByRole('textbox',{name:'Название оборудования'}).fill('Циркуляционный насос');

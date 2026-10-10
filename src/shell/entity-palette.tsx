@@ -8,7 +8,7 @@ export function EntityPalette({locale,choose,close}:{locale:Locale;choose:(templ
   const ru=locale==='ru',[templates,setTemplates]=useState<CreationTemplate[]>([]),[search,setSearch]=useState(''),[error,setError]=useState(''),input=useRef<HTMLInputElement>(null);
   useEffect(()=>{input.current?.focus();void api<CreationTemplate[]>('templates').then(setTemplates).catch(e=>setError(String(e)));},[]);
   const visible=templates.filter(t=>t.label[locale].toLocaleLowerCase().includes(search.toLocaleLowerCase())||t.id.includes(search.toLocaleLowerCase()));
-  return <div role="dialog" aria-label={ru?'Добавить сущность':'Add entity'} className="entity-palette" data-entity-palette="true" onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}if(e.key==='Enter'&&visible[0]){e.preventDefault();choose(visible[0]);}}}>
+  return <div role="dialog" aria-label={ru?'Добавить сущность':'Add entity'} className="entity-palette" data-entity-palette="true" onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}if(e.key==='Enter'&&e.target===input.current&&visible[0]){e.preventDefault();choose(visible[0]);}}}>
     <header><strong>{ru?'Добавить оборудование':'Add equipment'}</strong><button type="button" onClick={close} aria-label={ru?'Закрыть каталог':'Close catalog'}>×</button></header>
     <input ref={input} value={search} aria-label={ru?'Поиск типа оборудования':'Search equipment type'} placeholder={ru?'Насос, резервуар, ПЛК…':'Pump, tank, PLC…'} onChange={e=>setSearch(e.target.value)}/>
     <div className="entity-palette-items">
