@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {endLabel, text, type Locale, type Pipe, type Project, type PipeLeakFinding} from '../core';
+import {endLabel, type Locale, type Project, type PipeLeakFinding} from '../core';
 import {Scene, type SceneProps} from './scene';
 import './pipe-inspection.css';
 
@@ -14,6 +14,7 @@ const labels:Record<PipeLeakFinding['reason'],Record<Locale,string>>={
   substituted:{ru:'Есть подставленные показания',en:'Substituted measurements present'},
   'different-run':{ru:'Показания из разных запусков',en:'Measurements from different runs'},
   invalid:{ru:'Некорректные измерения',en:'Invalid measurements'},
+  'ambiguous-meter-pair':{ru:'Одна пара датчиков назначена нескольким трубам',en:'One meter pair is assigned to multiple pipes'},
 };
 const format=(value:number|undefined,locale:Locale)=>value===undefined?'—':new Intl.NumberFormat(locale,{maximumFractionDigits:3}).format(value);
 
@@ -43,7 +44,7 @@ export function PipeInspection({project,scene,findings,locale,connected,mode,bac
     <section className="hmi-pipe-workspace">
       <div className="hmi-pipe-diagram" aria-label={ru?'Схема труб':'Pipe diagram'}>
         <Scene {...scene} selected={active?.pipeId??''} select={id=>{if(project.pipes.some(item=>item.id===id))setSelected(id);}}
-          pipeLeakStates={states} focus={undefined} interaction="select" systemFocus={null} focusSystem={undefined}
+          pipeLeakStates={states} focusRouteId={active?.pipeId} focus={undefined} interaction="select" systemFocus={null} focusSystem={undefined}
           viewRestore={undefined} onViewBox={undefined} begin={undefined} move={undefined} end={undefined}
           beginCable={undefined} moveCable={undefined} endCable={undefined} cablePreview={null} />
       </div>
@@ -68,7 +69,8 @@ export function PipeInspection({project,scene,findings,locale,connected,mode,bac
             {pipe.leak&&<><div><dt>{ru?'Расход на входе':'Inlet flow'}</dt><dd>{format(active.inlet,locale)} {active.unit}</dd></div>
             <div><dt>{ru?'Расход на выходе':'Outlet flow'}</dt><dd>{format(active.outlet,locale)} {active.unit}</dd></div>
             <div><dt>{ru?'Разница':'Difference'}</dt><dd>{format(active.difference,locale)} {active.unit}</dd></div>
-            <div><dt>{ru?'Допуск':'Limit'}</dt><dd>{format(active.maxLoss,locale)} {active.unit}</dd></div></>}
+            <div><dt>{ru?'Допуск':'Limit'}</dt><dd>{format(active.maxLoss,locale)} {active.unit}</dd></div>
+            <div><dt>{ru?'Время измерений':'Measurement time'}</dt><dd>{active.measuredAt!==undefined?new Date(active.measuredAt).toLocaleString(locale):'—'}</dd></div></>}
           </dl>
           <p className="hmi-pipe-caution">{ru?'Это участок технологической схемы, а не подтверждённая точка разрыва. Монтажное местоположение требует проверки по плану и на объекте.':'This is a diagram segment, not a confirmed rupture point. Verify its physical location against the site plan and on site.'}</p>
         </div>}

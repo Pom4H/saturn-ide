@@ -15,6 +15,7 @@ export interface SceneProps {
   project:Project;displayProject?:Project;inactive?:readonly string[];routes:readonly PhysicalRoute[];snapshot:Snapshot;locale:Locale;selected:string;selectedPort?:string;selectedIds?:readonly string[];interaction?:'select'|'edit';focus?:string;fit?:number;zoom?:{step:number;factor:number};ports?:boolean;
   viewRestore?:{version:number;box?:[number,number,number,number];pose?:[number,number,number,number,number,number]};
   pipeLeakStates?:Readonly<Record<string,'suspected'|'normal'|'unmonitored'|'unavailable'>>;
+  focusRouteId?:string;
   onViewBox?:(box:[number,number,number,number])=>void;onCameraPose?:(pose:[number,number,number,number,number,number])=>void;
   systemFocus?:string|null;focusSystem?:(id:string)=>void;
   select:(id:string,additive?:boolean)=>void;begin?:(id:string)=>boolean;move?:(id:string,x:number,y:number)=>void;end?:(cancel:boolean)=>void;
@@ -86,6 +87,7 @@ export function Scene(props:SceneProps){
     const minX=Math.min(...points.map(p=>p.x)),minY=Math.min(...points.map(p=>p.y)),maxX=Math.max(...points.map(p=>p.x)),maxY=Math.max(...points.map(p=>p.y));
     const width=Math.max(440,maxX-minX+160),height=Math.max(340,maxY-minY+160);setBox([(minX+maxX-width)/2,(minY+maxY-height)/2,width,height]);
   };
+  useEffect(()=>{if(props.focusRouteId&&!props.focus)focusRoute(props.focusRouteId);},[props.focusRouteId]);
   const coordinate=(event:PointerEvent)=>{const p=svg.current!.createSVGPoint();p.x=event.clientX;p.y=event.clientY;return p.matrixTransform(svg.current!.getScreenCTM()!.inverse());};
   useEffect(()=>{
     const node=svg.current!;

@@ -5,7 +5,7 @@ import {measurementTime, signalHealth, type ObservationContext} from './operatio
 export type PipeLeakState = 'suspected' | 'normal' | 'unavailable' | 'unmonitored';
 export type PipeLeakReason =
   'imbalance' | 'within-limit' | 'no-meters' | 'missing' | 'unhealthy' |
-  'unsynchronized' | 'reverse-flow' | 'substituted' | 'different-run' | 'invalid';
+  'unsynchronized' | 'reverse-flow' | 'substituted' | 'different-run' | 'invalid' | 'ambiguous-meter-pair';
 export interface PipeLeakFinding {
   readonly pipeId:string;
   readonly state:PipeLeakState;
@@ -24,12 +24,19 @@ export interface PipeLeakFinding {
  * @en A pipe-level flow mismatch is a suspicion, not a burst confirmation.
  * Never infer location from a shared meter, stale data or an IFC line. */
 export function diagnosePipeLeaks(project:Pick<Project,'pipes'>, snapshot:Snapshot, context:ObservationContext):readonly PipeLeakFinding[] {
+  const pairCounts=new Map<string,number>();
+  for(const pipe of project.pipes)if(pipe.leak){
+    const pair=JSON.stringify([pipe.leak.inlet.id,pipe.leak.outlet.id]);
+    pairCounts.set(pair,(pairCounts.get(pair)??0)+1);
+  }
   return project.pipes.map(pipe=>{
     const base={pipeId:pipe.id};
     const monitor=pipe.leak;
     if(!monitor)return {...base,state:'unmonitored',reason:'no-meters'} as const;
     const {inlet,outlet,maxLoss}=monitor;
     const details={...base,maxLoss,unit:inlet.unit};
+    if((pairCounts.get(JSON.stringify([inlet.id,outlet.id]))??0)>1)
+      return {...details,state:'unavailable',reason:'ambiguous-meter-pair'} as const;
     const first=snapshot.samples[inlet.id],last=snapshot.samples[outlet.id];
     if(!first||!last)return {...details,state:'unavailable',reason:'missing'} as const;
     const health=(s:Signal<number>)=>signalHealth(s,snapshot.samples[s.id],context);

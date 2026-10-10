@@ -52,6 +52,13 @@ test('uninstrumented pipe is explicitly unknown, not marked normal',()=>{
   const without={...station,pipes:[{...station.pipes[0]!,leak:undefined}]};
   expect(diagnosePipeLeaks(without,readings(10,0),{now})[0]).toMatchObject({state:'unmonitored',reason:'no-meters'});
 });
+test('reused sensor pair across pipes never identifies two different segments',()=>{
+  const repeated={...station,pipes:[...station.pipes,{...station.pipes[0]!,id:'another'}]};
+  const findings=diagnosePipeLeaks(repeated,readings(10,8),{now});
+  expect(findings.every(item=>item.state==='unavailable')).toBe(true);
+  expect(findings.map(item=>item.reason)).toEqual(['ambiguous-meter-pair','ambiguous-meter-pair']);
+  expect(()=>validateProject(repeated)).toThrow();
+});
 test('invalid meter contracts are rejected at source validation',()=>{
   const original=station.pipes[0]!;
   const invalid=(leak:PipeLeakMonitor)=>({...station,pipes:[{...original,leak}]});

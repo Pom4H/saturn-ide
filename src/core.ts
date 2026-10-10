@@ -566,6 +566,7 @@ export function validateProject(p:Project):void {
     }
   }
   const degree=new Map<string,number>();
+  const meteredPipePairs=new Set<string>();
   for(const edge of [...p.pipes,...p.cables??[]]) {
     const legacy=edge as Connection&{unplugged?:'from'|'to';looseEnd?:Point};
     if(legacy.unplugged!==undefined||legacy.looseEnd!==undefined){
@@ -601,9 +602,12 @@ export function validateProject(p:Project):void {
       if(edge.leak){
         const {inlet,outlet,maxLoss,maxSkewMs}=edge.leak;
         ref(inlet,'number');ref(outlet,'number');
+        const pairKey=JSON.stringify([inlet.id,outlet.id]);
+        requireThat(!meteredPipePairs.has(pairKey),'PIPE_LEAK_AMBIGUOUS',`Same meter pair cannot localize multiple pipe segments: ${edge.id}`,`Одна пара расходомеров не может локализовать несколько участков: ${edge.id}`);
+        meteredPipePairs.add(pairKey);
         requireThat(inlet.id!==outlet.id,'PIPE_LEAK_SENSORS',`Pipe ${edge.id} has identical inlet and outlet meters`,`У трубы ${edge.id} одинаковые датчики на входе и выходе`);
         requireThat(!!inlet.unit&&inlet.unit===outlet.unit&&inlet.dimension===outlet.dimension&&inlet.dimension==='flow','PIPE_LEAK_UNITS',`Pipe ${edge.id} requires matching measured flow units`,`Трубе ${edge.id} нужны датчики расхода с одинаковыми единицами`);
-        requireThat(Number.isFinite(maxLoss)&&maxLoss>0&&(!maxSkewMs||Number.isSafeInteger(maxSkewMs)&&maxSkewMs>=1&&maxSkewMs<=60000),'PIPE_LEAK_LIMIT',`Invalid leak comparison on ${edge.id}`,`Неверный порог/интервал сравнения расхода на ${edge.id}`);
+        requireThat(Number.isFinite(maxLoss)&&maxLoss>0&&(maxSkewMs===undefined||Number.isSafeInteger(maxSkewMs)&&maxSkewMs>=1&&maxSkewMs<=60000),'PIPE_LEAK_LIMIT',`Invalid leak comparison on ${edge.id}`,`Неверный порог/интервал сравнения расхода на ${edge.id}`);
       }
     }else if(edge.signal){
       ref(edge.signal);
