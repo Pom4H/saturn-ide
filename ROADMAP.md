@@ -7,6 +7,8 @@
 **запланированные возможности**, а не заявление об их реализации. Закрывать пункт
 можно только вместе с реализацией, проверками и ссылками на результаты.
 
+Обзор рынка CAD/EDA/BIM/industrial IDE: [проверенные конкуренты и технические решения](docs/research/cad-competitive-landscape-2026-10-10.md).
+
 Действующие границы задаёт [архитектура](docs/architecture.md), обязательства переноса —
 [матрица возможностей](docs/capabilities.md), область уже описанных проверок —
 [verification](docs/verification.md). Этот roadmap дополняет их, не отменяет незавершённый
@@ -53,6 +55,43 @@
 Ориентиры: [IFC](https://technical.buildingsmart.org/standards/ifc/ifc-examples/), [IFC model tests](https://github.com/buildingSMART/IFC4.x-specification-models), [IfcOpenShell](https://docs.ifcopenshell.org/ifcopenshell-python/geometry_processing.html), [Revit MEP Connectors](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-API/files/Revit_API_Developers_Guide/Discipline_Specific_Functionality/MEP_Engineering/Revit_API_Revit_API_Developers_Guide_Discipline_Specific_Functionality_MEP_Engineering_Connectors_html.html), [Autodesk Data Exchange SDK](https://aps.autodesk.com/en/docs/dx-sdk/v8.0.0), [nanoCAD BIM Электро](https://www.nanocad.ru/products/bim/electro/).
 
 **Первый инкремент, 2026-10-10:** IFC STEP source kit: этажи/помещения, экспортированные осевые линии труб/лотков, порты и только явно заданные связи; исходные IFC GlobalId и единицы; read-only проекции осей в 2D/3D; CAS-синхронизация с сохранением authored `project.ts`. Первая приёмка на синтетическом IFC fixture. Нативный CAD API, GLB/BRep/стены и отверстия, georeferencing, физические назначенные кабели и реальная BIM-модель остаются незавершёнными.
+
+
+## CAD-2 — параметрическая геометрия из authored source
+
+**Приоритет P1 для узкого эксперимента, P2 для выбора геометрического ядра.**
+Исследование конкурентов от 2026-10-10: [CAD следующего поколения](docs/research/cad-competitive-landscape-2026-10-10.md).
+Референсы: Zoo/KCL+AST, Onshape feature history, Shapr3D direct editing,
+tscircuit typed IR, atopile constraints/units, replicad/OCCT, vcad/Truck и EZPZ.
+Это **план, не реализация**, не отменяющий CAD-1 и требований parity из capabilities.
+
+- [ ] **CAD-R1 / P1 — source-linked geometry.** Реальная монтажная панель PLC
+  (корпус, четыре отверстия, кабельные вводы) как project-owned плагин.
+  Миллиметры и координатные системы CAD не подменяют diagram x/y.
+  Выделение геометрии ведёт к stable engineering ID и конкретному authored
+  source locator; edit/drag/constraint проходит preview→check→CAS→один undo.
+  Неоднозначные вычисляемые выражения отклоняются, не перезаписываются эвристикой.
+- [ ] **CAD-R1 acceptance.** Проверить dimension/coaxial/clearance, under-/over-
+  constrained диагностику, ESC/undo, конфликт source CAS, идентичный
+  объект в 2D/3D и отсутствие автоматического publish/apply.
+  Наличие рендера не доказывает точность STEP.
+- [ ] **CAD-R2 / P1 — BIM provenance.** Продолжить CAD-1: независимая реальная IFC
+  насосной, корректные floors/axes/units/GlobalId, reimport с трёхсторонним diff
+  и различием CAD reference / proposed route / confirmed physical connection.
+  Удалённая внешняя сущность не удаляет authored сигналы, PLC или историю.
+- [ ] **CAD-R3 / P2 — kernel benchmark.** Один набор fixtures для
+  replicad/OCCT, vcad и Truck (при доступном feature subset); Manifold
+  отдельно как mesh-only, не STEP-equivalent. Мерить cold-load WASM,
+  incremental rebuild, peak memory, STEP roundtrip, стабильность ссылок
+  на faces/ports после boolean/fillet, cancel/worker isolation, и фиксировать
+  CI environment вместе с профилем производительности.
+- [ ] Выбрать и подключить exact CAD kernel только по результатам сравнительных
+  измерений, проверки лицензии/оффлайна и требуемой feature fidelity;
+  **не писать собственный B-Rep** и не вводить второй authored Project.
+
+**Граница:** CAD plugin отвечает за solid/feature/parameter geometry, Saturn core —
+за authored equipment/ports/topology/signals, runtime — за Applied observation/command.
+Внешний BIM и графический mesh не становятся достоверными соединениями сами по себе.
 
 ## ARCH-1 — владение кодом между репозиториями
 
