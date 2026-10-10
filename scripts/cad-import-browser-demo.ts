@@ -53,8 +53,8 @@ try{
   await page.getByText('Лотки: 2').waitFor();
   await page.getByText('Трубы: 2').waitFor();
   await screenshot('02-cad-review.png');await pace(1300);
-  assert.equal(await page.getByRole('button',{name:'Импортировать модель'}).isEnabled(),true);
-  await page.getByRole('button',{name:'Импортировать модель'}).click();
+  assert.equal(await page.getByRole('button',{name:'Импортировать модель',exact:true}).isEnabled(),true);
+  await page.getByRole('button',{name:'Импортировать модель',exact:true}).click();
   await seek(()=>!!imported()&&imported()!.runs.length===4,'IFC physical axes did not become checked project data');
   await page.locator('.cad-import-dialog').waitFor({state:'hidden'});
   await page.locator('[data-cad-run]').first().waitFor();
