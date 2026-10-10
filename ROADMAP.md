@@ -80,6 +80,20 @@
 палитра + 2D/3D + свойства. Оба пишут один типизированный исходник с CAS и
 одинаковыми контрактами; TypeScript остаётся advanced view.
 
+## CABLE-1 — оператор находит подозрительный управляющий кабель
+
+**P0 для насосной станции, срез 2026-10-10.** 
+Первый тип: **digital control path**, не точное определение пробоя изоляции.
+Архитектурный контракт и ограничения: [cable-integrity-diagnostics.md](docs/cable-integrity-diagnostics.md).
+
+- [x] Авторская `Cable.integrity` из двух независимых read-only `Signal<boolean>`; сигналы входят в один Project/Checked BuildArtifact/semantic graph. Измерение не является командой.
+- [x] Чистая диагностика `diagnoseCableIntegrity`: только актуальные согласованные показания. `suspected` = несоответствие на концах, `observed` = сигнал проходит при возбуждении, `inactive` = проверить нельзя; bad/offline/stale/missing/substituted/duplicate pair → unavailable.
+- [ ] Операторский HMI: общий SVG canvas + выбираемая линия/порты/замеры, мобильный UI, безопасная подсветка без автоматических управляющих команд. **Не считать выполненным до браузерной приёмки.**
+- [ ] Пример в pumping-station: simulated fault `sim.run-cable-break`, действительное отличие `PLC-01.outputObserved` от `P-01.inputObserved`, оператор видит `run-command` как подозрение, `valve-command` без датчиков отмечается отдельно.
+- [ ] CI evidence: нормальный сигнал, разрыв, возврат в норму, одновременный разрыв `discharge` трубы не путает диагностические списки; 390px screenshot, no JS errors, нет live-команд от UI диагностики.
+- [ ] Физические испытания на объекте: независимые измерения уровня на концах, отделение отказа контакта/клеммы/входа от повреждения жилы, маркировка кабеля и реальная привязка к монтажным планам.
+- [ ] Дальше: power voltage/current/protection, Ethernet/RS485 port health, TDR/OTDR distance, physical route attribution. Никаких фиктивных координат и процентных confidence.
+
 ## LEAK-1 — оператор находит подозрительный участок разрыва трубы
 
 **Приоритет P0 для законченной насосной станции, запрос 2026-10-10.**

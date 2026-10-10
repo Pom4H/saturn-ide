@@ -11,6 +11,8 @@ import { routeReferences, systemElevation, equipmentElevation, type RouteWaypoin
 export { systemElevation, equipmentElevation, waypointPosition, systemPortPositions, type RoutePoint, type RoutePort, type RouteWaypoint, type SystemPort, type SystemPortSpec } from './core/spatial';
 export { diagnosePipeLeaks } from './core/pipe-leak';
 export type { PipeLeakFinding, PipeLeakState, PipeLeakReason } from './core/pipe-leak';
+export { diagnoseCableIntegrity } from './core/cable-integrity';
+export type { CableIntegrityFinding, CableIntegrityState, CableIntegrityReason } from './core/cable-integrity';
 export type Locale = 'en' | 'ru';
 /** Authored names and descriptions use ordinary strings. The locale map is accepted
  * only for compatibility with existing projects; UI language is a Shell concern. */
@@ -270,7 +272,17 @@ export interface PipeLeakMonitor {
   readonly maxSkewMs?:number;
 }
 export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number>; leak?:PipeLeakMonitor }
-export interface Cable extends Connection { kind:'cable'; signal?:Signal }
+/** @ru Наблюдения на двух концах дискретной цепи; ни одно из них не команда.
+ * @en Independently observed levels at either end of a digital control path, not writable commands.
+ * Both sensors must be actual observations in live installations; simulation inputs are examples only. */
+export interface CableDigitalPathMonitor {
+  readonly kind:'digital-path';
+  readonly source:Signal<boolean>;
+  readonly destination:Signal<boolean>;
+  /** Largest permitted difference between measurement receipt timestamps. */
+  readonly maxSkewMs?:number;
+}
+export interface Cable extends Connection { kind:'cable'; signal?:Signal; integrity?:CableDigitalPathMonitor }
 type FluidFrom<F extends string=string> = ConnectionEnd<'fluid',F,'source'|'passive'>;
 type FluidTo<F extends string=string> = ConnectionEnd<'fluid',F,'sink'|'passive'>;
 /** @ru Труба с жидкостью. Соединяет совместимые порты; source/sink задают направление оборудования, passive допускает явные fitting-узлы вроде tee().
@@ -291,7 +303,11 @@ export function migrateLegacyConnection<T extends {from:ConnectionEnd;to:Connect
   if((unplugged!=='from'&&unplugged!=='to')||!looseEnd)throw new Error('Both unplugged and looseEnd are required for legacy cable migration');
   return {...rest,[unplugged]:free(rest[unplugged],looseEnd)};
 }
-export function cable<const M extends Exclude<Medium,'fluid'>, const F extends string,const S extends Signal=Signal>(id:string, options:{from:ConnectionEnd<M,F,'source'|'passive'>;to:ConnectionEnd<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:S;via?:readonly RouteWaypoint<NoInfer<M>>[];unplugged?:'from'|'to';looseEnd?:Point}):Cable & {signal?:S} {
+type CableSpec<M extends Exclude<Medium,'fluid'>,F extends string,S extends Signal>={from:ConnectionEnd<M,F,'source'|'passive'>;to:ConnectionEnd<NoInfer<M>,NoInfer<F>,'sink'|'passive'>;signal?:S;via?:readonly RouteWaypoint<NoInfer<M>>[];unplugged?:'from'|'to';looseEnd?:Point};
+/** Ordinary cables do not widen literal Project.signals with optional generic monitor IDs. */
+export function cable<const M extends Exclude<Medium,'fluid'>,const F extends string,const S extends Signal=Signal>(id:string, options:CableSpec<M,F,S>&{integrity?:never}):Omit<Cable,'integrity'|'signal'>&{signal?:S};
+export function cable<const M extends Exclude<Medium,'fluid'>,const F extends string,const S extends Signal=Signal,const I extends CableDigitalPathMonitor=CableDigitalPathMonitor>(id:string, options:CableSpec<M,F,S>&{integrity:I}):Omit<Cable,'integrity'|'signal'>&{signal?:S;integrity:I};
+export function cable(id:string,options:CableSpec<Exclude<Medium,'fluid'>,string,Signal>&{integrity?:CableDigitalPathMonitor}):Cable {
   return {...migrateLegacyConnection(options),...(options.via?{via:routeReferences(options.via)}:{}),id,kind:'cable'};
 }
 export interface Alarm { id:string; label:Text; signal:Signal<number>; above:number; hysteresis?:number }
@@ -401,6 +417,7 @@ export function collectSignals(definition:ProjectDefinition):Record<string,Signa
   for(const edge of [...definition.pipes??[],...definition.cables??[]]) {
     add(edge.kind==='pipe'?edge.flow:edge.signal);
     if(edge.kind==='pipe'&&edge.leak){add(edge.leak.inlet);add(edge.leak.outlet);}
+    if(edge.kind==='cable'&&edge.integrity){add(edge.integrity.source);add(edge.integrity.destination);}
   }
   for(const alarm of definition.alarms??[])add(alarm.signal);
   for(const report of definition.reports??[])for(const signal of reportSignals(report))add(signal);
@@ -420,7 +437,7 @@ type ReportSignals<R> = Items<Field<R,'signals'>> | Field<Values<Field<R,'column
 type ScreenSignals<H> = Field<Items<Field<H,'elements'>>,'signal'>;
 type ReferencedSignals<P> = Extract<
   Values<Field<P,'signals'>> | SignalMembers<Items<Field<P,'equipment'>>> |
-  Field<Items<Field<P,'pipes'>>,'flow'> | Field<Field<Items<Field<P,'pipes'>>,'leak'>,'inlet'|'outlet'> | Field<Items<Field<P,'cables'>>,'signal'> |
+  Field<Items<Field<P,'pipes'>>,'flow'> | Field<Field<Items<Field<P,'pipes'>>,'leak'>,'inlet'|'outlet'> | Field<Items<Field<P,'cables'>>,'signal'> | Field<Field<Items<Field<P,'cables'>>,'integrity'>,'source'|'destination'> |
   Field<Items<Field<P,'alarms'>>,'signal'> | ReportSignals<Items<Field<P,'reports'>>> |
   Field<Items<Field<Items<Field<P,'monitoring'>>,'metrics'>>,'signal'> |
   Field<Items<Field<Items<Field<P,'scenarios'>>,'steps'>>,'signal'> |
@@ -567,6 +584,7 @@ export function validateProject(p:Project):void {
   }
   const degree=new Map<string,number>();
   const meteredPipePairs=new Set<string>();
+  const monitoredCablePairs=new Set<string>();
   for(const edge of [...p.pipes,...p.cables??[]]) {
     const legacy=edge as Connection&{unplugged?:'from'|'to';looseEnd?:Point};
     if(legacy.unplugged!==undefined||legacy.looseEnd!==undefined){
@@ -614,6 +632,23 @@ export function validateProject(p:Project):void {
       requireThat((!a.valueType||a.valueType===typeof edge.signal.initial)&&(!b.valueType||b.valueType===typeof edge.signal.initial),'PORT_VALUE_TYPE',`Wrong signal type on ${edge.id}`,`Неверный тип сигнала на ${edge.id}`);
       requireThat((!a.unit||a.unit===edge.signal.unit)&&(!b.unit||b.unit===edge.signal.unit)&&(!a.unit||!b.unit||a.unit===b.unit),'PORT_UNIT',`Wrong signal unit on ${edge.id}`,`Неверная единица сигнала на ${edge.id}`);
     }
+  }
+  for(const edge of p.cables??[]){
+    const diag=edge.integrity;
+    if(!diag)continue;
+    requireThat(diag.kind==='digital-path'&&edge.from.terminal.medium==='control'&&edge.to.terminal.medium==='control','CABLE_MONITOR_KIND',`Only digital control paths support integrity monitoring: ${edge.id}`,`Диагностика доступна только для дискретных управляющих линий: ${edge.id}`);
+    requireThat(diag.source&&diag.destination,'CABLE_MONITOR_SIGNAL',`Missing control-line observations: ${edge.id}`,`Нет наблюдений линии управления: ${edge.id}`);
+    ref(diag.source,'boolean');ref(diag.destination,'boolean');
+    requireThat(!diag.source.writable&&!diag.destination.writable&&diag.source.id!==diag.destination.id,'CABLE_MONITOR_OBSERVATIONS',`Cable ${edge.id} needs two distinct read-only observations`,`Кабель ${edge.id}: нужны два разных измерения, а не команды`);
+    requireThat(diag.maxSkewMs===undefined||Number.isSafeInteger(diag.maxSkewMs)&&diag.maxSkewMs>=1&&diag.maxSkewMs<=60_000,'CABLE_MONITOR_SKEW',`Invalid measurement skew ${edge.id}`,`Неверный допуск синхронизации: ${edge.id}`);
+    // Pair identity, not one shared command, identifies an observable route.
+    const key=JSON.stringify([diag.source.id,diag.destination.id]);
+    requireThat(!monitoredCablePairs.has(key),'CABLE_MONITOR_DUPLICATE',`Two cables reuse one observation pair: ${edge.id}`,`Два кабеля используют одну пару наблюдений: ${edge.id}`);
+    monitoredCablePairs.add(key);
+    if(isAttached(edge.from)&&diag.source.owner?.kind==='equipment')
+      requireThat(diag.source.owner.id===edge.from.device,'CABLE_MONITOR_SOURCE',`Source observation belongs to another device: ${edge.id}`,`Исходное измерение принадлежит другому прибору: ${edge.id}`);
+    if(isAttached(edge.to)&&diag.destination.owner?.kind==='equipment')
+      requireThat(diag.destination.owner.id===edge.to.device,'CABLE_MONITOR_DESTINATION',`Destination observation belongs to another device: ${edge.id}`,`Приёмное измерение принадлежит другому прибору: ${edge.id}`);
   }
   for(const a of p.alarms){ref(a.signal,'number');requireThat(Number.isFinite(a.above)&&(a.hysteresis===undefined||Number.isFinite(a.hysteresis)&&a.hysteresis>=0),'ALARM_LIMIT','Invalid alarm threshold','Неверный порог тревоги');}
   for(const group of p.monitoring??[]){
