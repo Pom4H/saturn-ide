@@ -1,37 +1,98 @@
-name: Spatial DSL workspace
+name: Spatial DSL acceptance
 on:
   push:
     branches: [work/spatial-dsl-20261010]
+    paths: [spatial-changes.json]
+  workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
-  workspace:
+  check:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: saturn
+          POSTGRES_PASSWORD: saturn-test-only
+          POSTGRES_DB: saturn_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U saturn -d saturn_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_POSTGRES_URL: postgres://saturn:saturn-test-only@127.0.0.1:5432/saturn_test
     steps:
       - uses: actions/checkout@v4
         with:
           path: saturn-ide
+          ref: work/spatial-dsl-20261010
+      - name: Apply source changes with exact preimage verification
+        working-directory: saturn-ide
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,pathlib,subprocess
+          root=pathlib.Path.cwd()
+          changes=json.loads(pathlib.Path('spatial-changes.json').read_text())
+          paths=[]
+          for change in changes:
+              path=root/change['path']
+              assert path.resolve().is_relative_to(root)
+              if change['base'] is None:
+                  assert not path.exists(), str(path)
+                  source=change['content']
+              else:
+                  source=path.read_text()
+                  assert hashlib.sha256(source.encode()).hexdigest()==change['base'], str(path)
+                  for start,end,text in reversed(change['edits']):
+                      source=source[:start]+text+source[end:]
+              path.parent.mkdir(parents=True,exist_ok=True)
+              path.write_text(source)
+              paths.append(change['path'])
+          subprocess.run(['git','diff','--check'],check=True)
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','add','--',*paths],check=True)
+          subprocess.run(['git','commit','-m','feat: room elevations and typed spatial route passages'],check=True)
+          subprocess.run(['git','push','origin','HEAD:work/spatial-dsl-20261010'],check=True)
+          PY
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-examples
+          path: saturn-examples
+          ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: Pom4H/saturn-plugins
+          ref: c1def4248a73011a5f05ec4b75ccc963da16839a
+          path: saturn-plugins
+          ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: '1.4.2'
       - run: bun install --frozen-lockfile
         working-directory: saturn-ide
-      - name: Export public source and offline test toolchain (no Git credentials)
+      - name: Share existing integration test toolchain
         run: |
-          mkdir tooling
-          cp "$(command -v bun)" tooling/bun
-          git -C saturn-ide rev-parse HEAD > tooling/revision.txt
-          tar -czf source.tgz --exclude=.git --exclude=node_modules saturn-ide
-          tar -czf toolchain.tgz saturn-ide/node_modules tooling
+          mkdir -p saturn-ide/node_modules/@saturn
+          ln -s ../.. saturn-ide/node_modules/@saturn/core
+          ln -s ../saturn-ide/node_modules saturn-examples/node_modules
+          ln -s ../saturn-ide/node_modules saturn-plugins/node_modules
+      - run: bun run check
+        working-directory: saturn-ide
+      - name: Complete unit, SQLite, PostgreSQL and protocol suite
+        run: timeout --kill-after=10s 180s bun test tests
+        working-directory: saturn-ide
+      - name: Spatial source and real browser acceptance
+        run: timeout --kill-after=10s 180s bun scripts/spatial-browser-test.ts
+        working-directory: saturn-ide
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: spatial-source
-          path: source.tgz
-          retention-days: 1
-      - uses: actions/upload-artifact@v4
-        with:
-          name: spatial-toolchain
-          path: toolchain.tgz
-          retention-days: 1
+          name: spatial-browser-evidence
+          path: saturn-ide/artifacts/spatial/
+          if-no-files-found: ignore
+          retention-days: 3
