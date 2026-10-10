@@ -1,5 +1,6 @@
 import {expect,test} from 'bun:test';
-import {placementAt,nextEntityId,templateDimensions,previewEquipment} from '../src/shell/model/entity-placement';
+import {placementAt,nextEntityId,templateDimensions,previewEquipment,positionNearEquipment} from '../src/shell/model/entity-placement';
+import {tank,pump} from '../src/core';
 import {patchDeviceProperties} from '../src/workspace/device-properties';
 
 test('click placement snaps and avoids equipment footprints',()=>{
@@ -27,4 +28,19 @@ test('localization and computed positions remain safe',()=>{
  expect(()=>patchDeviceProperties(`const a=pump('P-01',{label:'a',x:baseX,y:3});`,'P-01',{x:100})).toThrow('Computed x');
  expect(()=>patchDeviceProperties(src+'\n'+src,'P-01',{x:1})).toThrow('ambiguous');
  expect(()=>patchDeviceProperties(src,'P-01',{z:Infinity})).toThrow('Invalid z');
+});
+
+test('the ChatGPT reference placement uses the same footprints as the visual palette',()=>{
+  const reservoir=tank('TK-01',{label:'Reservoir',x:100,y:80});
+  const right=positionNearEquipment('pump','TK-01',[reservoir],'right');
+  expect(right).toEqual({x:300,y:120});
+  const motor=pump('P-01',{label:'Pump',...right});
+  expect(()=>positionNearEquipment('pump','missing',[reservoir])).toThrow('Unknown reference');
+  expect(()=>positionNearEquipment('pump','TK-01',[reservoir,motor],'right')).toThrow('No collision-free');
+  const alternative=positionNearEquipment('pump','TK-01',[reservoir,motor]);
+  expect(alternative).not.toEqual(right);
+  expect(placementAt({x:alternative.x+110,y:alternative.y+85},'pump',[
+    {x:reservoir.x,y:reservoir.y,width:170,height:230},
+    {x:motor.x,y:motor.y,width:220,height:170},
+  ]).valid).toBe(true);
 });

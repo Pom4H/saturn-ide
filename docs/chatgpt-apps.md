@@ -122,12 +122,42 @@ Saturn-authored plugin is distinct from the **OpenAI Verified** program; that ba
 requires OpenAI's separate selected-developer review. No public draft was uploaded,
 no review requested and no plugin published during this audit.
 
+## Primary authoring UX: conversation first
+
+The intended primary workflow is the engineer's conversation in **ChatGPT**, with Saturn
+as the typed engineering execution model and the same 2D/3D Shell available in the App.
+The on-canvas equipment palette is an optional, good-enough manual fallback, **not**
+a second authoring database and not a compulsory wizard.
+
+A connected ChatGPT tool client can now:
+1. Call `saturn_device_catalog` to inspect available types, actual project devices, ports
+   and rooms without inventing classes or tags.
+2. Interpret “place a pump beside TK-01” as `saturn_create_device({template:'pump',
+   near:'TK-01',side:'right'})`. The host proposes a collision-free **schematic**
+   position, automatically chooses an unused ID and defaults the equipment label.
+   Preview returns the exact authored source and `projectVersion`. Repeat with
+   `apply:true,projectVersion` to save, then open the selected device with `saturn_open`.
+3. Interpret “rename P-01 and raise it to Z=40” using `saturn_edit_device` with
+   `apply:false` first, inspect the source and exact `sourceVersion`, then save
+   with `apply:true,sourceVersion`. This is the same `devices/properties` operation
+   used by the hand-edited inspector. CAS rejects stale revisions and changes to
+   computed declarations.
+
+Neither route guesses electrical/hydraulic connections, confirms installation,
+runs PLC firmware, publishes nor applies a runtime build. Imported CAD axes and
+schematic XYZ are different coordinate systems. This is local-authoring support
+through the current Apps MCP host; the SaaS demo MCP currently provides a
+read-only scope, and a live ChatGPT account connection/public distribution is
+**not demonstrated** by unit and MCP client acceptance tests.
+
 ## Tools and identity boundaries
 
 - `saturn_project`: resource catalog, problems, mode and distinct Checked/Published/Applied identities.
 - `saturn_open`: actual UI and local link; supports surfaces, source files, devices/connections, ports, signals, reports, camera/viewBox and settings. Port targets are checked against the current authored model.
 - `saturn_read_source`, `saturn_save_sources`, `saturn_create_source`: normal workspace files. Existing files require exact version CAS; new files cannot overwrite. Errors in saved TS are returned as project diagnostics.
-- `saturn_create_device`: source/import preview followed by explicit `apply:true` with `projectVersion`; omitted XY uses logical non-overlapping placement.
+- `saturn_device_catalog`: typed equipment templates, current device locations/ports and rooms in schematic coordinates.
+- `saturn_create_device`: auto ID/label and explicit/relative schematic placement; source/import preview followed by `apply:true` with `projectVersion` (source edit only).
+- `saturn_edit_device`: AST-backed name/XYZ/room preview followed by `apply:true` with the exact `sourceVersion`; never changes live runtime.
 - `saturn_preview`, `saturn_check`, `saturn_read`: existing typed authoring/language/deployment preview and project/runtime APIs.
 - `saturn_publish`, `saturn_apply`, `saturn_command`: separate explicit runtime actions, with expected identity fences and destructive/open-world annotations. Driver configuration recovery does not undo physical effects.
 

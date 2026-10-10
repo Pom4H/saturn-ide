@@ -1,3 +1,5 @@
+import {mkdtempSync,mkdirSync,rmSync,writeFileSync,existsSync,readFileSync} from 'node:fs';
+import {join,resolve} from 'node:path';
 import {test,expect} from 'bun:test';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -56,4 +58,55 @@ test('real MCP client connects, reads UI, saves with CAS, checks failed drafts, 
     expect((await call('saturn_create_source',{path:'notes.md',source:'overwrite'})).isError).toBe(true);
     expect((await fetch(new URL('/mcp',apps.server.url),{method:'POST',headers:{origin:'https://evil.example'}})).status).toBe(403);
   }finally{await client.close();await apps.close();await app.close();work.clean();}
+},60000);
+
+test('ChatGPT places and edits an authored pump with shared typed operations and CAS',async()=>{
+  const rootBase=resolve('.saturn');mkdirSync(rootBase,{recursive:true});
+  const dir=mkdtempSync(join(rootBase,'chatgpt-place-')),root=join(dir,'project');mkdirSync(root);
+  writeFileSync(join(root,'project.ts'),`import {project,tank} from '@saturn/core';
+const reservoir=tank('TK-01',{label:'Reservoir',x:100,y:80});
+export default project({id:'chatgpt-project',label:'Engineer',equipment:[reservoir],pipes:[],alarms:[]});
+`);
+  let app:Awaited<ReturnType<typeof createApp>>|undefined,apps:Awaited<ReturnType<typeof createAppsHost>>|undefined;
+  const client=new Client({name:'chatgpt-engineering',version:'1.0.0'});
+  try{
+    app=await createApp({projectDir:root,dataDir:join(dir,'data'),databaseUrl:':memory:',port:0,preview:'manual'});
+    apps=await createAppsHost({workspaceUrl:String(app.server.url),projectDir:root,dataDir:join(dir,'apps'),port:0});
+    await client.connect(new StreamableHTTPClientTransport(new URL('/mcp',apps.server.url)));
+    const tools=(await client.listTools()).tools;
+    for(const name of ['saturn_device_catalog','saturn_create_device','saturn_edit_device'])expect(tools.some(item=>item.name===name)).toBe(true);
+    expect(tools.find(tool=>tool.name==='saturn_edit_device')?.annotations?.destructiveHint).toBe(true);
+    const call=async(name:string,args:Record<string,unknown>={})=>await client.callTool({name,arguments:args}) as CallToolResult;
+    const catalog=await call('saturn_device_catalog');
+    expect(catalog.isError).toBeUndefined();
+    const data=catalog.structuredContent! as {templates:{id:string}[];devices:{id:string}[]};
+    expect(data.templates.some(item=>item.id==='pump')).toBe(true);
+    expect(data.devices.find(item=>item.id==='TK-01')).toBeTruthy();
+    const before=(await call('saturn_project')).structuredContent!.releases as {applied:string|null};
+    expect(before.applied).toBeNull();
+    const preview=await call('saturn_create_device',{template:'pump',near:'TK-01',side:'right'});
+    expect(preview.isError).toBeUndefined();
+    const proposed=preview.structuredContent! as {id:string;position:{x:number;y:number};projectVersion:string};
+    expect(proposed.id).toBe('P-01');
+    expect(proposed.position).toEqual({x:300,y:120});
+    expect(existsSync(join(root,'equipment','P-01.device.ts'))).toBe(false);
+    expect((await call('saturn_create_device',{template:'pump',near:'unknown'})).isError).toBe(true);
+    const created=await call('saturn_create_device',{template:'pump',near:'TK-01',side:'right',projectVersion:proposed.projectVersion,apply:true});
+    expect(created.isError).toBeUndefined();
+    expect(existsSync(join(root,'equipment','P-01.device.ts'))).toBe(true);
+    const edit=await call('saturn_edit_device',{id:'P-01',label:'Feed pump',x:340,z:40});
+    expect(edit.isError).toBeUndefined();
+    const changes=edit.structuredContent! as {sourceVersion:string;source:string;changed:boolean};
+    expect(changes.changed).toBe(true);
+    expect(changes.source).toContain('Feed pump');
+    expect(readFileSync(join(root,'equipment','P-01.device.ts'),'utf8')).not.toContain('Feed pump');
+    const saved=await call('saturn_edit_device',{id:'P-01',label:'Feed pump',x:340,z:40,apply:true,sourceVersion:changes.sourceVersion});
+    expect(saved.isError).toBeUndefined();
+    const model=app.state().authoring?.project??app.state().project;
+    expect(model.equipment.find(item=>item.id==='P-01')?.x).toBe(340);
+    expect(model.equipment.find(item=>item.id==='P-01')?.z).toBe(40);
+    expect((await call('saturn_edit_device',{id:'P-01',x:350,apply:true,sourceVersion:changes.sourceVersion})).isError).toBe(true);
+    const releases=(await call('saturn_project')).structuredContent!.releases as {applied:string|null};
+    expect(releases.applied).toBeNull();
+  }finally{await client.close().catch(()=>{});if(apps)await apps.close();if(app)await app.close();rmSync(dir,{recursive:true,force:true});}
 },60000);

@@ -35,6 +35,7 @@ import { ProjectPlugins } from '../workspace/plugins';
 import { applyImportPlan } from '../workspace/importers';
 import type { ScadaImportPlan } from '../core/importer';
 import { deviceTemplates, previewDevice, previewHmi, suggestDevicePosition } from '../workspace/scaffold';
+import { nextEntityId, positionNearEquipment, type PlacementSide } from '../core/entity-placement';
 import { patchDeviceProperties, type DevicePropertiesPatch } from '../workspace/device-properties';
 import { previewCableDisconnect, previewCableEndpoint } from '../workspace/cable-edit';
 import { createWorkerHost } from './worker';
@@ -291,19 +292,35 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
           const file=workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);savedVersions.set(file.path,file.version);savedVersions.set('project.ts',workspace.read('project.ts').version);await reload();return json({file});
         }
         if(path==='/api/devices/create'){
-          const id=field(b,'id');if(authoringProject().equipment.some(e=>e.id===id))throw new HttpError(409,'Device ID already exists');
-          const position=b.x===undefined&&b.y===undefined?suggestDevicePosition(authoringProject()):{x:b.x as number,y:b.y as number};
-          const preview=previewDevice(workspace,field(b,'template'),id,field(b,'label'),position);
+          const model=authoringProject(),template=field(b,'template');
+          const definition=deviceTemplates.find(item=>item.id===template);
+          if(!definition)throw new HttpError(400,'Unknown equipment template');
+          const ids=[...model.equipment.map(device=>device.id),...workspace.list().filter(path=>/^equipment\/[A-Za-z][A-Za-z0-9_-]*\.device\.ts$/.test(path)).map(path=>path.slice('equipment/'.length,-'.device.ts'.length))];
+          const id=b.id===undefined?nextEntityId(template,ids):field(b,'id');
+          if(ids.includes(id))throw new HttpError(409,'Device ID already exists');
+          const label=b.label===undefined?text(definition.label,'ru'):field(b,'label');
+          if(b.side!==undefined&&!['left','right','above','below'].includes(String(b.side)))throw new HttpError(400,'Invalid placement side');
+          if(b.side!==undefined&&b.near===undefined)throw new HttpError(400,'Placement side requires a reference device');
+          if(b.near!==undefined&&(b.x!==undefined||b.y!==undefined))throw new HttpError(400,'Use either coordinates or a reference device');
+          if((b.x===undefined)!==(b.y===undefined))throw new HttpError(400,'Both X and Y are required');
+          let position:{x:number;y:number};
+          if(b.near!==undefined){
+            if(typeof b.near!=='string'||!b.near.trim())throw new HttpError(400,'Invalid reference device');
+            try{position=positionNearEquipment(template,b.near,model.equipment,b.side as PlacementSide|undefined);}
+            catch(error){throw new HttpError(409,error instanceof Error?error.message:String(error));}
+          }else position=b.x===undefined?suggestDevicePosition(model):{x:b.x as number,y:b.y as number};
+          const preview=previewDevice(workspace,template,id,label,position);
           if(b.apply!==true)return json(preview);
           if(field(b,'projectVersion')!==preview.projectVersion)throw new HttpError(409,'Project changed; preview again');
           const file=workspace.createAndAttach(preview.path,preview.source,preview.projectSource,preview.projectVersion);
           savedVersions.set(file.path,file.version);savedVersions.set('project.ts',workspace.read('project.ts').version);await reload();return json({file,state:state()});
         }
-        if(path==='/api/devices/properties'){
+        if(path==='/api/devices/properties'||path==='/api/devices/properties/preview'){
           const id=field(b,'id'),position=state().positions[id];
           if(!authoringProject().equipment.some(e=>e.id===id)||!position)throw new HttpError(409,'Equipment does not have an unambiguous editable declaration');
           const current=workspace.read(position.path);
-          if(field(b,'sourceVersion')!==current.version)throw new HttpError(409,'Equipment source changed; reload Properties before editing');
+          const preview=path.endsWith('/preview');
+          if((!preview||b.sourceVersion!==undefined)&&field(b,'sourceVersion')!==current.version)throw new HttpError(409,'Equipment source changed; reload Properties before editing');
           const system=b.system;
           if(system!==undefined&&system!==null&&(!((authoringProject().systems??[]).some(room=>room.id===system))))throw new HttpError(409,'Unknown room');
           const patch:DevicePropertiesPatch={
@@ -311,7 +328,9 @@ export async function createApp(options: { appRoot?:string; projectDir?: string;
             ...(b.x!==undefined?{x:b.x as number}:{}),...(b.y!==undefined?{y:b.y as number}:{}),
             ...(b.z!==undefined?{z:b.z as number}:{}),...(b.system!==undefined?{system:b.system as string|null}:{}),
           };
+          if(!Object.keys(patch).length)throw new HttpError(400,'No equipment property changes supplied');
           const source=patchDeviceProperties(current.source,id,patch);
+          if(preview)return json({path:current.path,sourceVersion:current.version,source,changed:source!==current.source});
           const saved=workspace.save(current.path,source,current.version);savedVersions.set(saved.path,saved.version);await reload();return json({file:saved,state:state()});
         }
         if(path==='/api/authoring/plan')return json(await planSourceOperation(workspace,draft?.authoring,b,appRoot,dataDir));
