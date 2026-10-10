@@ -2,7 +2,7 @@ name: Spatial DSL acceptance
 on:
   push:
     branches: [work/spatial-dsl-20261010]
-    paths: [spatial-changes.json]
+    paths: [.github/workflows/spatial-work.yml]
   workflow_dispatch:
 permissions:
   contents: write
@@ -28,39 +28,16 @@ jobs:
         with:
           path: saturn-ide
           ref: work/spatial-dsl-20261010
-      - name: Apply source changes with exact preimage verification
+      - name: Apply verified final routing refinement
         working-directory: saturn-ide
         run: |
-          python3 - <<'PY'
-          import base64,gzip,hashlib,json,pathlib,subprocess
-          root=pathlib.Path.cwd()
-          envelope=json.loads(pathlib.Path('spatial-changes.json').read_text())
-          encoded=''.join((root/part).read_text() for part in envelope['parts'])
-          data=gzip.decompress(base64.b64decode(encoded))
-          assert hashlib.sha256(data).hexdigest()==envelope['sha256']
-          changes=json.loads(data)
-          paths=[]
-          for change in changes:
-              path=root/change['path']
-              assert path.resolve().is_relative_to(root)
-              if change['base'] is None:
-                  assert not path.exists(), str(path)
-                  source=change['content']
-              else:
-                  source=path.read_text()
-                  assert hashlib.sha256(source.encode()).hexdigest()==change['base'], str(path)
-                  for start,end,text in reversed(change['edits']):
-                      source=source[:start]+text+source[end:]
-              path.parent.mkdir(parents=True,exist_ok=True)
-              path.write_text(source)
-              paths.append(change['path'])
-          subprocess.run(['git','diff','--check'],check=True)
-          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','add','--',*paths],check=True)
-          subprocess.run(['git','commit','-m','feat: room elevations and typed spatial route passages'],check=True)
-          subprocess.run(['git','push','origin','HEAD:work/spatial-dsl-20261010'],check=True)
-          PY
+          python3 .spatial-transport/finish.py
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/topology.ts tests/spatial-routing.test.ts
+          git commit -m 'fix: approach explicit route passages without hidden height detours'
+          git push origin HEAD:work/spatial-dsl-20261010
       - uses: actions/checkout@v4
         with:
           repository: Pom4H/saturn-examples
