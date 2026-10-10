@@ -24,7 +24,7 @@ jobs:
         with:
           repository: Pom4H/saturn-examples
           path: saturn-examples
-          ref: 24352afa2d9cc9eafcd19b624679fc24745f66bc
+          ref: 3ebc17471e3a9430dc257a4523f5f8b2b84bf121
           ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
       - uses: actions/checkout@v4
         with:
