@@ -338,10 +338,14 @@ export default function Scene3D(props:SceneProps){
         const runs=cadRunPlans(p.project);
         node.dataset.cadAxes=String(runs.length);
         for(const run of runs){
-          const geometry=new T.BufferGeometry().setFromPoints(run.points.map(vector));
-          const material=new T.LineDashedMaterial({color:run.network==='pipe'?0x59869b:run.network==='raceway'?0xb08b5e:0x988870,transparent:true,opacity:.72,dashSize:10,gapSize:6,depthWrite:false});
+          // Visible, lightweight centerline proxies, NOT CAD-certified pipe diameters or tray sections.
+          // Every bend still follows the source IFC Axis curve; no automatic path inference.
+          const axes=new T.CurvePath<T.Vector3>();
+          for(let i=1;i<run.points.length;i++)axes.add(new T.LineCurve3(vector(run.points[i-1]!),vector(run.points[i]!)));
+          const geometry=new T.TubeGeometry(axes,Math.max(6,run.points.length*5),run.network==='pipe'?4.5:run.network==='raceway'?7:2.5,5,false);
+          const material=new T.MeshStandardMaterial({color:run.network==='pipe'?0x4e879e:run.network==='raceway'?0xb48c56:0x9b8860,metalness:.2,roughness:.65,transparent:true,opacity:.86,depthWrite:true});
           cadResources.geometries.add(geometry);cadResources.materials.add(material);
-          const line=new T.Line(geometry,material);line.computeLineDistances();line.userData.cadGuid=run.guid;cadWorld.add(line);
+          const tube=new T.Mesh(geometry,material);tube.userData.cadGuid=run.guid;cadWorld.add(tube);
         }
       }
       const nextRoutes=JSON.stringify([p.routes,p.project.pipes,p.project.cables,p.project.systems,p.interaction,p.cablePreview?.id]);
