@@ -16,6 +16,8 @@ import { instrumentMount } from './instrument-mount';
 import { Scene, type SceneProps } from './scene';
 import { placementAt, templateDimensions } from './model/entity-placement';
 import { routeIssueReason,routeIssueLabel,routeHasFreeEnd } from './route-issue';
+import { cadRunVisible } from './model/cad-navigation';
+import { CadNavigator } from './cad-navigator';
 import './scene3d-route-issue.css';
 // Diagram x/y maps to world x/z; port elevation maps to world y. No independent 3D topology.
 const vector=(p:Point)=>new T.Vector3(p.x,p.z,p.y);
@@ -55,6 +57,7 @@ export default function Scene3D(props:SceneProps){
   const invalidRoutes=props.routes.filter(route=>!route.valid&&route.id!==props.cablePreview?.id);
   const genericEquipment=props.project.equipment.filter(e=>!e.capabilities.instrument&&!['tank','pump','valve','tee','plc'].includes(e.kind)&&!(e.capabilities.scene3d?.kind==='control-panel'&&e.capabilities.diagram));
   const focusRoute=useRef<(id:string,free?:boolean)=>void>(()=>{});
+  const focusCad=useRef<(id:string)=>void>(()=>{});
   const rebuild=useRef<()=>void>(()=>{}),fit=useRef<()=>void>(()=>{});
   useEffect(()=>{
     const node=host.current!;let renderer:T.WebGLRenderer;
@@ -346,9 +349,13 @@ export default function Scene3D(props:SceneProps){
           const geometry=new T.TubeGeometry(axes,Math.max(6,run.points.length*5),run.network==='pipe'?4.5:run.network==='raceway'?7:2.5,5,false);
           const material=new T.MeshStandardMaterial({color:run.network==='pipe'?0x4e879e:run.network==='raceway'?0xb48c56:0x9b8860,metalness:.2,roughness:.65,transparent:true,opacity:.86,depthWrite:true});
           cadResources.geometries.add(geometry);cadResources.materials.add(material);
-          const tube=new T.Mesh(geometry,material);tube.userData.cadGuid=run.guid;cadWorld.add(tube);
+          const tube=new T.Mesh(geometry,material);tube.userData.cadGuid=run.guid;tube.userData.cadNetwork=run.network;cadWorld.add(tube);
         }
       }
+      for(const object of cadWorld.children){const network=object.userData.cadNetwork as 'pipe'|'raceway'|'cable';object.visible=cadRunVisible({network},p.cadFilter??'all');
+        const material=(object as T.Mesh).material as T.MeshStandardMaterial;material.emissive.setHex(object.userData.cadGuid===p.selectedCad?0x126178:0);
+      }
+      node.dataset.cadFilter=p.cadFilter??'all';node.dataset.selectedCad=p.selectedCad??'';
       const nextRoutes=JSON.stringify([p.routes,p.project.pipes,p.project.cables,p.project.systems,p.interaction,p.cablePreview?.id]);
       if(nextRoutes===routeRevision)return;
       routeRevision=nextRoutes;dispose(routeResources);routeWorld.clear();plugMeshes=[];resources=routeResources;
@@ -356,6 +363,7 @@ export default function Scene3D(props:SceneProps){
       const routes=p.routes;node.dataset.routeCount=String(routes.length);node.dataset.invalidRoutes=String(routes.filter(r=>!r.valid&&r.id!==p.cablePreview?.id).length);
       let pipeBends=0,pipeShells=0,pipeLiquids=0;
       for(const route of routes){
+        const start=routeWorld.children.length;
         const pipe=route.kind==='pipe'?p.project.pipes.find(edge=>edge.id===route.id):undefined;
         const cable=route.kind==='cable'?p.project.cables?.find(edge=>edge.id===route.id):undefined;
         // Routing already supplies outward terminal leads and height transitions.
@@ -379,7 +387,8 @@ export default function Scene3D(props:SceneProps){
           resources.geometries.add(geometry);resources.materials.add(material);
           const guide=new T.Line(geometry,material);guide.computeLineDistances();guide.renderOrder=5;guide.userData.routeDiagnostic=route.id;routeWorld.add(guide);
         }else for(let i=1;i<points.length;i++)tube(routeWorld,points[i-1]!,points[i]!,route.kind==='pipe'?5:1.5,m);
-        if(p.interaction==='edit')for(const end of ['from','to'] as const){const point=end==='from'?points[0]:points.at(-1);if(!point)continue;const position=vector(point),handle=mesh(routeWorld,new T.SphereGeometry(6,16,10),amber,position.x,position.y,position.z);handle.userData.cablePlug={id:route.id,end};plugMeshes.push(handle);}
+        if(p.interaction==='edit')for(const end of ['from','to'] as const){const point=end==='from'?points[0]:points.at(-1);if(!point)continue;const position=vector(point),handle=mesh(routeWorld,new T.SphereGeometry(6,16,10),amber,position.x,position.y,position.z);handle.userData.cablePlug={id:route.id,end};handle.visible=route.id===p.selected;plugMeshes.push(handle);}
+        for(const object of routeWorld.children.slice(start))object.userData.routeId=route.id;
         if(route.kind!=='pipe'||!route.valid)continue;
         const edge=pipe!;
         // The moving indicators follow the rendered curve, including its vertical risers and bends.
