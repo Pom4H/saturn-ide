@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import type {CadRunPlan,Locale} from '../core';
-import {cadRunVisible,type CadFilter} from './model/cad-navigation';
+import {cadRunKey,cadRunVisible,type CadFilter} from './model/cad-navigation';
 import './cad-navigator.css';
 
 interface Props {
@@ -32,9 +32,9 @@ export function CadNavigator({runs,filter,selected,locale,onFilter,onFocus}:Prop
           onClick={()=>onFilter(option.id)}>{ru?option.ru:option.en}</button>)}
       </div>
       {visible.length>0?<div className="cad-navigator-list">
-        {visible.map(run=><button key={run.guid} type="button" data-cad-link={run.guid}
-          aria-pressed={selected===run.guid} title={`${run.source} · ${run.guid}`}
-          onClick={()=>onFocus(run.guid)}><span>{run.label}</span><small>{run.network==='raceway'?(ru?'Лоток':'Tray'):run.network==='pipe'?(ru?'Труба':'Pipe'):(ru?'Кабель':'Cable')} · {run.source}</small></button>)}
+        {visible.map(run=><button key={cadRunKey(run)} type="button" data-cad-link={cadRunKey(run)}
+          aria-pressed={selected===cadRunKey(run)} title={`${run.source} · ${run.guid}`}
+          onClick={()=>onFocus(cadRunKey(run))}><span>{run.label}</span><small>{run.network==='raceway'?(ru?'Лоток':'Tray'):run.network==='pipe'?(ru?'Труба':'Pipe'):(ru?'Кабель':'Cable')} · {run.source}</small></button>)}
       </div>:<p className="cad-navigator-empty">{ru?'Нет осей этого типа':'No axes on this layer'}</p>}
     </div>}
   </div>;
