@@ -1,6 +1,7 @@
 import {expect,test} from 'bun:test';
 import {cadRunPlans,pipe,project,pump,signal,tank,type CadReference} from '../src/core';
 import {pipeRenderRadii,calibratedPipeRadius} from '../src/core/pipe-dimensions';
+import {connectionClearance} from '../src/topology';
 
 const measured:CadReference={
   source:{type:'IFC',schema:'IFC4',documentKey:'plant.ifc',filename:'plant.ifc',sha256:'0'.repeat(64),originalLengthUnit:'millimetre'},
@@ -24,6 +25,8 @@ test('outside pipe diameter is source-owned; physical CAD scale controls 2D and 
   expect(cadRunPlans(project)[0]?.radius).toBeCloseTo(60.3*100/2000,8);
   expect(cadRunPlans(project)[0]?.diameter?.innerMm).toBe(53);
   expect(cadRunPlans(project)[0]?.diameter?.nominalMm).toBe(50);
+  expect(connectionClearance(project,feed)).toBe(14);
+  expect(connectionClearance(project,{...feed,outerDiameterMm:500})).toBe(30);
 });
 
 test('DN-only and uncalibrated authored pipes never claim exact outside dimensions',()=>{
