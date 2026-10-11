@@ -110,6 +110,40 @@ export function authoringChanges(files: readonly AuthoredFile[], frame: Authorin
       text = `${name}(${connector}, { x: ${Math.round(point.x)}, y: ${Math.round(point.y)}, z: ${Math.round(point.z)} })`;
     }
     edits.push({ path: file.path, from: property.initializer.getStart(tree), to: property.initializer.end, text });
+  } else if(operation.kind==='pipe-diameter'){
+    if(operation.outerMm!==null&&(!Number.isFinite(operation.outerMm)||operation.outerMm<=0||operation.outerMm>1000000))
+      throw new Error('Outside diameter must be a positive millimetre measurement');
+    if(!frame.project.pipes.some(pipe=>pipe.id===operation.id))throw new Error('Active pipe not found');
+    const matches:{file:AuthoredFile;tree:ts.SourceFile;options:ts.ObjectLiteralExpression}[]=[];
+    for(const file of files){
+      const tree=treeOf(file);
+      const visit=(node:ts.Node)=>{
+        if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text==='pipe'&&
+          node.arguments[0]&&ts.isStringLiteral(node.arguments[0])&&node.arguments[0].text===operation.id&&
+          node.arguments[1]&&ts.isObjectLiteralExpression(node.arguments[1]))
+          matches.push({file,tree,options:node.arguments[1]});
+        ts.forEachChild(node,visit);
+      };visit(tree);
+    }
+    if(matches.length!==1)throw new Error('Pipe declaration is missing or ambiguous; edit its factory directly');
+    const {file,tree,options}=matches[0]!;
+    const properties=options.properties.filter((p):p is ts.PropertyAssignment=>ts.isPropertyAssignment(p)&&
+      (ts.isIdentifier(p.name)||ts.isStringLiteral(p.name))&&p.name.text==='outerDiameterMm');
+    if(properties.length>1)throw new Error('Ambiguous outside diameter property');
+    const property=properties[0];
+    if(property){
+      if(!ts.isNumericLiteral(property.initializer))throw new Error('Computed outside diameter: edit its TypeScript declaration directly');
+      if(operation.outerMm!==null){
+        edits.push({path:file.path,from:property.initializer.getStart(tree),to:property.initializer.end,text:String(operation.outerMm)});
+      }else{
+        const index=options.properties.indexOf(property),next=options.properties[index+1],previous=options.properties[index-1];
+        edits.push({path:file.path,from:previous?previous.end:property.getStart(tree),
+          to:next?next.getStart(tree):property.end,text:''});
+      }
+    }else if(operation.outerMm!==null){
+      const insert=options.getEnd()-1,separator=options.properties.length&&!options.properties.hasTrailingComma?',':'';
+      edits.push({path:file.path,from:insert,to:insert,text:`${separator} outerDiameterMm: ${operation.outerMm}, `});
+    }
   } else {
     // The route stays owned by its TypeScript factory. Never create a second route store.
     const edge=[...frame.project.pipes,...frame.project.cables??[]].find(item=>item.id===operation.id);
