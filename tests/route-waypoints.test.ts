@@ -11,7 +11,7 @@ test('bend insertion follows displayed route order, not click history',()=>{
   expect(routeWaypointInsertIndex(p,via,run,{x:175,y:100})).toBe(2);
 });
 test('CAD/systems passages preserve their position and cannot be confused with geometry',()=>{
-  const room=system('floor',{ports:{gate:{x:100,y:0,z:0,medium:'fluid'}}});
+  const room=system('floor',{label:'Floor',ports:{gate:{x:100,y:0,z:0,medium:'fluid'}}});
   const p=project({id:'route-demo',label:'Route demo',equipment:[],systems:[room]});
   expect(routeWaypointInsertIndex(p,[room.ports.gate],run,{x:40,y:0})).toBe(0);
   expect(routeWaypointInsertIndex(p,[room.ports.gate],run,{x:150,y:100})).toBe(1);
