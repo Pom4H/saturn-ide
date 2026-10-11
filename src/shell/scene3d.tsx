@@ -348,6 +348,7 @@ export default function Scene3D(props:SceneProps){
         cadRevision=nextCad;dispose(cadResources);cadWorld.clear();resources=cadResources;
         const runs=cadRunPlans(p.project);
         node.dataset.cadAxes=String(runs.length);
+        node.dataset.cadDiameters=JSON.stringify(runs.filter(run=>run.network==='pipe').map(run=>({id:run.guid,outerMm:run.diameter?.outerMm??null,nominalMm:run.diameter?.nominalMm??null,radius:run.radius??null})));
         for(const run of runs){
           // Visible, lightweight centerline proxies, NOT CAD-certified pipe diameters or tray sections.
           // Every bend still follows the source IFC Axis curve; no automatic path inference.
