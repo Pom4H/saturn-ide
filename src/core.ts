@@ -1,6 +1,6 @@
 import { cadReferenceValid, type CadReference } from './core/cad';
 export { cadRunPlans } from './core/cad';
-export type { CadReference, CadRunPlan } from './core/cad';
+export type { CadReference, CadRunPlan, CadPipeDiameter } from './core/cad';
 import {validateQueryReport,type QueryReport,type ReportSchema,type SchemaRow} from './core/reporting';
 export * from './core/reporting';
 import {validateSchedule,type ReportSchedule} from './core/cron';
@@ -271,7 +271,13 @@ export interface PipeLeakMonitor {
   /** Maximum difference between measurement receipt timestamps. Default: 1000 ms. */
   readonly maxSkewMs?:number;
 }
-export interface Pipe extends Connection { kind:'pipe'; flow:Signal<number>; leak?:PipeLeakMonitor }
+export interface Pipe extends Connection {
+  kind:'pipe'; flow:Signal<number>; leak?:PipeLeakMonitor;
+  /** Actual outside pipe diameter in millimetres; not interchangeable with DN. */
+  outerDiameterMm?:number;
+  /** Nominal designation only. Never used to infer outside geometry. */
+  nominalDiameterMm?:number;
+}
 /** @ru Наблюдения на двух концах дискретной цепи; ни одно из них не команда.
  * @en Independently observed levels at either end of a digital control path, not writable commands.
  * Both sensors must be actual observations in live installations; simulation inputs are examples only. */
@@ -287,7 +293,7 @@ type FluidFrom<F extends string=string> = ConnectionEnd<'fluid',F,'source'|'pass
 type FluidTo<F extends string=string> = ConnectionEnd<'fluid',F,'sink'|'passive'>;
 /** @ru Труба с жидкостью. Соединяет совместимые порты; source/sink задают направление оборудования, passive допускает явные fitting-узлы вроде tee().
  * @en Liquid pipe. Connect compatible ports; equipment source/sink keep direction while passive ends allow explicit fittings such as tee(). */
-type PipeSpec<F extends string,S extends Signal<number>>={from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:readonly RouteWaypoint<'fluid'>[]};
+type PipeSpec<F extends string,S extends Signal<number>>={from:FluidFrom<F>;to:FluidTo<NoInfer<F>>;flow:S;via?:readonly RouteWaypoint<'fluid'>[];outerDiameterMm?:number;nominalDiameterMm?:number};
 /** No broad optional sensor type on ordinary pipes: preserve exact signal inference. */
 export function pipe<const F extends string,const S extends Signal<number>>(id:string,options:PipeSpec<F,S>&{leak?:never}):Omit<Pipe,'flow'|'leak'> & {flow:S};
 export function pipe<const F extends string,const S extends Signal<number>,const L extends PipeLeakMonitor>(id:string,options:PipeSpec<F,S>&{leak:L}):Omit<Pipe,'flow'|'leak'> & {flow:S;leak:L};
@@ -616,6 +622,9 @@ export function validateProject(p:Project):void {
       }else requireThat(waypoint.kind===undefined&&[waypoint.x,waypoint.y,waypoint.z??0].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000),'ROUTE_POINTS','Invalid XYZ routing point','Неверная XYZ-точка трассы');
     }
     if(edge.kind==='pipe'){
+      const validDiameter=(diameter:number|undefined)=>diameter===undefined||Number.isFinite(diameter)&&diameter>0&&diameter<=1000000;
+      requireThat(validDiameter(edge.outerDiameterMm)&&validDiameter(edge.nominalDiameterMm),'PIPE_DIAMETER',
+        `Invalid nominal or outer pipe diameter ${edge.id}`,`Неверный наружный или номинальный диаметр трубы ${edge.id}`);
       ref(edge.flow,'number');
       if(edge.leak){
         const {inlet,outlet,maxLoss,maxSkewMs}=edge.leak;
