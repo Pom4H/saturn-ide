@@ -121,3 +121,52 @@ test('free endpoint algebra covers pipes, both ends, independent position and ma
   expect(free(a.ports.outlet,{x:0,y:0,z:-1}).position.z).toBe(-1);
   expect(()=>free(a.ports.outlet,{x:0,y:0,z:-15001})).toThrow();
 });
+
+test('edit source-owned routing bends without touching system passages or second project model',async()=>{
+  const f=fixture({'project.ts':`import {project,tank,pump,pipe,signal,system} from '@saturn/core';
+const a=tank('T',{label:'Tank',x:20,y:80});
+const b=pump('P',{label:'Pump',x:650,y:80});
+const flow=signal('feed',{initial:0});
+const room=system('room',{label:'Room',ports:{water:{medium:'fluid',x:350,y:150,z:100}}});
+const water=pipe('feed-pipe',{from:a.ports.outlet,to:b.ports.inlet,flow,via:[room.ports.water,{x:480,y:150}]});
+export default project({id:'routing',label:'Routing',equipment:[a,b],pipes:[water],systems:[room]});`});
+  try{
+    let frame=(await f.builder.build()).authoring!;
+    expect(frame.project.pipes[0]!.via).toHaveLength(2);
+    expect(()=>authoringChanges(frame.files,frame,{kind:'route-point',id:'feed-pipe',action:'move',index:0,point:{x:360,y:120}})).toThrow(/Room passage/);
+    const save=async(operation:import('../src/core/authoring').AuthoringOperation)=>{
+      const changes=authoringChanges(frame.files,frame,operation);
+      expect(changes).toHaveLength(1);
+      for(const edit of changes)f.workspace.save(edit.path,edit.source,edit.version);
+      const built=await f.builder.build();expect(built.editorError).toBeUndefined();
+      frame=built.authoring!;return built;
+    };
+    const added=await save({kind:'route-point',id:'feed-pipe',action:'add',index:1,point:{x:430,y:180,z:120}});
+    expect(added.project.pipes[0]!.via).toHaveLength(3);
+    expect(f.workspace.read('project.ts').source).toContain('room.ports.water');
+    expect(added.project.pipes[0]!.via![1]).toMatchObject({x:430,y:180,z:120});
+    const moved=await save({kind:'route-point',id:'feed-pipe',action:'move',index:2,point:{x:500,y:200}});
+    expect(moved.project.pipes[0]!.via![2]).toMatchObject({x:500,y:200});
+    const removed=await save({kind:'route-point',id:'feed-pipe',action:'remove',index:1});
+    expect(removed.project.pipes[0]!.via).toHaveLength(2);
+    expect(f.workspace.read('project.ts').source).toContain('room.ports.water');
+    expect(removed.project.pipes[0]!.via![1]).toMatchObject({x:500,y:200});
+  }finally{f.close();}
+});
+
+test('route-point planner creates missing via and rejects computed route expressions',async()=>{
+  const initial=`import {project,tank,pump,pipe,signal} from '@saturn/core';
+const a=tank('T',{label:'T',x:10,y:10}),b=pump('P',{label:'P',x:600,y:50}),flow=signal('f',{initial:0});
+const water=pipe('feed',{from:a.ports.outlet,to:b.ports.inlet,flow});
+export default project({id:'route',label:'Route',equipment:[a,b],pipes:[water]});`;
+  const f=fixture({'project.ts':initial});
+  try{
+    const frame=(await f.builder.build()).authoring!;
+    const change=authoringChanges(frame.files,frame,{kind:'route-point',id:'feed',action:'add',index:0,point:{x:360,y:20}});
+    expect(change[0]!.source).toContain('via: [{ x: 360, y: 20 }]');
+    f.workspace.save(change[0]!.path,change[0]!.source,change[0]!.version);
+    const built=await f.builder.build();expect(built.editorError).toBeUndefined();
+    expect(built.project.pipes[0]!.via).toEqual([{x:360,y:20}]);
+    expect(()=>authoringChanges(built.authoring!.files,built.authoring!,{kind:'route-point',id:'feed',action:'remove',index:5})).toThrow();
+  }finally{f.close();}
+});
