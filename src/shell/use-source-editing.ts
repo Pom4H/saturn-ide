@@ -15,5 +15,7 @@ export function useSourceEditing(shell:ReturnType<typeof useShell>,operator:bool
   },[editing,state?.authoring,operator,session]);
   const complete=async(action:()=>Promise<void>)=>{try{await action();await refresh();}catch(reason){setError(reason instanceof Error?reason.message:String(reason));}};
   const execute=(operation:AuthoringOperation)=>{if(!operator)void complete(()=>editing.execute(operation));};
-  return {...snapshot,execute,beginCable:(...args:Parameters<SourceEditing['beginCable']>)=>!operator&&editing.beginCable(...args),moveCable:editing.moveCable,endCable:(...args:Parameters<SourceEditing['endCable']>)=>void complete(()=>editing.endCable(...args))};
+  return {...snapshot,execute,beginCable:(...args:Parameters<SourceEditing['beginCable']>)=>!operator&&editing.beginCable(...args),moveCable:editing.moveCable,endCable:(...args:Parameters<SourceEditing['endCable']>)=>void complete(()=>editing.endCable(...args)),
+    beginRoutePoint:(...args:Parameters<SourceEditing['beginRoutePoint']>)=>!operator&&editing.beginRoutePoint(...args),moveRoutePoint:editing.moveRoutePoint,
+    endRoutePoint:(cancel=false)=>void complete(()=>editing.endRoutePoint(cancel))};
 }
