@@ -59,7 +59,44 @@ try{
   await page.getByRole('button',{name:'2D',exact:true}).click();
   await until(async()=>await page.locator('[data-route-port="upper.water"]').getAttribute('data-z')==='470','2D differs from 3D after source edit');
   assert.equal(await page.locator('[data-system="upper"]').getAttribute('data-system-z'),'390');
-  await shot('04-plan-updated');assert.deepEqual(errors,[]);
+  await shot('04-plan-updated');
+  // A Sims-like edit: select an existing connection, add a bend on its displayed centerline,
+  // then drag the bend. Only a normal TypeScript via[] change is persisted (no apply).
+  const routePixel=async()=>{
+    const path=page.locator('[data-pipe="water-line"] path').nth(1);
+    return path.evaluate(element=>{
+      const shape=element as SVGPathElement,matrix=shape.getScreenCTM(),svg=shape.ownerSVGElement;
+      if(!matrix||!svg)return null;
+      for(const fraction of [.27,.37,.47,.58,.68,.76]){
+        const at=shape.getPointAtLength(shape.getTotalLength()*fraction),cursor=svg.createSVGPoint();
+        cursor.x=at.x;cursor.y=at.y;
+        const screen=cursor.matrixTransform(matrix),hit=document.elementFromPoint(screen.x,screen.y) as Element|null;
+        if(hit?.closest('[data-pipe="water-line"]'))return{x:screen.x,y:screen.y};
+      }
+      return null;
+    });
+  };
+  const point=await routePixel();assert(point,'No visible hit target on real water pipeline');
+  await page.mouse.click(point.x,point.y);
+  const guide=page.locator('.scene-route-guide');await guide.waitFor();
+  assert(await guide.getByText('water-line').isVisible());
+  await guide.getByRole('button',{name:'+ Изгиб'}).click();
+  await page.mouse.click(point.x,point.y);
+  await until(async()=>((app.state().authoring?.project??app.state().project).pipes.find(edge=>edge.id==='water-line')?.via?.length??0)===3,'New authored bend was not saved');
+  assert(readFileSync(path,'utf8').includes('via:['),'Bend edit lost authored route');
+  const movedBefore=readFileSync(path,'utf8');
+  const bend=page.locator('[data-route-waypoint]').filter({has:page.locator('[data-remove-route-waypoint]')}).locator('circle').first();
+  await bend.waitFor();const rect=await bend.boundingBox();assert(rect,'Manual waypoint is not visible');
+  const x=rect.x+rect.width/2,y=rect.y+rect.height/2;
+  await page.mouse.move(x,y);await page.mouse.down();
+  await page.mouse.move(x+34,y-18,{steps:8});await page.mouse.up();
+  await until(async()=>readFileSync(path,'utf8')!==movedBefore,'Dragging a bend did not persist TypeScript route coordinates');
+  const edited=(app.state().authoring?.project??app.state().project).pipes.find(edge=>edge.id==='water-line');
+  assert.equal(edited?.via?.length,3);
+  assert.equal(edited.via.filter(point=>point.kind==='route-port').length,2,'Dragging modified a building passage');
+  assert.deepEqual(app.state().problems,[]);
+  await shot('05-sims-route-bend');checks.push('Canvas route edit adds and drags one author-owned bend without disconnecting two named building passages');
+  assert.deepEqual(errors,[]);
 }catch(error){errors.push(String(error));await shot('failure').catch(()=>{});throw error;}
 finally{
   writeFileSync(join(output,'report.json'),JSON.stringify({checks,errors},null,2));
