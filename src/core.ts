@@ -273,9 +273,11 @@ export interface PipeLeakMonitor {
 }
 export interface Pipe extends Connection {
   kind:'pipe'; flow:Signal<number>; leak?:PipeLeakMonitor;
-  /** Actual outside pipe diameter in millimetres; not interchangeable with DN. */
+  /** @ru Фактический наружный диаметр в мм; не равен условному проходу DN.
+   * @en Actual outside diameter in mm, not interchangeable with nominal DN. */
   outerDiameterMm?:number;
-  /** Nominal designation only. Never used to infer outside geometry. */
+  /** @ru Номинальный DN — обозначение размера, не физический наружный диаметр.
+   * @en Nominal DN designation, never used to infer outside geometry. */
   nominalDiameterMm?:number;
 }
 /** @ru Наблюдения на двух концах дискретной цепи; ни одно из них не команда.
