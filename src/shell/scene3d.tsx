@@ -16,7 +16,7 @@ import { instrumentMount } from './instrument-mount';
 import { Scene, type SceneProps } from './scene';
 import { placementAt, templateDimensions } from './model/entity-placement';
 import { routeIssueReason,routeIssueLabel,routeHasFreeEnd } from './route-issue';
-import { cadRunVisible } from './model/cad-navigation';
+import { cadRunKey, cadRunVisible } from './model/cad-navigation';
 import { CadNavigator } from './cad-navigator';
 import { routeWaypointInsertIndex } from './model/route-waypoints';
 import './scene3d-route-issue.css';
@@ -353,11 +353,11 @@ export default function Scene3D(props:SceneProps){
           const geometry=new T.TubeGeometry(axes,Math.max(6,run.points.length*5),run.network==='pipe'?4.5:run.network==='raceway'?7:2.5,5,false);
           const material=new T.MeshStandardMaterial({color:run.network==='pipe'?0x4e879e:run.network==='raceway'?0xb48c56:0x9b8860,metalness:.2,roughness:.65,transparent:true,opacity:.86,depthWrite:true});
           cadResources.geometries.add(geometry);cadResources.materials.add(material);
-          const tube=new T.Mesh(geometry,material);tube.userData.cadGuid=run.guid;tube.userData.cadNetwork=run.network;cadWorld.add(tube);
+          const tube=new T.Mesh(geometry,material);tube.userData.cadGuid=run.guid;tube.userData.cadKey=cadRunKey(run);tube.userData.cadNetwork=run.network;cadWorld.add(tube);
         }
       }
       for(const object of cadWorld.children){const network=object.userData.cadNetwork as 'pipe'|'raceway'|'cable';object.visible=cadRunVisible({network},p.cadFilter??'all');
-        const material=(object as T.Mesh).material as T.MeshStandardMaterial;material.emissive.setHex(object.userData.cadGuid===p.selectedCad?0x126178:0);
+        const material=(object as T.Mesh).material as T.MeshStandardMaterial;material.emissive.setHex(object.userData.cadKey===p.selectedCad?0x126178:0);
       }
       node.dataset.cadFilter=p.cadFilter??'all';node.dataset.selectedCad=p.selectedCad??'';
       const nextRoutes=JSON.stringify([p.routes,p.project.pipes,p.project.cables,p.project.systems,p.interaction,p.cablePreview?.id]);
@@ -436,7 +436,7 @@ export default function Scene3D(props:SceneProps){
     };
     focusCad.current=(guid)=>{
       if(dirty)synchronize();
-      const run=cadRunPlans(current.current.project).find(item=>item.guid===guid);
+      const run=cadRunPlans(current.current.project).find(item=>cadRunKey(item)===guid);
       if(!run||!cadRunVisible(run,current.current.cadFilter??'all'))return;
       const bounds=new T.Box3().setFromPoints(run.points.map(point=>vector(point).multiplyScalar(.01)));
       if(bounds.isEmpty())return;
@@ -479,7 +479,7 @@ export default function Scene3D(props:SceneProps){
       const cad=ray.intersectObjects(cadWorld.children.filter(object=>object.visible),false)[0];
       const hits=[equipment?{kind:'equipment' as const,id:'',distance:equipment.distance}:undefined,
         route?{kind:'route' as const,id:String(route.object.userData.routeId),distance:route.distance}:undefined,
-        cad?{kind:'cad' as const,id:String(cad.object.userData.cadGuid),distance:cad.distance}:undefined].filter((hit):hit is {kind:'equipment'|'route'|'cad';id:string;distance:number}=>!!hit)
+        cad?{kind:'cad' as const,id:String(cad.object.userData.cadKey),distance:cad.distance}:undefined].filter((hit):hit is {kind:'equipment'|'route'|'cad';id:string;distance:number}=>!!hit)
         .sort((a,b)=>a.distance-b.distance);
       return hits[0];
     };
