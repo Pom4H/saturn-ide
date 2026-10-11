@@ -41,7 +41,7 @@ export function CadNavigator({runs,filter,selected,locale,onFilter,onFocus,targe
             <small>{run.network==='raceway'?(ru?'Лоток':'Tray'):run.network==='pipe'?(ru?'Труба':'Pipe'):(ru?'Кабель':'Cable')} · {run.source}</small>
             {run.diameter&&<small className="cad-pipe-diameter">
               {run.diameter.nominalMm!==undefined?`DN ${run.diameter.nominalMm}`:''}
-              {run.diameter.outerMm!==undefined?`${run.diameter.nominalMm!==undefined?' · ':''}Ø ${run.diameter.outerMm} мм`:''}
+              {run.diameter.outerMm!==undefined?`${run.diameter.nominalMm!==undefined?' · ':''}Ø ${run.diameter.outerMm} ${ru?'мм':'mm'}`:''}
               {run.diameter.outerMm===undefined?(ru?' · наружный Ø неизвестен':' · outside Ø unknown'):''}
             </small>}
           </button>
@@ -50,7 +50,7 @@ export function CadNavigator({runs,filter,selected,locale,onFilter,onFocus,targe
               data-copy-cad-diameter={run.guid}
               title={ru?'Копирует только размер в TypeScript. Связь с CAD и монтаж не подтверждаются.':'Copies the measurement into TypeScript only; does not link or install this CAD run.'}
               onClick={()=>onCopyDiameter(targetPipe,run.diameter!.outerMm!)}>
-              {ru?`Принять Ø ${run.diameter.outerMm} мм для ${targetPipe}`:`Use Ø ${run.diameter.outerMm} mm for ${targetPipe}`}
+              {ru?`Принять Ø ${run.diameter.outerMm} ${ru?'мм':'mm'} для ${targetPipe}`:`Use Ø ${run.diameter.outerMm} mm for ${targetPipe}`}
             </button>}
         </div>)}
       </div>:<p className="cad-navigator-empty">{ru?'Нет осей этого типа':'No axes on this layer'}</p>}
