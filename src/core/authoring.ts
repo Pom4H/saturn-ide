@@ -27,7 +27,8 @@ export interface AuthoringFrame {
 export type AuthoringOperation =
   | { kind: 'enabled'; id: string; entity: AuthoredKind; enabled: boolean }
   | { kind: 'endpoint'; id: string; end: 'from' | 'to'; target: { device: string; port: string } | { x: number; y: number; z: number } }
-  | { kind: 'route-point'; id: string; action: 'add' | 'move' | 'remove'; index: number; point?: { x: number; y: number; z?: number } };
+  | { kind: 'route-point'; id: string; action: 'add' | 'move' | 'remove'; index: number; point?: { x: number; y: number; z?: number } }
+  | { kind: 'pipe-diameter'; id: string; outerMm: number | null };
 export interface AuthoredChange { path: string; before: string; source: string; version: string }
 
 /** Inactive entities retain their canonical shape. Only their design-time pose changes. */
@@ -68,6 +69,9 @@ export function readAuthoringOperation(value:unknown):AuthoringOperation {
     if('device' in t&&'port' in t&&typeof t.device==='string'&&typeof t.port==='string')return {kind:'endpoint',id:value.id,end:value.end,target:{device:t.device,port:t.port}};
     if('x' in t&&'y' in t&&'z' in t&&typeof t.x==='number'&&typeof t.y==='number'&&typeof t.z==='number'&&[t.x,t.y,t.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000))return {kind:'endpoint',id:value.id,end:value.end,target:{x:t.x,y:t.y,z:t.z}};
   }
+  if(value.kind==='pipe-diameter'&&'outerMm' in value&&
+    (value.outerMm===null||typeof value.outerMm==='number'&&Number.isFinite(value.outerMm)&&value.outerMm>0&&value.outerMm<=1000000))
+    return {kind:'pipe-diameter',id:value.id,outerMm:value.outerMm};
   if(value.kind==='route-point'&&'action' in value&&['add','move','remove'].includes(String(value.action))&&
     'index' in value&&typeof value.index==='number'&&Number.isSafeInteger(value.index)&&value.index>=0&&value.index<=16){
     const action=value.action as 'add'|'move'|'remove';
