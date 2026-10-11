@@ -92,7 +92,7 @@ try{
   await page.mouse.move(x+34,y-18,{steps:8});await page.mouse.up();
   await until(async()=>readFileSync(path,'utf8')!==movedBefore,'Dragging a bend did not persist TypeScript route coordinates');
   const edited=(app.state().authoring?.project??app.state().project).pipes.find(edge=>edge.id==='water-line');
-  assert.equal(edited?.via?.length,3);
+  assert(edited?.via&&edited.via.length===3,'Route waypoints were lost after edit');
   assert.equal(edited.via.filter(point=>point.kind==='route-port').length,2,'Dragging modified a building passage');
   assert.deepEqual(app.state().problems,[]);
   await shot('05-sims-route-bend');checks.push('Canvas route edit adds and drags one author-owned bend without disconnecting two named building passages');
