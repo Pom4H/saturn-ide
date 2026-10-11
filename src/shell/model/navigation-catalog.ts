@@ -18,11 +18,11 @@ const view = (id:EditorId, section:RailSection, description:ViewContribution['de
 /** UI contributions only. Opening delegates to ShellSession; these entries grant no runtime authority. */
 export const navigationCatalog:Readonly<Record<EditorId,ViewContribution>> = {
   diagram:view('diagram','object',{ru:'Оборудование и физические связи',en:'Equipment and physical connections'},{toolTitle:{ru:'Схема и 3D',en:'Diagram and 3D'},mobile:{business:0},projectOrder:0}),
-  source:view('source','source',{ru:'TypeScript',en:'TypeScript'},{title:{ru:'Код',en:'Code'},toolTitle:{ru:'Код и файлы',en:'Code and files'},authoring:true,mobile:{home:5,business:3}}),
+  source:view('source','source',{ru:'TypeScript',en:'TypeScript'},{title:{ru:'Исходники',en:'Source'},toolTitle:{ru:'Код и файлы',en:'Code and files'},authoring:true,mobile:{home:5,business:3}}),
   git:view('git','git',{ru:'Git и ревью проекта',en:'Git and project review'},{title:{ru:'Изменения',en:'Changes'},authoring:true,mobile:{home:6,business:7}}),
   signals:view('signals','monitor',{ru:'Показания, качество и архив',en:'Readings, quality and archive'},{toolTitle:{ru:'Сигналы и история',en:'Signals and history'},mobile:{business:2,operator:1},projectOrder:1}),
   reports:view('reports','reports',{ru:'Данные, покрытие и экспорт',en:'Data, coverage and export'},{mobile:{home:2,business:4,operator:2},projectOrder:2}),
-  hmi:view('hmi','object',{ru:'Операторские экраны',en:'Operator screens'},{mobile:{home:0},projectOrder:3}),
+  hmi:view('hmi','object',{ru:'Операторские экраны',en:'Operator screens'},{title:{ru:'Экраны управления',en:'Control screens'},mobile:{home:0,business:2.5,operator:0.5},projectOrder:3}),
   targets:view('targets','environment',{ru:'Source · Checked · Published · Applied',en:'Source · Checked · Published · Applied'},{mobile:{home:7,business:8,operator:4}}),
   scenarios:view('scenarios','monitor',{ru:'Планы и результаты исполнения',en:'Plans and execution receipts'},{mobile:{home:4,business:6}}),
   docs:view('docs','object',{ru:'Описание проверенной модели',en:'Checked model documentation'},{mobile:{home:9,business:10,operator:5},projectOrder:4}),
@@ -44,15 +44,6 @@ export function navigationViews(context:NavigationContext, placement:'search'|'m
   const order=(id:EditorId)=>placement==='project'?navigationCatalog[id].projectOrder:navigationCatalog[id].mobile?.[context.operator?'operator':context.preset??'business'];
   return visible.filter(id=>order(id)!==undefined && !(placement==='project'&&context.operator&&id!=='diagram'&&id!=='hmi'&&id!=='docs')).sort((a,b)=>order(a)!-order(b)!);
 }
-export const railSections:readonly {id:RailSection;editor:EditorId;icon:string;ru:string;en:string}[] = [
-  {id:'object',editor:'diagram',icon:'diagram',ru:'Объект',en:'Project'},
-  {id:'source',editor:'source',icon:'source',ru:'Код',en:'Code'},
-  {id:'monitor',editor:'performance',icon:'signals',ru:'Мониторинг',en:'Monitor'},
-  {id:'reports',editor:'reports',icon:'reports',ru:'Отчёты',en:'Reports'},
-  {id:'git',editor:'git',icon:'git',ru:'Изменения',en:'Changes'},
-  {id:'environment',editor:'targets',icon:'targets',ru:'Среда',en:'Environment'},
-  {id:'plugins',editor:'dependencies',icon:'plugin',ru:'Плагины',en:'Plugins'},
-];
 export const sectionFor=(id:EditorId):RailSection=>navigationCatalog[id].section;
 export const quickViews=(preset:InterfacePreset|null|undefined)=>preset==='home'
   ? [{editor:'hmi',icon:'hmi',label:{ru:'Управление домом',en:'Home controls'}},{editor:'performance',icon:'signals',label:{ru:'Состояние дома',en:'Home status'}}] as const

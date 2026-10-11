@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { basicSetup } from 'codemirror';
 import { Decoration, EditorView, WidgetType, hoverTooltip, keymap, type DecorationSet } from '@codemirror/view';
-import { EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
+import { Compartment, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { autocompletion } from '@codemirror/autocomplete';
 import { javascript, typescriptLanguage } from '@codemirror/lang-javascript';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
@@ -10,6 +10,11 @@ import { forceLinting, linter } from '@codemirror/lint';
 import { indentWithTab, isolateHistory } from '@codemirror/commands';
 import type { Locale, Problem, Signal, Snapshot } from '../core';
 import { signalHealth } from '../core/operational';
+const editorPhrases={Find:'Найти',Replace:'Заменить',next:'Далее',previous:'Назад',all:'Все',
+  'match case':'С учётом регистра',regexp:'Регулярное выражение','by word':'Слово целиком',
+  replace:'Заменить','replace all':'Заменить все',close:'Закрыть','Go to line':'Перейти к строке',go:'Перейти',
+  'replaced $ matches':'Заменено совпадений: $','replaced match on line $':'Заменено в строке $',
+  'current match':'Текущее совпадение','on line':'в строке'};
 const syntaxColors=HighlightStyle.define([
   {tag:tags.keyword,color:'var(--syntax-keyword)'},
   {tag:[tags.string,tags.regexp],color:'var(--syntax-string)'},
@@ -59,11 +64,12 @@ function decorateHints(hints: readonly SignalHint[], props: EditorProps): LiveDe
   });
 }
 export function Editor(props:EditorProps){
+  const phrases=useRef(new Compartment());
   const host=useRef<HTMLDivElement>(null),editor=useRef<EditorView|null>(null),current=useRef(props),dragSource=useRef<string|null>(null),hints=useRef<SignalHint[]>([]);current.current=props;
   useEffect(()=>{
     const request=<T,>(operation:string,source:string,position=0)=>current.current.language ? current.current.language<T>(operation,current.current.path,source,position,current.current.locale) : Promise.reject(new Error('Language service is not connected'));
     const view=new EditorView({parent:host.current!,state:EditorState.create({doc:props.source,extensions:[
-      basicSetup,EditorState.readOnly.of(!!props.readOnly),EditorView.editable.of(!props.readOnly),EditorView.contentAttributes.of({"aria-label":"Исходный код"}),javascript({typescript:true,jsx:props.path.endsWith('tsx')}),syntaxHighlighting(syntaxColors),liveValues,
+      basicSetup,phrases.current.of(EditorState.phrases.of(props.locale==='ru'?editorPhrases:{})),EditorState.readOnly.of(!!props.readOnly),EditorView.editable.of(!props.readOnly),EditorView.contentAttributes.of({"aria-label":"Исходный код"}),javascript({typescript:true,jsx:props.path.endsWith('tsx')}),syntaxHighlighting(syntaxColors),liveValues,
       keymap.of([indentWithTab,{key:'Mod-s',run:()=>{current.current.save();return true;}}]),
       EditorView.updateListener.of(update=>{if(update.docChanged&&!update.transactions.some(t=>t.annotation(Transaction.userEvent)==='external'))current.current.change(update.state.doc.toString());}),
       autocompletion({override:[async context=>{
@@ -109,6 +115,7 @@ export function Editor(props:EditorProps){
       const original=dragSource.current;dragSource.current=null;replace(original,false);replace(props.source,true);
     }else replace(props.source,!props.dragging);
   },[props.source,props.dragging]);
+  useEffect(()=>{editor.current?.dispatch({effects:phrases.current.reconfigure(EditorState.phrases.of(props.locale==='ru'?editorPhrases:{}))});},[props.locale]);
   const checkedKey=props.source===props.savedSource?JSON.stringify(props.problems?.filter(problem=>problem.path===props.path)??[]):'draft';
   useEffect(()=>{if(editor.current)forceLinting(editor.current);},[checkedKey,props.locale]);
   useEffect(()=>{

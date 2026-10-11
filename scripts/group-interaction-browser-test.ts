@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,renameSync} from 'node:fs';
+import {join,resolve} from 'node:path';
+import {chromium,expect} from 'playwright/test';
+import * as T from 'three';
+import {createApp} from '../src/host/dev';
+import {systemEquipment,systemLayout} from '../src/core/system-layout';
+const root=resolve(import.meta.dir,'..'),out=join(root,'artifacts/group-interaction');mkdirSync(out,{recursive:true});
+const temporary=mkdtempSync(join(root,'.saturn/group-interaction-')),projectDir=join(temporary,'project');mkdirSync(projectDir);
+writeFileSync(join(projectDir,'a.ts'),`import {tank,pump,valve,signal} from '@saturn/core';
+export const a=tank('A',{label:'Резервуар А',system:'a',x:0,y:0});
+export const b=pump('B',{label:'Насос А',system:'a',x:300,y:88,flow:signal({initial:0,unit:'m³/h',dimension:'flow'})});
+export const v=valve('V',{label:'Клапан А',system:'a',x:640,y:82});`);
+writeFileSync(join(projectDir,'b.ts'),`import {tank,pump,signal} from '@saturn/core';
+export const c=tank('C',{label:'Резервуар Б',system:'b',x:0,y:700});
+export const d=pump('D',{label:'Насос Б',system:'b',x:300,y:788,flow:signal({initial:0,unit:'m³/h',dimension:'flow'})});
+export const other=tank('OTHER',{label:'Соседний участок',system:'other',x:1500,y:0});`);
+writeFileSync(join(projectDir,'project.ts'),`import {project,system,pipe} from '@saturn/core';import {a,b,v} from './a';import {c,d,other} from './b';
+export default project({id:'groups',label:'Группы · проверка',systems:[system('site','Очистка'),system('a','Линия А','site'),system('b','Линия Б','site'),system('other','Соседний участок')],equipment:[a,b,v,c,d,other],pipes:[pipe('ab',{from:a.ports.outlet,to:b.ports.inlet,flow:b.flow}),pipe('bv',{from:b.ports.outlet,to:v.ports.inlet,flow:b.flow}),pipe('cd',{from:c.ports.outlet,to:d.ports.inlet,flow:d.flow})]});`);
+const app=await createApp({projectDir,dataDir:join(temporary,'data'),port:0,preview:'manual'});
+const browser=await chromium.launch({headless:true,args:['--enable-unsafe-swiftshader']}),context=await browser.newContext({viewport:{width:1440,height:960},recordVideo:{dir:out+'/video',size:{width:1440,height:960}}}),page=await context.newPage(),errors:string[]=[];
+page.on('pageerror',e=>errors.push(e.message));await page.addInitScript(()=>{localStorage.setItem('saturn.locale','ru');localStorage.setItem('saturn.theme','light');});
+let closed=false;
+const positions=()=>app.state().authoring!.project.equipment.map(e=>({id:e.id,x:e.x,y:e.y}));
+const checkGrid=async()=>{
+ const grid=JSON.parse((await page.locator('.scene3d').getAttribute('data-grid'))!) as {count:number;step:number;left:number;right:number;top:number;bottom:number;groupFills:number};
+ assert.equal(grid.count,1);assert.equal(grid.groupFills,0);assert.equal(grid.step,.5);
+ for(const bound of [grid.left,grid.right,grid.top,grid.bottom])assert.equal(bound/grid.step,Math.round(bound/grid.step));
+ for(const e of app.state().authoring!.project.equipment){assert(e.x*.01>grid.left&&e.y*.01>grid.top);assert((e.x+(e.capabilities.diagram?.width??220))*.01<grid.right);assert((e.y+(e.capabilities.diagram?.height??230))*.01<grid.bottom);}
+};
+const drag=async(locator:ReturnType<typeof page.locator>,dx:number,dy:number,cancel=false)=>{const rect=await locator.boundingBox();assert(rect);const x=rect.x+rect.width/2,y=rect.y+rect.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.waitForTimeout(160);await page.mouse.move(x+dx,y+dy,{steps:12});if(cancel)await page.keyboard.press('Escape');await page.mouse.up();};
+try{
+ await page.goto(String(app.server.url)+'?dimension=2d');await expect(page.locator('.scene [data-equipment]')).toHaveCount(6);await page.getByRole('button',{name:'Правка',exact:true}).click();
+ const original=positions(),beforeBox=await page.locator('.scene').getAttribute('viewBox');
+ const parent=page.locator('.scene [data-system="site"] .scene-system-heading');assert.equal(await parent.evaluate(el=>getComputedStyle(el).cursor),'grab');
+ await drag(parent,55,35);await expect.poll(()=>positions()[0]!.x,{timeout:15000}).not.toBe(original[0]!.x);
+ const moved=positions(),dx=moved[0]!.x-original[0]!.x,dy=moved[0]!.y-original[0]!.y;
+ for(let i=0;i<5;i++){assert.equal(moved[i]!.x-original[i]!.x,dx);assert.equal(moved[i]!.y-original[i]!.y,dy);}assert.deepEqual(moved[5],original[5]);assert.equal(await page.locator('.scene').getAttribute('viewBox'),beforeBox);
+ assert.equal(systemEquipment(app.state().authoring!.project,'site').length,5);assert.match(readFileSync(join(projectDir,'a.ts'),'utf8'),new RegExp(`x:${moved[0]!.x}`));assert.match(readFileSync(join(projectDir,'b.ts'),'utf8'),new RegExp(`x:${moved[3]!.x}`));
+ await page.screenshot({path:out+'/01-2d-parent.png'});
+ const sourceA=readFileSync(join(projectDir,'a.ts'),'utf8'),sourceB=readFileSync(join(projectDir,'b.ts'),'utf8');await drag(parent,80,20,true);await page.waitForTimeout(250);assert.equal(readFileSync(join(projectDir,'a.ts'),'utf8'),sourceA);assert.equal(readFileSync(join(projectDir,'b.ts'),'utf8'),sourceB);
+ await page.getByRole('button',{name:'3D',exact:true}).click();await page.waitForFunction(()=>Number(document.querySelector<HTMLElement>('.scene3d')?.dataset.frames)>4);
+ await checkGrid();
+ const handle=page.locator('.scene3d-group-handle[data-system="a"]');await expect(handle).toBeVisible();const pose=await page.locator('.scene3d').getAttribute('data-camera-pose');
+ await drag(handle,60,20);await expect.poll(()=>positions()[0]!.x,{timeout:15000}).not.toBe(moved[0]!.x);
+ const three=positions(),dx3=three[0]!.x-moved[0]!.x,dy3=three[0]!.y-moved[0]!.y;for(let i=0;i<3;i++){assert.equal(three[i]!.x-moved[i]!.x,dx3);assert.equal(three[i]!.y-moved[i]!.y,dy3);}for(let i=3;i<6;i++)assert.deepEqual(three[i],moved[i]);
+ assert.equal(await page.locator('.scene3d').getAttribute('data-camera-pose'),pose);await checkGrid();await page.screenshot({path:out+'/02-3d-light.png'});
+ const saved=readFileSync(join(projectDir,'a.ts'),'utf8');await drag(handle,60,20,true);await page.waitForTimeout(250);assert.equal(readFileSync(join(projectDir,'a.ts'),'utf8'),saved);
+ await page.evaluate(()=>{document.documentElement.dataset.theme='dark';localStorage.setItem('saturn.theme','dark');});await page.waitForTimeout(250);await page.screenshot({path:out+'/03-3d-dark.png'});
+ await page.reload();await page.waitForFunction(()=>Number(document.querySelector<HTMLElement>('.scene3d')?.dataset.frames)>4);assert.deepEqual(positions(),three);assert.deepEqual(app.state().problems,[]);
+ await page.getByRole('button',{name:'Выбор',exact:true}).click();await page.locator('[data-tree-id="system:site"]').click();await page.waitForTimeout(250);
+ // A group's empty ground area still focuses it after removing visible fills.
+ const groundGroup=systemLayout(app.state().authoring!.project).find(g=>g.id==='b')!,canvas=await page.locator('.scene3d canvas').first().boundingBox();assert(canvas);
+ const cameraPose=JSON.parse((await page.locator('.scene3d').getAttribute('data-camera-pose'))!) as number[],camera=new T.PerspectiveCamera(42,canvas.width/canvas.height,.1,200);
+ camera.position.set(cameraPose[0]!,cameraPose[1]!,cameraPose[2]!);camera.lookAt(cameraPose[3]!,cameraPose[4]!,cameraPose[5]!);camera.updateMatrixWorld();
+ const groundPoint=new T.Vector3((groundGroup.x+groundGroup.width-16)*.01,-.04,(groundGroup.y+groundGroup.height-16)*.01).project(camera);
+ await page.mouse.click(canvas.x+(groundPoint.x+1)*canvas.width/2,canvas.y+(1-groundPoint.y)*canvas.height/2);await expect(page.locator('[data-tree-id="system:b"]')).toHaveAttribute('aria-selected','true');
+ await page.locator('[data-tree-id="system:site"]').click();await page.locator('.scene3d-group-handle[data-system="b"]').click();await expect(page.locator('[data-tree-id="system:b"]')).toHaveAttribute('aria-selected','true');
+ await page.screenshot({path:out+'/04-focus.png'});
+ await page.locator('[data-tree-id="system:site"]').click();await page.getByRole('button',{name:'Правка',exact:true}).click();
+ const diskA=readFileSync(join(projectDir,'a.ts'),'utf8'),diskB=readFileSync(join(projectDir,'b.ts'),'utf8');let conflicts=0;
+ await page.route('**/api/files/save',route=>{conflicts++;return route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({error:'Group transaction version conflict'})});});
+ await drag(page.locator('.scene3d-group-handle[data-system="site"]'),40,15);await expect.poll(()=>conflicts).toBe(1);
+ assert.equal(readFileSync(join(projectDir,'a.ts'),'utf8'),diskA);assert.equal(readFileSync(join(projectDir,'b.ts'),'utf8'),diskB);await page.waitForTimeout(500);await page.screenshot({path:out+'/05-save-conflict.png'});
+ await app.close();closed=true;await page.waitForTimeout(600);await page.screenshot({path:out+'/06-host-closed.png'});assert.deepEqual(errors,[]);
+ console.log('PASS: one world-aligned grid covers all equipment before/after group movement, no group fills; parent group across 2 files, nested membership, equal deltas, stationary camera, single selection, 2D/3D Escape, reload, light/dark, transaction conflict leaves both files untouched, closed host and unchanged outside devices.');
+}finally{const video=await page.video()?.path();await context.close();await browser.close();if(!closed)await app.close();if(video)renameSync(video,out+'/groups.webm');rmSync(temporary,{recursive:true,force:true});}

@@ -1,9 +1,9 @@
 /* Shared foundations. Shell chrome and every surface use this one token set. */
 :root {
   color-scheme:light;
-  --bg:#ececf5; --sidebar:#f7f7fa; --panel:#ffffff; --editor:#ffffff; --raised:#ffffff;
-  --text:#25272c; --muted:#696d76; --faint:#92959d; --border:#e6e6eb;
-  --hover:#ececf0; --active:#e7e8ec; --accent:#3b66b0; --accent-soft:#e8eef8; --selection:#d5e3fa;
+  --bg:#f1f5f8; --sidebar:#f9fbfd; --panel:#ffffff; --editor:#ffffff; --raised:#ffffff;
+  --text:#24394a; --muted:#566d7e; --faint:#7e919f; --border:#dce5ed;
+  --hover:#edf3f8; --active:#e4edf7; --accent:#3b66b0; --accent-soft:#e8eef8; --selection:#d5e3fa;
   --modified:#9a600e; --good:#187464; --warn:#8d5b13; --bad:#b44750; --shadow:0 12px 40px #1b30551a;
   --syntax-keyword:#7745a6; --syntax-string:#236c4d; --syntax-number:#985821;
   --syntax-property:#285e93; --syntax-type:#176c78; --syntax-function:#765526;
@@ -136,3 +136,17 @@ table{width:100%;border-collapse:collapse;text-align:left;font-size:12px}th{font
 .mounting-equipment:hover rect,.mounting-equipment.selected rect,.mounting-equipment:focus-visible rect{stroke:var(--accent);stroke-width:2}
 .mounting-equipment-id{fill:var(--text);font:600 12px var(--mono)}.mounting-equipment-label{fill:var(--muted);font:11px var(--ui)}
 .mounting-issue{position:absolute;left:12px;bottom:12px;z-index:2;max-width:calc(100% - 24px);padding:7px 10px;border:1px solid var(--bad);border-radius:6px;background:var(--raised);color:var(--bad);font-size:12px;pointer-events:none}
+
+/* Headers are handles only in edit mode; the same affordance is used in 2D/3D. */
+.scene[data-interaction="edit"] .scene-system-heading{cursor:grab}
+.scene[data-interaction="edit"] .scene-system-heading:hover>rect{fill:color-mix(in srgb,var(--accent) 9%,transparent)}
+.scene[data-dragging-system],.scene[data-dragging-system] .scene-system-heading{cursor:grabbing}
+.scene-system-heading:focus-visible>rect{stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke}
+.scene3d[data-drag-kind="system"] canvas,.scene3d[data-drag-kind="equipment"] canvas{cursor:grabbing!important}
+
+.scene3d-groups{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.scene3d-group-handle{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;touch-action:none;max-width:240px;min-height:32px;padding:5px 10px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:7px;box-shadow:0 2px 8px #0002;font:600 12px/1.3 var(--ui);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:zoom-in}
+.scene3d-group-handle[data-edit=true]{cursor:grab;border-style:dashed}
+.scene3d-group-handle[data-focused=true]{border-color:var(--accent);color:var(--accent)}
+.scene3d-group-handle:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.scene3d[data-drag-kind=system] .scene3d-group-handle{cursor:grabbing}

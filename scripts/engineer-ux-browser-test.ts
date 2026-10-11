@@ -1,0 +1,86 @@
+import {openProjectSurface} from './helpers/project-navigation';
+import assert from 'node:assert/strict';
+import {mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+import {chromium,expect} from 'playwright/test';
+import {createProjectLauncher} from '../src/host/project-launcher';
+
+const output=resolve('artifacts/ux-fixes'),base=mkdtempSync(join(tmpdir(),'saturn-engineer-ux-')),initial=join(base,'projects');
+mkdirSync(initial);mkdirSync(output,{recursive:true});
+const app=await createProjectLauncher({port:0,initialDirectory:initial,dataDir:join(base,'data'),preview:'manual'});
+const browser=await chromium.launch({headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const context=await browser.newContext({viewport:{width:1600,height:1000},locale:'ru-RU',colorScheme:'light',recordVideo:{dir:join(output,'recording'),size:{width:1600,height:1000}}});
+const page=await context.newPage(),errors:string[]=[],requests:string[]=[],checks:string[]=[];page.setDefaultTimeout(15000);
+page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(r.method()==='POST')requests.push(new URL(r.url()).pathname);});
+const started=performance.now(),timeline:{name:string;at:number}[]=[];
+const shot=async(name:string)=>{await page.waitForTimeout(2500);timeline.push({name,at:(performance.now()-started)/1000});await page.screenshot({path:join(output,name+'.png')});};
+
+const addDevice=async(name:string,id:string)=>{
+ const dialog=page.getByRole('dialog',{name:'Новое устройство'});
+ await expect(dialog.getByLabel('ID',{exact:true})).toHaveValue(id);
+ await dialog.getByLabel('Название',{exact:true}).fill(name);
+ if(id==='P-01'){await dialog.getByText('Дополнительно',{exact:true}).click();await dialog.getByRole('button',{name:'Предпросмотр',exact:true}).click();await expect(dialog.locator('.creation-preview')).toContainText(`equipment/${id}.device.ts`);}
+ await dialog.getByRole('button',{name:'Добавить на схему',exact:true}).click();
+ await expect(dialog).toHaveCount(0);await expect(page.locator('.scene3d canvas')).toBeVisible();
+ await expect(page.locator('.cm-content')).toHaveCount(0);
+};
+try{
+ await page.goto(app.server.url.href);await expect(page.getByRole('heading',{name:'Начните с проекта'})).toBeVisible();
+ await page.getByLabel('Название проекта',{exact:true}).fill('water-station');await shot('01-project');
+ await page.getByRole('button',{name:'Создать и открыть',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Добавьте первое оборудование'})).toBeVisible({timeout:30000});
+ await expect(page.getByRole('heading',{name:'Как вы будете использовать Saturn?'})).toHaveCount(0);
+ await shot('02-empty');checks.push('Fresh launcher, no seeded preferences: project creation opens empty 3D workbench directly without a preset dialog');
+ await page.locator('.empty-project').getByRole('button',{name:'Добавить оборудование',exact:true}).click();await addDevice('Насос подачи','P-01');
+ await page.waitForFunction(()=>Number(document.querySelector<HTMLElement>('.scene3d')?.dataset.frames)>4);
+ await shot('03-first-pump');
+ await page.getByRole('button',{name:'Добавить оборудование',exact:true}).click();await addDevice('Резервный насос','P-02');await shot('04-second-pump');
+ const root=join(initial,'water-station');assert(readFileSync(join(root,'project.ts'),'utf8').includes('P-02'));
+ checks.push('Actual create/preview/source import/check: remains in 3D, selects created equipment, next pump ID is P-02');
+ await page.getByRole('button',{name:'Действия объекта',exact:true}).click();await page.getByRole('menuitem',{name:'Сигналы',exact:true}).click();
+ const tree=page.getByRole('tree',{name:'Структура проекта'});
+ await tree.locator('[data-tree-id="signal:P-02.rpm"]').click();
+ await expect(tree.locator('[aria-selected="true"]')).toHaveCount(1);
+ await expect(tree.locator('[aria-selected="true"]')).toHaveAttribute('data-tree-id','signal:P-02.rpm');
+ await expect(page.locator('.workbench-rail')).toHaveCount(0);
+ await expect(tree.locator('[aria-current="page"]')).toHaveCount(1);
+ await expect(tree.locator('[data-tree-id="view:signals"]')).toHaveCount(0);
+ await expect(page.locator('.object-context-anchor')).toContainText('Владелец сигнала');
+ await expect(page.locator('.shell-panel[data-open="true"]')).toHaveCount(0);
+ await expect(page.locator('.signal-contract')).not.toHaveAttribute('open','');await expect(page.locator('.signal-catalog')).not.toHaveAttribute('open','');await shot('05-single-selection');checks.push('Single project tree: only the selected signal has a filled row; its parent is not filled, owner is labelled separately and history does not open automatically');
+ await page.getByRole('button',{name:/Открыть исходник владельца/}).click();
+ await expect(page.locator('.source-context .cm-content')).toContainText('Резервный насос');
+ const sourceWidth=(await page.locator('.source-context').boundingBox())!.width,slotWidth=(await page.locator('.shell-details-slot').boundingBox())!.width;assert(Math.abs(sourceWidth-slotWidth)<2,'Source context leaves unusable empty space in its slot');
+ const source=page.locator('.source-context .cm-content');await source.click();await page.keyboard.press('ControlOrMeta+f');
+ await expect(page.locator('.cm-search input[name="search"]')).toHaveAttribute('placeholder','Найти');
+ await page.keyboard.press('Escape');await source.click();await page.keyboard.press('ControlOrMeta+End');await page.keyboard.type('\n// UX retained draft');
+ await page.getByRole('button',{name:'Закрыть исходник',exact:true}).click();
+ await page.getByRole('button',{name:/Открыть исходник владельца/}).click();await expect(source).toContainText('UX retained draft');
+ assert(!readFileSync(join(root,'equipment/P-02.device.ts'),'utf8').includes('UX retained draft'));
+ await page.getByRole('button',{name:'Закрыть исходник',exact:true}).click();checks.push('Russian editor search and source context retain a draft without writing it to disk');
+ await openProjectSurface(page,'hmi');
+ await expect(page.locator('.hmi-surface')).toHaveAttribute('data-hmi-model','checked');
+ await page.getByRole('button',{name:'Создать экран',exact:true}).click();const hmi=page.getByRole('dialog',{name:'Создать экран',exact:true});
+ await expect(hmi.locator('input[type="checkbox"]:checked')).toHaveCount(1);
+ await expect(hmi.locator('input[type="checkbox"]:checked').locator('..')).toContainText('P-02');
+ await hmi.getByText('Дополнительно',{exact:true}).click();await hmi.getByRole('button',{name:'Показать изменения',exact:true}).click();
+ await hmi.getByRole('button',{name:'Создать экран',exact:true}).click();await expect(hmi).toHaveCount(0);
+ await expect(page.locator('.hmi-gallery article[data-stage="checked"]')).toHaveCount(1);
+ await expect(page.locator('.hmi-inline-preview svg [data-equipment="P-02"]')).toBeVisible();
+ await expect(page.locator('.hmi-inline-preview')).toContainText('Предпросмотр · без данных');
+ await expect(page.locator('.hmi-commands')).toHaveCount(0);await expect(page.locator('.hmi-surface>.surface-description')).toBeVisible();await shot('06-hmi-preview');
+ const release=await page.evaluate(async()=>await(await fetch('/api/releases')).json()) as {checked:string|null;applied:string|null};assert(release.checked);assert.equal(release.applied,null);
+ await page.getByRole('button',{name:'Применённые',exact:true}).click();await expect(page.locator('.hmi-gallery article')).toHaveCount(0);await shot('07-applied-empty');
+ await page.reload();await expect(page.locator('.hmi-surface')).toHaveAttribute('data-hmi-model','applied');
+ await page.getByRole('button',{name:'Предпросмотр',exact:true}).click();await page.reload();await expect(page.locator('.hmi-gallery article[data-stage="checked"]')).toHaveCount(1);
+ const direct=await context.newPage();await direct.goto(new URL('/hmi?screen=operator',page.url()).href);await expect(direct.getByText(/Экран оператора ожидает применения сборки/)).toBeVisible();await direct.close();
+ assert(!requests.some(path=>/\/(command|apply|publish)$/.test(path)),requests.join('\n'));
+ checks.push('Created screen immediately shows actual SVG layout from Checked with no data or controls; Applied remains empty, direct operator HMI is gated; mode survives reload; no command/apply/publish requests');
+ await page.setViewportSize({width:390,height:844});await shot('08-hmi-mobile');assert(await page.locator('.hmi-inline-preview>.hmi').evaluate(node=>node.scrollWidth<=node.clientWidth));assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.setViewportSize({width:1600,height:1000});await page.emulateMedia({colorScheme:'dark'});await shot('09-hmi-dark');
+ assert.deepEqual(errors,[]);checks.push('Real desktop/mobile/dark frames and no browser errors');
+ console.log('PASS '+checks.join('\nPASS '));
+ writeFileSync(join(output,'verification.json'),JSON.stringify({runtime:process.platform+' '+process.arch,bun:Bun.version,browser:browser.version(),checks,requests,errors,timeline},null,2));
+}catch(error){await page.screenshot({path:join(output,'failure.png')});console.error(await page.locator('body').innerText());throw error;}
+finally{await context.close();await page.video()?.saveAs(join(output,'engineer-ux.webm'));await browser.close();await app.close();rmSync(base,{recursive:true,force:true});}

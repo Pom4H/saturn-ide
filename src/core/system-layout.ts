@@ -40,3 +40,10 @@ export function systemTitleLines(title:string,width:number):string[] {
   if(current)lines.push(current);
   return lines.length<=2?lines:[lines[0]!,lines.slice(1).join(' ').slice(0,Math.max(1,limit-1))+'…'];
 }
+
+/** Physical members include descendants; hierarchy remains authored only in Project. */
+export function systemEquipment(project:Pick<Project,'systems'|'equipment'>,id:string) {
+  const ids=new Set([id]);let changed=true;
+  while(changed){changed=false;for(const system of project.systems??[])if(system.parent&&ids.has(system.parent)&&!ids.has(system.id)){ids.add(system.id);changed=true;}}
+  return project.equipment.filter(equipment=>equipment.system&&ids.has(equipment.system));
+}

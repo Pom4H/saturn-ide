@@ -7,7 +7,7 @@ export interface BrowserView {
   settings?:'general'|'appearance'|'notifications'|'shortcuts'|'about';
   viewBox?:[number,number,number,number]; camera?:[number,number,number,number,number,number];
   dimension:'2d'|'mounting'|'3d'; panel:PanelTab; panelOpen:boolean; details:'none'|'properties'|'review'|'catalog'|'source';
-  hmi:'overview'|'detail'; system:string; operator:boolean; newTab:boolean; pane:boolean; full:boolean;
+  hmi:'overview'|'detail'; hmiModel?:'checked'|'applied'; system:string; operator:boolean; newTab:boolean; pane:boolean; full:boolean;
 }
 const editor=(value:string|null):EditorId|undefined=>value&&Object.hasOwn(editorNames,value)?value as EditorId:undefined;
 const panels:readonly PanelTab[]=['equipment','graphs','terminal','notifications'];
@@ -22,13 +22,13 @@ export function readBrowserView(search:string):BrowserView {
     port:params.get('port')??undefined,uri:params.get('uri')??'',file:params.get('file')??'',device:params.get('device')??'',signal:params.get('signal')??'',report:params.get('report')??'',
     dimension:params.get('dimension')==='mounting'?'mounting':params.get('dimension')==='3d'||!params.has('dimension')&&(!page||page==='home')?'3d':'2d',panel:panels.find(tab=>tab===params.get('panel'))??'equipment',panelOpen:params.get('panelOpen')==='1',
     details:params.get('details')==='source'?'source':params.get('details')==='catalog'?'catalog':params.get('details')==='review'?'review':params.get('details')==='properties'?'properties':'none',hmi:params.get('hmi')==='detail'?'detail':'overview',
-    system:params.get('system')??'',operator:params.get('mode')==='operator',newTab:params.get('newTab')==='1',pane:params.get('pane')==='1',full:params.get('full')==='1'};
+    hmiModel:params.get('mode')==='operator'||params.get('hmiModel')==='applied'?'applied':'checked',system:params.get('system')??'',operator:params.get('mode')==='operator',newTab:params.get('newTab')==='1',pane:params.get('pane')==='1',full:params.get('full')==='1'};
 }
 export function browserViewSearch(view:BrowserView):string {
   const params=new URLSearchParams();params.set('page',view.page);
   const values:Record<string,string>={settings:view.page==='settings'?view.settings??'general':'',viewBox:view.viewBox?.map(value=>Number(value.toFixed(4))).join(',')??'',camera:view.camera?.map(value=>Number(value.toFixed(4))).join(',')??'',tool:view.page==='chat'||view.page==='settings'?view.tool:'',uri:view.uri,file:view.file,device:view.device,port:view.port??'',signal:view.signal,report:view.report,
     dimension:view.dimension==='mounting'?'mounting':view.dimension==='3d'?'3d':view.page==='home'?'2d':'',panel:view.panel,panelOpen:view.panelOpen?'1':'0',details:view.details!=='none'?view.details:'',hmi:view.tool==='hmi'?view.hmi:'',
-    system:view.system,mode:view.operator?'operator':'',newTab:view.newTab?'1':'',pane:view.page==='chat'&&view.pane?'1':'',full:view.page==='chat'&&view.full?'1':''};
+    hmiModel:view.operator||view.hmiModel==='applied'?'applied':'',system:view.system,mode:view.operator?'operator':'',newTab:view.newTab?'1':'',pane:view.page==='chat'&&view.pane?'1':'',full:view.page==='chat'&&view.full?'1':''};
   for(const [key,value] of Object.entries(values))if(value)params.set(key,value);
   return '?'+params.toString();
 }

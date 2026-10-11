@@ -90,8 +90,6 @@ try{
   await page.addInitScript(()=>{localStorage.setItem('saturn.locale','ru');localStorage.setItem('saturn.theme','light');});
   await page.goto(app.server.url.href);
   const welcome=page.getByRole('dialog',{name:'Как вы будете использовать Saturn?'});
-  await welcome.waitFor({state:'visible',timeout:10000});
-  await welcome.getByRole('button',{name:'Для бизнеса',exact:false}).click();
   await expect(welcome).toHaveCount(0);
   await openDiagram();
   const twoD=page.getByRole('button',{name:'2D',exact:true});if(await twoD.count())await twoD.click();

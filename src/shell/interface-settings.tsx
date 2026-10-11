@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import type { Locale } from '../core';
 import { ResourceIcon } from './icons';
 import { IDEUpdates } from './ide-updates';
-import { DemoProjects } from './preset-welcome';
+import { DemoProjects } from './demo-projects';
 import type { useInterfacePreferences } from './use-interface-preferences';
 
 export type SettingsSection='general'|'appearance'|'notifications'|'shortcuts'|'about';

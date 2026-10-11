@@ -15,7 +15,8 @@ export interface SceneProps {
   project:Project;displayProject?:Project;inactive?:readonly string[];routes:readonly PhysicalRoute[];snapshot:Snapshot;locale:Locale;selected:string;selectedPort?:string;selectedIds?:readonly string[];interaction?:'select'|'edit';focus?:string;fit?:number;zoom?:{step:number;factor:number};ports?:boolean;
   viewRestore?:{version:number;box?:[number,number,number,number];pose?:[number,number,number,number,number,number]};
   onViewBox?:(box:[number,number,number,number])=>void;onCameraPose?:(pose:[number,number,number,number,number,number])=>void;
-  systemFocus?:string|null;focusSystem?:(id:string)=>void;
+  systemFocus?:string|null;focusSystem?:(id:string)=>void;dragging?:boolean;
+  beginSystem?:(id:string)=>Promise<boolean>;moveSystem?:(dx:number,dy:number)=>void;
   select:(id:string,additive?:boolean)=>void;begin?:(id:string)=>boolean;move?:(id:string,x:number,y:number)=>void;end?:(cancel:boolean)=>void;
   openSource?:(id:string)=>void;canOpenSource?:(id:string)=>boolean;
   cablePreview?:{id:string;end:'from'|'to';x:number;y:number;z:number}|null;
@@ -53,6 +54,7 @@ function PanelDisplay2D({project,controller,snapshot,factory,locale,inspect,hasS
 export function Scene(props:SceneProps){
   const svg=useRef<SVGSVGElement>(null),latest=useRef(props);latest.current=props;
   const drag=useRef<{id:string;x:number;y:number;sx:number;sy:number;moved:boolean}|null>(null);
+  const groupDrag=useRef<{pointer:number;sx:number;sy:number;px:number;py:number;dx:number;dy:number;moved:boolean;ready:Promise<boolean>;started:boolean}|null>(null);
   const plug=useRef<{id:string;end:'from'|'to';x:number;y:number;moved:boolean;targets:readonly Endpoint[];target?:Endpoint}|null>(null);
   const [availablePorts,setAvailablePorts]=useState<readonly Endpoint[]>([]),[hoveredPort,setHoveredPort]=useState(''),[dragError,setDragError]=useState('');
   const pan=useRef<{x:number;y:number;box:number[]}|null>(null);
@@ -68,7 +70,7 @@ export function Scene(props:SceneProps){
     return [x,y,Math.max(850,...base.map(e=>e.x+visual(e).width+60),...groups.map(g=>g.x+g.width+24))-x,Math.max(460,...base.map(e=>e.y+visual(e).height+60),...groups.map(g=>g.y+g.height+24))-y];
   };
   const [box,setBox]=useState(bounds);
-  useEffect(()=>setBox(bounds()),[props.fit,props.focus,props.systemFocus,props.project.id]);
+  useEffect(()=>{if(!props.dragging)setBox(bounds());},[props.fit,props.focus,props.systemFocus,props.project.id]);
   useEffect(()=>{if(!props.zoom||props.zoom.factor===1||props.focus)return;setBox(([x=0,y=0,w=850,h=460])=>[x+w*(1-props.zoom!.factor)/2,y+h*(1-props.zoom!.factor)/2,w*props.zoom!.factor,h*props.zoom!.factor]);},[props.zoom?.step]);
   useEffect(()=>{if(props.viewRestore?.box&&!props.focus)setBox(props.viewRestore.box);},[props.viewRestore?.version]);
   useEffect(()=>{if(!props.focus&&box.length===4)latest.current.onViewBox?.(box as [number,number,number,number]);},[box.join(',')]);
@@ -91,17 +93,31 @@ export function Scene(props:SceneProps){
     return()=>node.removeEventListener('wheel',wheel);
   },[]);
   const start=(event:PointerEvent,e:Equipment)=>{event.stopPropagation();props.select(e.id,props.interaction==='select'&&(event.shiftKey||event.metaKey||event.ctrlKey));if(props.interaction!=='edit'||event.button!==0||!props.begin?.(e.id))return;const p=coordinate(event);drag.current={id:e.id,x:e.x,y:e.y,sx:p.x,sy:p.y,moved:false};svg.current!.setPointerCapture(event.pointerId);};
+  const startGroup=(event:PointerEvent,id:string)=>{
+    event.stopPropagation();if(props.interaction!=='edit'||event.button!==0||!props.beginSystem||groupDrag.current)return;
+    event.preventDefault();svg.current!.focus({preventScroll:true});const point=coordinate(event);
+    const gesture={pointer:event.pointerId,sx:point.x,sy:point.y,px:event.clientX,py:event.clientY,dx:0,dy:0,moved:false,ready:props.beginSystem(id),started:false};
+    groupDrag.current=gesture;svg.current!.setAttribute('data-dragging-system',id);svg.current!.setPointerCapture(event.pointerId);
+    void gesture.ready.then(started=>{gesture.started=started;if(started&&groupDrag.current===gesture&&gesture.moved)latest.current.moveSystem?.(gesture.dx,gesture.dy);});
+  };
+  const finishGroup=(cancel:boolean)=>{
+    const gesture=groupDrag.current;if(!gesture)return;groupDrag.current=null;svg.current?.removeAttribute('data-dragging-system');
+    void gesture.ready.then(started=>{if(started){if(!cancel&&gesture.moved)latest.current.moveSystem?.(gesture.dx,gesture.dy);latest.current.end?.(cancel||!gesture.moved);}});
+  };
+  useEffect(()=>{if(props.interaction!=='edit')finishGroup(true);},[props.interaction]);
+  useEffect(()=>{const cancel=()=>finishGroup(true);window.addEventListener('blur',cancel);return()=>{window.removeEventListener('blur',cancel);cancel();};},[]);
   const nearestPort=(event:PointerEvent,targets:readonly Endpoint[],previous?:Endpoint)=>{let chosen:Endpoint|undefined,best=Infinity;const transform=svg.current!.getScreenCTM();if(!transform)return;for(const endpoint of targets){const point=anchor(props.project,endpoint),screen=svg.current!.createSVGPoint();screen.x=point.x;screen.y=point.y;const position=screen.matrixTransform(transform),distance=Math.hypot(position.x-event.clientX,position.y-event.clientY);if(distance>=(endpoint===previous?24:18))continue;const score=distance-(endpoint===previous?3:0);if(score>=best)continue;best=score;chosen=endpoint;}return chosen;};
   const startPlug=(event:PointerEvent,id:string,end:'from'|'to')=>{props.select(id);if(props.interaction!=='edit'||event.button!==0)return;event.stopPropagation();const p=coordinate(event),edge=[...props.project.pipes,...props.project.cables??[]].find(item=>item.id===id);if(!edge)return;let targets:Endpoint[];try{targets=compatiblePorts(props.displayProject??props.project,id,end);}catch(reason){setDragError(reason instanceof Error?reason.message:String(reason));return;}setDragError('');if(!props.beginCable?.(id,end,p.x,p.y,connectionTip(props.project,edge,end).z))return;plug.current={id,end,x:p.x,y:p.y,moved:false,targets};setAvailablePorts(targets);setHoveredPort('');svg.current!.setPointerCapture(event.pointerId);};
   const finishPlug=(event:PointerEvent|undefined,cancel=false)=>{const current=plug.current;if(!current)return;plug.current=null;setAvailablePorts([]);setHoveredPort('');const target=event&&current.moved?nearestPort(event,current.targets,current.target):undefined;props.endCable?.(target?{device:target.device,port:target.port}:undefined,cancel||!current.moved);};
-  const finish=(cancel:boolean)=>{pan.current=null;if(drag.current){const d=drag.current;drag.current=null;props.end?.(cancel||!d.moved);}};
-  return <div className="scene-frame"><svg ref={svg} className="scene" viewBox={box.join(' ')} aria-label={props.locale==='ru'?'Мнемосхема':'Process diagram'} tabIndex={0}
+  const finish=(cancel:boolean)=>{finishGroup(cancel);pan.current=null;if(drag.current){const d=drag.current;drag.current=null;props.end?.(cancel||!d.moved);}};
+  return <div className="scene-frame"><svg ref={svg} className="scene" data-interaction={props.interaction??'select'} viewBox={box.join(' ')} aria-label={props.locale==='ru'?'Мнемосхема':'Process diagram'} tabIndex={0}
     onPointerDown={event=>{if(props.focus)return;pan.current={x:event.clientX,y:event.clientY,box};svg.current!.setPointerCapture(event.pointerId);}}
-    onPointerMove={event=>{const d=drag.current;if(plug.current){const p=coordinate(event);if(Math.hypot(p.x-plug.current.x,p.y-plug.current.y)>3)plug.current.moved=true;const target=nearestPort(event,plug.current.targets,plug.current.target);plug.current.target=target;const next=target?anchor(props.project,target):{x:p.x,y:p.y,z:props.cablePreview?.z??0};setHoveredPort(target?`${target.device}.${target.port}`:'');props.moveCable?.(next.x,next.y,next.z);}else if(d){const p=coordinate(event);if(Math.hypot(p.x-d.sx,p.y-d.sy)>3)d.moved=true;if(d.moved)props.move?.(d.id,Math.round(d.x+p.x-d.sx),Math.round(d.y+p.y-d.sy));}else if(pan.current){const p=pan.current,r=svg.current!.getBoundingClientRect(),scale=Math.max(p.box[2]!/r.width,p.box[3]!/r.height);setBox([p.box[0]!-(event.clientX-p.x)*scale,p.box[1]!-(event.clientY-p.y)*scale,p.box[2]!,p.box[3]!]);}}}
+    onPointerMove={event=>{const d=drag.current,g=groupDrag.current;if(g){if(event.pointerId!==g.pointer)return;const p=coordinate(event);g.dx=p.x-g.sx;g.dy=p.y-g.sy;if(Math.hypot(event.clientX-g.px,event.clientY-g.py)>4)g.moved=true;if(g.moved&&g.started)props.moveSystem?.(g.dx,g.dy);}else if(plug.current){const p=coordinate(event);if(Math.hypot(p.x-plug.current.x,p.y-plug.current.y)>3)plug.current.moved=true;const target=nearestPort(event,plug.current.targets,plug.current.target);plug.current.target=target;const next=target?anchor(props.project,target):{x:p.x,y:p.y,z:props.cablePreview?.z??0};setHoveredPort(target?`${target.device}.${target.port}`:'');props.moveCable?.(next.x,next.y,next.z);}else if(d){const p=coordinate(event);if(Math.hypot(p.x-d.sx,p.y-d.sy)>3)d.moved=true;if(d.moved)props.move?.(d.id,Math.round(d.x+p.x-d.sx),Math.round(d.y+p.y-d.sy));}else if(pan.current){const p=pan.current,r=svg.current!.getBoundingClientRect(),scale=Math.max(p.box[2]!/r.width,p.box[3]!/r.height);setBox([p.box[0]!-(event.clientX-p.x)*scale,p.box[1]!-(event.clientY-p.y)*scale,p.box[2]!,p.box[3]!]);}}}
     onPointerUp={event=>{finishPlug(event);finish(false);}} onPointerCancel={()=>{finishPlug(undefined,true);finish(true);}} onLostPointerCapture={()=>{finishPlug(undefined,true);finish(true);}} onKeyDown={event=>{if(event.key==='Escape'){finishPlug(undefined,true);finish(true);}}}>
     {!props.focus&&groups.map(group=><g key={group.id} data-system={group.id} data-system-depth={group.depth} data-focused={props.systemFocus===group.id||undefined} className="scene-system">
       <rect className="scene-system-plate" x={group.x} y={group.y} width={group.width} height={group.height} rx={8}/>
-      <g className="scene-system-heading" role="button" tabIndex={0} aria-label={`${props.locale==='ru'?'Приблизить систему':'Focus system'}: ${text(group.label,props.locale)}, ${group.count}`} onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();props.focusSystem?.(group.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();props.focusSystem?.(group.id);}}}>
+      <g className="scene-system-heading" role="button" tabIndex={0} aria-label={`${props.interaction==='edit'?(props.locale==='ru'?'Переместить группу':'Move group'):(props.locale==='ru'?'Приблизить систему':'Focus system')}: ${text(group.label,props.locale)}, ${group.count}`} onPointerDown={event=>startGroup(event,group.id)} onClick={event=>{event.stopPropagation();if(props.interaction!=='edit')props.focusSystem?.(group.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();props.focusSystem?.(group.id);}}}>
+        <title>{props.interaction==='edit'?(props.locale==='ru'?'Потяните заголовок, чтобы переместить всю группу. Escape — отмена.':'Drag the header to move the whole group. Escape cancels.'):(props.locale==='ru'?'Нажмите, чтобы приблизить участок.':'Click to focus this area.')}</title>
         <rect x={group.x+1} y={group.y+1} width={group.width-2} height={66} fill="transparent"/>
         <text className="scene-system-id" x={group.x+18} y={group.y+20}>{group.id.toUpperCase()} · {group.count}</text>
         {systemTitleLines(text(group.label,props.locale),group.width).map((line,index)=><text className="scene-system-title" key={index} x={group.x+18} y={group.y+42+index*20}>{line}</text>)}

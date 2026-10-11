@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createProject } from '../src/workspace/project-template';
 import { createApp } from '../src/host/dev';
+import { prepareInterface } from './helpers/interface-preferences';
 
 mkdirSync(resolve('.saturn'), { recursive: true });
 const base = mkdtempSync(resolve('.saturn/project-owned-browser-'));
@@ -15,10 +16,13 @@ const page = await context.newPage(), errors: string[] = [];
 page.on('pageerror', error => errors.push(error.message));
 
 try {
+  await prepareInterface(context);
   await page.goto(app.server.url.href);
-  await page.getByRole('button', { name: 'Добавить оборудование', exact: true }).click();
+  await page.locator('.empty-project').getByRole('button', { name: 'Добавить оборудование', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Новое устройство' });
-  await dialog.getByLabel('Шаблон').selectOption('custom');
+  await dialog.getByText('Другое оборудование', { exact: true }).click();
+  await dialog.locator('input[name=template][value=custom]').check();
+  await dialog.getByText('Дополнительно', { exact: true }).click();
   await dialog.getByLabel('ID', { exact: true }).fill('SK-01');
   await dialog.getByLabel('Название', { exact: true }).fill('Измерительный блок');
   await dialog.getByRole('button', { name: 'Предпросмотр', exact: true }).click();
@@ -29,7 +33,7 @@ try {
   const dialogBounds = await dialog.boundingBox();
   assert(dialogBounds && dialogBounds.x >= 0 && dialogBounds.x + dialogBounds.width <= 390);
   assert((await page.evaluate(() => document.documentElement.scrollWidth)) <= 390);
-  const createButton = dialog.getByRole('button', { name: 'Создать устройство', exact: true });
+  const createButton = dialog.getByRole('button', { name: 'Добавить на схему', exact: true });
   const createBounds = await createButton.boundingBox();
   assert(createBounds && createBounds.y >= 0 && createBounds.y + createBounds.height <= 844, 'Create button must be visible without scrolling the dialog');
   assert.equal(await dialog.locator('.creation-preview pre').first().evaluate(element => getComputedStyle(element).userSelect), 'text');

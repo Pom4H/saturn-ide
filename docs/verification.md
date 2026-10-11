@@ -1591,3 +1591,451 @@ pass, including real 2D/3D frames, normal cable animation and native WebGL fallb
 The user-facing video remains gated on successful relevant CI for the pushed
 changes. Native Windows execution and real remote Git credentials are separate
 checks; neither is inferred from Linux or fixture-browser evidence.
+
+
+## Shell: единая навигация и компактный header — 2026-10-06
+
+Проверено на macOS arm64, Bun 1.4.2, Playwright Chromium 153.0.8010.12,
+с настоящим `createApp`, simulator и копиями явно подключённого pumping-station.
+Рендеры SVG/3D и project-owned ports не переписывались этим изменением.
+
+- `bun run check` — обе проверки TypeScript и `architecture:check` прошли;
+  проверены границы 201 модуля.
+- `bun test tests/navigation-catalog.test.ts tests/shell-model.test.ts
+  tests/shell-layout.test.ts tests/panel-layout.test.ts tests/shell-boundaries.test.mjs`
+  — 28 passed, 0 failed.
+- `bun scripts/shell-navigation-browser-test.ts` — passed: семь подписанных
+  разделов, object selection между HMI и Объектом, реальные исходники, сохранение
+  draft, вкладки только файлов, folder/flat layouts, свёрнутый sidebar,
+  полностью доступный header на 1536/1024/800 px, один selector деталей,
+  Operator UI с неизменённой local authority, mobile HMI, dark/failed/offline.
+- `bun scripts/engineering-shell-browser-test.ts` — passed: настоящий SVG/3D,
+  сохранение экземпляров сцены/canvas/editor/terminal при закрытии панели,
+  поиск инструментов, resize/full view, меню/focus, failed/offline, 390 px,
+  dark/reduced motion. Предыдущие проверки адаптированы к меню «Вид и панели».
+- `bun scripts/sidebar-source-browser-test.ts` — passed: equipment list/tiles,
+  contextual source, папки/flat files, selected source, tree collapse/keyboard,
+  мобильное открытие файла и закрытие навигации без горизонтального overflow.
+- `bun scripts/mobile-shell-browser-test.ts` — passed: настоящая 3D-сцена,
+  touch destinations, menu focus containment/Escape, catalog sheet, retained
+  draft, settings/support/trash, back/forward, responsive landscape.
+- `SATURN_DEMO_ROOT=/Users/rom/Documents/saturn-examples bun
+  scripts/home-settings-browser-test.ts` — passed: first-start/presets,
+  3D, browser history, settings/theme/language, сохранение draft, отдельные
+  authored demo projects и реальные simulated light/temperature/leak commands.
+  Без явно настроенного SATURN_DEMO_ROOT демо в host недоступны; первоначальный
+  запуск старого теста остановился на корректно disabled кнопке демо.
+- `bun test tests` — 385 passed, 3 skipped, 3 failed из 391 в 82 файлах.
+  Два failure в local-onboarding сравнивают `/var/...` с каноническим
+  `/private/var/...` Git origin на macOS. Signal-policy ожидает отказ legacy
+  json-http plugin при per-signal polling, но подключённый sibling plugin
+  принимает binding. Эти же три failure воспроизведены отдельным запуском
+  `bun test tests/local-onboarding.test.ts tests/signal-policy.test.ts`.
+  Код этих подсистем в задаче Shell не менялся; общий набор не заявляется зелёным.
+
+Скриншоты и browser recordings: `artifacts/shell-navigation`,
+`artifacts/engineering-shell`, `artifacts/sidebar-source-*`,
+`artifacts/mobile-shell`, `artifacts/home-settings`. Полный вывод unit suite:
+`artifacts/shell-navigation/unit-tests.log`. Живое оборудование и полномочия
+удалённой сессии этой проверкой не моделировались.
+
+## Shell после независимого дизайн-ревью — 2026-10-06
+
+Фактически проверено на macOS arm64 / Bun 1.4.2 и Playwright Chromium
+153.0.8010.12. Host — настоящий createApp с simulator и отдельными fixture-копиями
+pumping-station; живое оборудование не использовалось.
+
+- `bun run check` — PASS: TypeScript 7/6 и архитектурные границы 202 модулей.
+  Лог: `artifacts/shell-navigation/refinement-check.log`.
+- `bun test tests/entity-state.test.ts tests/shell-model.test.ts
+  tests/navigation-catalog.test.ts tests/shell-layout.test.ts
+  tests/panel-layout.test.ts tests/shell-boundaries.test.mjs` — 31 PASS, 0 FAIL.
+  Новые проверки: активная тревога при dirty/saving/failed исходнике, отдельные
+  source и offline/stale проекции, authored equipment без Applied-наблюдений.
+  Лог: `artifacts/shell-navigation/refinement-unit.log`.
+- `bun scripts/shell-navigation-browser-test.ts` — PASS: выбор P-01 внутри HMI
+  и Monitoring сохраняет surface; постоянный object context; текст черновика
+  рядом с Applied; пригодная ширина editor на 1024 px; fullscreen details на
+  800 px с inert background, циклом Tab, Escape, восстановлением focus editor
+  и продолжением ввода в тот же draft. Проверены возврат раскрытого sidebar,
+  provenance Review, отсутствие Create HMI в Operator view, project/SIM в
+  mobile navigator, containment его focus, 1536/1024/800/390 px, dark, failed и
+  closed/offline. В offline equipment row остаётся offline при изменённом
+  TS-буфере; authored marker независим. Лог: `refinement-browser.log`.
+- `bun scripts/engineering-shell-browser-test.ts` — PASS: реальные SVG/3D,
+  retained canvas/editor/terminal, summary/menu/focus/resize, failed/offline,
+  mobile/dark/reduced-motion, отсутствие page errors.
+- `bun scripts/mobile-shell-browser-test.ts` — PASS: 3D, один список разделов,
+  сохранённый New tab через utility menu, focus/Escape, catalog sheet с retained
+  draft, settings/support/trash, back/forward и touch landscape.
+- `bun scripts/sidebar-source-browser-test.ts` — PASS: object/list/tiles,
+  настоящие исходники, folders/flat, collapse/keyboard, mobile file navigation.
+- `SATURN_DEMO_ROOT=/Users/rom/Documents/saturn-examples bun
+  scripts/home-settings-browser-test.ts` — PASS: presets, 3D, native history,
+  language/theme, retained draft и отдельные реальные simulator demo projects.
+  Логи последних четырёх scripts: `refinement-{engineering,mobile,source,settings}.log`
+  в `artifacts/shell-navigation/`.
+- `bun test tests` — 388 PASS, 3 SKIP, 3 FAIL; 394 tests / 83 files.
+  Повторились ранее записанные два `/var` versus `/private/var` Git origin
+  failures в local-onboarding и legacy json-http capability expectation в
+  signal-policy. Код этих подсистем не менялся. PostgreSQL и Modbus RTU/PTY
+  acceptance пропущены; полный suite не объявляется зелёным.
+  Лог: `artifacts/shell-navigation/refinement-all-tests.log`.
+
+Визуально просмотрены обновлённые desktop-source, desktop-1024, desktop-800,
+mobile-navigation и offline-object кадры; новый Shell также открыт и проверен
+через интерфейс приложения. Запись полного navigation journey:
+`artifacts/shell-navigation/walkthrough.webm`. Renderer SVG/3D, ports,
+workspace/runtime ownership и authoring/publish/apply contracts не менялись.
+
+Промежуточные проверки обнаружили выход focus из details через скрытые summary
+в закрытом details, некорректное ожидание возврата в editor без предварительного
+фокуса в нём и устаревший тестовый переход HMI через utility menu. Исправлены
+focusable filtering / restoration и сценарии явного ввода / единого навигатора;
+критерии сохранения функций не удалены. Первые failed runs не считаются PASS.
+
+### Мобильный Shell: follow-up 2026-10-06
+
+Мобильный навигатор занимает весь viewport, включая области прежнего header и
+bottom navigation; собственный заголовок сохраняет project/environment, а padding
+учитывает safe-area. HMI gallery на узком экране использует вертикальный поток
+без растянутых пустых flex-строк. Действия HMI и source имеют высоту не менее 44px.
+Это компоновка Shell; renderer, модель экранов и runtime authority не менялись.
+
+Проверено на macOS arm64, Bun 1.4.2, Chromium 153.0.8010.12:
+
+- `bun run check` — PASS, включая architecture boundaries 202 modules;
+  `artifacts/shell-navigation/mobile-followup-check.log`.
+- `SATURN_DEMO_ROOT=/Users/rom/Documents/saturn-examples bun scripts/shell-navigation-browser-test.ts`
+  — PASS. Дополнительно проверены y=0/height=844 у mobile navigator,
+  отсутствие растянутого промежутка description→gallery и сохранённый draft
+  после HMI→Source. Кадры `mobile-navigation.png`, `mobile-hmi.png`,
+  `mobile-source.png` в `artifacts/shell-navigation/`; лог `mobile-followup-navigation.log`.
+- `SATURN_DEMO_ROOT=/Users/rom/Documents/saturn-examples bun scripts/mobile-shell-browser-test.ts`
+  — PASS, 390×844 touch и 844×390 landscape, 3D, меню, каталог, draft,
+  settings, support, history; `artifacts/shell-navigation/mobile-followup-browser.log`.
+- `git diff --check` — PASS. Полный unit suite в этом follow-up не повторялся.
+
+Обновлённый preview также проверен через UI in-app browser. Его фактическая
+доступная ширина 203px не соответствует запрошенному viewport override 390px;
+это отдельный визуальный smoke на более узкой панели, а точные телефонные
+размеры подтверждены browser acceptance выше. На реальном телефоне с клавиатурой
+и device safe-area не проверялось. Содержимое authored HMI пока остаётся
+контроллерным экраном фиксированного размера; адаптивность самого HMI renderer
+этим изменением не заявляется.
+
+### Первый путь инженера: устранение повторов · 2026-10-07
+
+Фактическое окружение: macOS arm64, Bun 1.4.2, Chromium 153.0.8010.12.
+Работа продолжена в текущем checkout поверх уже существовавших правок Shell;
+возможности runtime, Git, reports, targets и визуальные renderer не удалялись.
+Первый обязательный preset dialog удалён вместе с его компонентом и CSS.
+Preset и демопроекты доступны в настройках.
+
+Проверки, реально выполненные в этом проходе:
+
+- `bun run check` — PASS: TypeScript 7/6 и `architecture:check`, 202 modules.
+  Лог `artifacts/ux-fixes/check.log`.
+- `bun test tests/browser-view.test.ts tests/shell-layout.test.ts
+  tests/navigation-catalog.test.ts tests/entity-state.test.ts` — 21 PASS, 0 FAIL.
+  Лог `artifacts/ux-fixes/unit.log`. Проверены ссылки Checked/Applied и
+  принудительный Applied для operator URL.
+- `bun scripts/engineer-ux-browser-test.ts` — PASS. Свежие launcher/storage,
+  создание пустого проекта через UI без preset dialog, два насоса (второй —
+  без обязательного preview исходников), свободный ID, сохранение 3D,
+  единственная залитая строка выбранного сигнала, отдельный акцент раздела,
+  история не открывается автоматически. Source context сохраняет draft без
+  записи; Find локализован. HMI показывает настоящий SVG Checked без
+  наблюдений/команд; Applied пуст, direct /hmi требует применённую сборку.
+  Переключатель версии сохраняется после reload. Нет command/apply/publish
+  requests и page errors; проверены 1600×1000, 390×844, dark и отсутствие
+  горизонтального overflow внутри HMI preview.
+  `artifacts/ux-fixes/browser.log`, `verification.json`, кадры 01–09.
+- `bun scripts/project-template-browser-test.ts` — PASS: настоящий empty
+  scaffold, preview без записи, создание/import/check, переходы 3D/2D.
+  `artifacts/ux-fixes/template-browser.log`.
+- `bun scripts/catalog-authoring-browser-test.ts` — PASS: вставка в 2D/3D,
+  сохранённые routes, project-owned custom device из TS, draft и deep link.
+  `artifacts/ux-fixes/catalog-browser.log`.
+- `SATURN_DEMO_ROOT=/Users/rom/Documents/saturn-examples bun
+  scripts/home-settings-browser-test.ts` — PASS: настройки/presets, темы,
+  RU/EN, история, mobile, реальная отдельная копия home/business demo и
+  команды симулятору. `artifacts/ux-fixes/settings-browser.log`. Первый
+  запуск без SATURN_DEMO_ROOT остановился на недоступном demo; повторный
+  запуск использовал реальные внешние исходники и прошёл.
+- `bun scripts/onboarding-browser-test.ts` — PASS, шесть реальных browser
+  journeys: create/open/local Git clone, occupied directory, ошибка/timeout/
+  cancel, recents, edit/save/reload и защита dirty buffer, без page errors.
+  В тесте нормализован macOS tmpdir через realpath; fixture сохраняет Git
+  owner/origin. `artifacts/ux-fixes/onboarding-browser.log`.
+- `bun scripts/shell-navigation-browser-test.ts` — PASS: все destinations,
+  draft, source tabs, responsive header, one details slot, operator authority,
+  mobile HMI, dark, failed и closed/offline frames.
+  `artifacts/ux-fixes/navigation-browser.log`.
+- `bun scripts/signals-lifecycle-browser-test.ts` — PASS: no Applied, matching,
+  Checked-only, changed и удалённый в Checked/остающийся в Applied сигнал;
+  history gate, RU/EN и раскрываемый полный каталог на mobile. Сигналы из
+  Applied остаются в дереве, даже если удалены в Checked.
+  `artifacts/ux-fixes/signals-browser.log`.
+- `bun scripts/hmi-multiple-commands-browser-test.ts` — PASS: все команды
+  Applied equipment доступны; вторая/третья дошли до реального тестового
+  Driver, read-only исключён, 390px/короткий экран со scroll.
+  `artifacts/ux-fixes/hmi-commands.log`.
+- `bun scripts/deployment-plan-ux-browser-test.ts` — PASS: раскрываемый plan,
+  invalid JSON blocks preview, актуальные аргументы в preview/source, mobile.
+  `artifacts/ux-fixes/deployment-browser.log`.
+- `bun test tests` — 389 PASS, 3 SKIP, 3 FAIL. Эти три падения уже присутствовали
+  в исходной рабочей ветке: legacy json-http plugin в signal-policy и две
+  проверки origin с `/var` против `/private/var` в local-onboarding на macOS.
+  Общий suite не объявляется зелёным. `artifacts/ux-fixes/all-unit.log`.
+- `git diff --check` — PASS.
+
+Новая запись `artifacts/ux-fixes/engineer-ux.mp4` создана из настоящего Chromium
+в реальном времени, с пояснениями в отдельной нижней полосе, без озвучки.
+Исходный webm и JSON с requests/timeline сохранены. Видео полностью декодировано
+после упаковки. Это проверка source host на macOS; compiled Linux quickstart,
+Windows и физический телефон в этом проходе не запускались. Статический
+Checked preview не подтверждает parity executable PLC display или physical HMI target.
+
+### Понятный первый шаг и формы создания · 2026-10-07
+
+Первый путь: пустой проект → карточка оборудования и имя → настоящая 2D/3D-схема →
+перетаскивание с записью исходника → экран из выбранного оборудования. ID, размеры
+экрана и просмотр TS доступны в «Дополнительно». Подсказка отражает существующий
+Project, скрывается пользователем и исчезает после появления экрана; собственного
+состояния проекта или новой модели авторинга у неё нет. HMI доступен как «Экраны»;
+точные Checked/Published/Applied остаются в сводке и среде исполнения.
+
+Проверено на macOS arm64, Bun 1.4.2, Chromium 153.0.8010.12:
+
+- `bun run check`: обе проверки TypeScript и `architecture:check`, 204 модуля.
+- `bun test tests/browser-view.test.ts tests/shell-layout.test.ts tests/navigation-catalog.test.ts tests/entity-state.test.ts`: 21 pass, 0 fail.
+- `bun scripts/friendly-ux-browser-test.ts`: новый проект без подготовленных настроек;
+  начальный фокус на имени, Tab внутри модального окна, Escape с возвратом фокуса и
+  без записи; карточки насоса и резервуара, автоподбор ID; мобильный viewport 390×844
+  и тёмная тема; внедрённый HTTP 409 сохраняет имя, повторная попытка создаёт файл;
+  drag меняет настоящий TS; скрытая подсказка переживает reload; экран показывает
+  настоящий SVG без наблюдений и команд. Checked существует, Applied остаётся null;
+  запросов runtime apply/publish/command нет.
+- `bun scripts/engineer-ux-browser-test.ts`: первый путь, один выбранный ресурс,
+  сохранение черновика редактора, Checked/Applied и операторский gate, mobile/dark.
+- `bun scripts/project-template-browser-test.ts`: пустой scaffold → оборудование,
+  исходный preview и проверенная схема.
+- `bun scripts/catalog-authoring-browser-test.ts`: вставка из каталога сохраняет
+  2D/3D-контекст; собственный тип, корректность существующих маршрутов и черновик.
+- `bun scripts/project-owned-device-browser-test.ts`: собственный тип через новую
+  карточку, исходники/порты, мобильная форма с длинным preview и доступной кнопкой;
+  настоящий SVG и честная generic 3D-проекция без авторской модели.
+- `bun scripts/shell-navigation-browser-test.ts`: все разделы, размеры окна,
+  фокус панели, retained draft, operator, failed/offline и dark.
+- `SATURN_DEMO_ROOT=/Users/rom/Documents/saturn-examples bun scripts/home-settings-browser-test.ts`:
+  настройки, темы, история, отдельные демонстрационные проекты и реальные команды симулятора.
+- `bun scripts/onboarding-browser-test.ts`: шесть браузерных путей создания/открытия.
+- `bun scripts/hmi-multiple-commands-browser-test.ts`: реальные dispatch второго и
+  третьего command в Driver, ограничения read-only, узкий и короткий экран.
+- `bun scripts/signals-lifecycle-browser-test.ts`: Checked/Applied, изменённые и
+  удалённые сигналы, ограничения истории; mobile и отсутствие page errors.
+
+Логи этого прохода: `artifacts/friendly-ux/*.log`. Финальное прохождение, запросы и
+кадры: `verification.json`, `01-project.png` … `10-result.png`. Визуально просмотрены
+пустой проект, карточки, mobile, экран и кадры видео. `friendly-ux.webm` — исходная
+браузерная запись. `friendly-ux.mp4` — запись с замедлением до 0.8×, центрированным
+мобильным фрагментом, подписью под кадром и задержкой финального кадра; H.264,
+1440×1110, около 46 секунд, без звука. Проверен полный decode через ffmpeg.
+
+Это проверка интерфейса и существующих действий, а не исследование с начинающими
+пользователями или детьми. Новые трубы/кабели перетаскиванием между портами здесь не
+создаются: существующий жест меняет концы уже созданной связи. Подсказка не обещает
+такой способ создания. Полный unit-набор в этом проходе не запускался; ранее
+зафиксированные три ошибки полного набора этим результатом не закрываются.
+
+### Одно дерево вместо меню разделов и второго списка · 2026-10-07
+
+Удалён отдельный `workbench-rail` и его CSS. В sidebar остались три ветки проекта:
+Объект (оборудование/системы), Экраны, Данные (сигналы/отчёты). Ветка файлов
+появляется для source/Git. Редкие поверхности доступны из одного меню инструментов
+и общего поиска; их обработчики и acceptance criteria сохранены. Закрытые sidebar
+и нижняя панель не занимают место. Настройки и чат имеют явное действие «К проекту».
+Выбор устройства открывает его схему; экран/сигнал открываются прямо из дерева.
+Выбор системы очищает выбор устройства: родитель и ребёнок не подсвечиваются вместе.
+
+Реально выполнено на macOS arm64, Bun 1.4.2, Chromium 153.0.8010.12:
+
+- `bun run check` — обе проверки TypeScript и architecture boundaries, 204 модуля.
+- `bun test tests/browser-view.test.ts tests/shell-layout.test.ts tests/navigation-catalog.test.ts tests/entity-state.test.ts` — 21 pass, 0 fail.
+- `bun scripts/friendly-ux-browser-test.ts` — пустой проект, создание через карточки,
+  мобильная форма, keyboard/Escape, ошибка/retry, source-backed drag и Checked HMI.
+- `bun scripts/engineer-ux-browser-test.ts` — единственный выбранный сигнал в новом
+  дереве, сохранённый черновик, создание оборудования/HMI и разделение Checked/Applied.
+- `bun scripts/shell-navigation-browser-test.ts` — отсутствие второй навигации и
+  закрытой полосы нижней панели; три корня, все поверхности через дерево/инструменты,
+  прямое открытие экрана из другой поверхности, единственное выделение, source
+  folders/list, draft, полностью скрытый sidebar, desktop/mobile, operator,
+  dark/failed/offline. После очистки устаревших веток повторён успешно.
+- `bun scripts/catalog-authoring-browser-test.ts` — вставка в 2D/3D, неизменные
+  маршруты, собственный тип, сохранённый source draft и deep link.
+- `SATURN_DEMO_ROOT=/Users/rom/Documents/saturn-examples bun scripts/home-settings-browser-test.ts`
+  — настройки/пресеты, locale, история, реальные внешние demo и команды симуляции.
+- `bun scripts/signals-lifecycle-browser-test.ts` — Checked/Applied, изменённые и
+  удалённые определения, RU/EN, mobile и ограничения истории. Helper учитывает
+  загрузку Shell, локализацию и выход из настроек; финальный повтор прошёл.
+- `bun scripts/deployment-plan-ux-browser-test.ts` — invalid JSON, preview актуальных
+  аргументов, реальный authored source и отсутствие mobile overflow.
+- `bun run test:browser` — настоящий `bun dev`, live values в редакторе, Language
+  Service hover, исходный SVG, физические кабели, drag до/после drop, управление
+  драйвером, alarms/ack, SQL reports с coverage, архив, настоящий Git commit,
+  palette, WebGL routes/bends, desktop/tablet/phone/HMI viewports. Флаг
+  `SATURN_CAPTURE_ARTIFACTS` не включался: кадры этого основного теста не снимались.
+- `bun scripts/system-grouping-browser-test.ts` — вложенные системы, одно выбранное
+  дерево, source-backed drag и reload, 3D-подложки, mobile focus без overflow.
+  Returning-user fixture явно включает 2D, как требует сценарий.
+
+Логи: `artifacts/single-sidebar/*.log`. Визуально просмотрены реальные кадры нового
+пустого проекта, созданного экрана и наполненной 2D-схемы. Сохранены
+`empty.png`, `project.png`, `mobile.png`, браузерная запись `navigation.webm`.
+Полный unit-набор не запускался заново; ранее описанные ограничения parity и
+ошибки полного unit-набора не объявляются исправленными этим проходом.
+
+
+### Перемещение систем и стабильные 3D-подложки · 2026-10-07
+
+Группа в режиме правки перемещается за заголовок в 2D и за экранную ручку в 3D.
+Жест сдвигает всех физических потомков на общую дельту; камера остаётся на месте.
+Координаты остаются в TS исходниках устройств, отдельной модели позиции системы нет.
+Несколько файлов сохраняются через существующий versioned `Documents.saveMany`.
+Escape возвращает исходные позы/текст, конфликт сохраняет черновики и не пишет часть
+группы. В режиме выбора остаётся приближение участка.
+
+3D-подложки разделены с полом/сеткой, сделаны непрозрачными и упорядоченными;
+near plane сохраняет точность глубины на общем виде станции. Физический z устройств
+и портов не менялся. Заголовки доступны как кнопки, расходятся при наложении;
+мелкие и перекрытые ими подписи приборов скрываются до приближения/выбора.
+Тема сцены следует настройке Shell. Большой проект начинает со свёрнутыми участками;
+выбор на сцене раскрывает путь к выбранной группе в дереве.
+
+Фактически выполнено на macOS arm64, Bun 1.4.2, Chromium 153.0.8010.12:
+
+- `bun run check`: обе проверки TS и architecture check, 204 модуля.
+- `bun test tests/layout-editing.test.ts tests/system-grouping.test.ts`: 19 pass, 0 fail.
+  Проверены remap диапазонов, отмена, предыдущие жесты/очереди сохранения, иерархия,
+  группа в одном/двух файлах, отказ одной версии без частичного сохранения.
+- `bun scripts/group-interaction-browser-test.ts`: родительская группа в двух файлах,
+  общая дельта пяти устройств, неизменность соседнего участка/камеры, Escape в 2D/3D,
+  повторное открытие, light/dark, выбор скрытого потомка, HTTP 409 на транзакции
+  без изменений обоих файлов, закрытие настоящего host. Page errors: 0.
+- `bun scripts/system-grouping-browser-test.ts`: прежняя приёмка групп, source-backed
+  drag отдельного устройства, подложки, фокус в 2D/3D и мобильный viewport.
+- `bun scripts/physical-interaction-browser-test.ts`: точное совпадение 3D-ручек с
+  портами, сохранение камеры/геометрии при drag, Escape/lostpointercapture,
+  подъём конца кабеля с Shift и отмена. `physical-results.json`: errors [] — тест
+  завершается без stdout при успехе.
+- `bun run test:browser`: настоящий dev-host, редактор/Language Service, 2D drag и
+  маршруты, команды/анимация/alarms, SQL отчёт с coverage, архив/Git, палитра,
+  WebGL и desktop/tablet/phone/HMI viewports. Это не полный unit-набор.
+- `bun artifacts/group-interaction/water-station.ts`: отдельная копия созданного
+  проекта водоподготовки. В настоящем браузере перемещены 10 устройств двух линий;
+  20 остальных не изменились. Проверены общий 3D, dark, переход в 2D, панорамирование,
+  валидная сборка и отсутствие page errors. Рабочая папка пользователя не двигалась.
+
+Материалы: `artifacts/group-interaction/` — логи, кадры light/dark, конфликт сохранения,
+закрытый host, станция до/после перемещения и исходные браузерные записи. Кадры
+просмотрены визуально, включая сохранённые/ошибочные/закрытые состояния. Существующий
+`projectSnapshot` продолжает отмечать потерю свежих данных/связи; отдельный новый
+stale-timeout сценарий в этом проходе не добавлялся.
+`water-groups.mp4` — реальная запись копии станции, ускоренная в 4 раза, без звука;
+исходный WebM сохранён. Прохождение на программном SwiftShader не является замером
+производительности пользовательского GPU. Полная визуальная parity старого Saturn
+и оставшиеся прежние ошибки полного unit-набора этим изменением не закрываются.
+
+## 2026-10-08 — единая рабочая сетка 3D
+
+Убрана видимая заливка групп, закрывавшая общую сетку. Одна сетка теперь покрывает
+оборудование, маршруты и вычисленные границы систем с запасом; шаг 0.5 мировых
+единицы сохраняется, линии привязаны к кратным координатам. Расширение области не
+растягивает ячейки. Группы сохраняют контуры, заголовки для перемещения и невидимые
+области нажатия для приближения. Геометрия оборудования/портов не изменена.
+Контраст мелких линий снижен после просмотра общего вида станции.
+
+Фактически выполнено на macOS arm64, Bun 1.4.2, Chromium 153.0.8010.12:
+
+- `bun run check`: обе проверки TypeScript и architecture check, 204 модуля.
+- `bun test tests/layout-editing.test.ts tests/system-grouping.test.ts`: 19 pass, 0 fail.
+- `bun scripts/group-interaction-browser-test.ts`: одна сетка покрывает устройства
+  до/после перемещения, шаг/привязка сохраняются; перенос групп в двух файлах,
+  общая дельта, неизменность камеры/соседей, Escape в 2D/3D, повторное открытие,
+  light/dark, выбор по заголовку и по свободной области группы. HTTP 409 оставляет
+  оба исходника неизменными; закрытие host проверено. Page errors: 0.
+- `bun scripts/physical-interaction-browser-test.ts`: точность ручек портов,
+  перенос устройства с неизменной камерой/геометрией, Escape/lostpointercapture,
+  подъём конца кабеля с Shift и отмена; `physical-results.json` errors [].
+- `bun artifacts/grid-coherence/capture.ts`: настоящая копия проекта из 30 устройств,
+  в том числе за границами прежней сетки 24×24; новая сетка покрывает все устройства.
+  Сняты и визуально просмотрены кадры обеих тем. Ошибок страницы/сборки нет.
+- `git diff --check`: прошёл.
+
+Логи и кадры: `artifacts/grid-coherence/`; запись проверки групп и кадры
+ошибки сохранения/закрытого host: `artifacts/group-interaction/`. SwiftShader —
+программный GPU; это проверка взаимодействий и внешнего вида, не замер GPU пользователя.
+Новый stale-timeout сценарий и полный unit-набор в этом проходе не запускались.
+Локальный host `127.0.0.1:4317` перезапущен: `water-treatment`, simulation, running,
+problems []. Исходники рабочего проекта водоподготовки для кадров не перемещались.
+
+## 2026-10-09 — светлое рабочее пространство и читаемость 3D
+
+Первое открытие Shell теперь использует светлую тему даже при тёмной теме ОС.
+Сохранённые light/dark/system настройки поддерживаются; настройки темы не являются
+частью авторского проекта. Светлая палитра Shell получила голубоватые нейтральные
+поверхности и тёмный текст. В 3D изменены свет, интенсивность окружения и материалы:
+бирюзовые корпуса, различимые трубы и металлические детали, светлая поверхность.
+Тёмная сцена также стала светлее. Геометрия, физические координаты, порты, маршруты,
+отдельные материалы отсутствующих/устаревших данных и ошибок не заменялись.
+
+Фактически выполнено на macOS arm64, Bun 1.4.2, Chromium 153.0.8010.12:
+
+- `bun run check`: обе проверки TS и architecture check, 204 модуля.
+- `bun artifacts/daylight-scene/capture.ts`: копия проекта из 30 устройств в реальной
+  симуляции, светлая тема по умолчанию, одна сетка, обзор и приближённый участок,
+  светлая/тёмная сцены, problems [] и page errors []. Кадры просмотрены визуально;
+  исходная рабочая папка пользователя не изменялась.
+- `bun scripts/group-interaction-browser-test.ts`: перенос/отмена в 2D/3D,
+  сохранение камеры и соседних устройств, транзакция двух файлов, выбор по свободной
+  области группы/заголовку, повторное открытие, светлая/тёмная тема, HTTP 409 без
+  частичного сохранения, закрытый host. Page errors: 0; кадры закрытого host просмотрены.
+- `SATURN_DEMO_ROOT=/Users/rom/Documents/saturn-examples bun scripts/home-settings-browser-test.ts`:
+  полный прогон прошёл. Новый браузер с тёмной темой ОС получает светлую тему Saturn;
+  проверены настройки/язык/история, сохранение dark/accent/preset после reload,
+  реакция system theme, сохранённый черновик, мобильный вид, отдельные реальные
+  демопроекты дома/станции и команды света/температуры/протечки. Page errors: 0.
+  Кадр активной тревоги протечки просмотрен визуально.
+- `git diff --check`: прошёл.
+
+Первый полный запуск настроек остановился на недоступном демо без SATURN_DEMO_ROOT;
+отдельная попытка `--appearance-only` остановилась на таймауте действия Назад 30 s.
+Оба лога сохранены, не считаются успешными прогонами. Затем задан реальный каталог
+примеров и лимит действия 60 s для браузера на SwiftShader; полный сценарий прошёл.
+Режим `--appearance-only` явно отделяет проверки оформления от демо; при запуске
+без флага все прежние проверки демопроектов остаются обязательными.
+
+Материалы: `artifacts/daylight-scene/` — логи, обзор, обе темы участка и реальная
+браузерная запись; `artifacts/home-settings/` — настройки, мобильный вид, демо и
+тревога; `artifacts/group-interaction/` — взаимодействия и ошибочные/закрытые состояния.
+Это не прогон полного unit-набора, отдельного stale-timeout или доказательство
+визуальной parity старого Saturn; SwiftShader не измеряет производительность GPU пользователя.
+Локальный host `127.0.0.1:4317`: water-treatment, simulation, running, problems [].
+В открытой вкладке Codex через UI настроек сохранена светлая тема и открыт 3D.
+
+## 2026-10-11 — проверка накопленных UX-изменений перед отправкой
+
+Повторно выполнено на macOS arm64, Bun 1.4.2:
+
+- `bun run check`: TypeScript/tsc6 и architecture check, 204 модуля, прошли.
+- `bun test tests/browser-view.test.ts tests/entity-state.test.ts tests/layout-editing.test.ts tests/navigation-catalog.test.ts tests/system-grouping.test.ts`:
+  34 pass, 0 fail, 48 assertions; проверены навигация/URL, независимость тревог и
+  черновика, иерархия систем, сохранение/отмена поз, транзакции групп и ошибки сохранения.
+- `git diff --check`: прошёл.
+
+Новые браузерные прогоны и полный unit-набор в этот день не запускались; реальные
+браузерные проверки и их ограничения записаны выше в датах соответствующих изменений.
+После `git fetch origin` удалённый main оказался впереди локальной базы на 64 коммита.
+Накопленные изменения подготовлены в отдельной ветке `codex/engineer-friendly-ux`;
+интеграция с более новым main этими проверками не подтверждается.

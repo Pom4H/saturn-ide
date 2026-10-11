@@ -1,3 +1,4 @@
+import {prepareInterface} from './helpers/interface-preferences';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -16,12 +17,14 @@ try{
   assert.deepEqual(app.state().problems,[]);
   assert.equal(app.state().project.systems?.length,3);
   assert.deepEqual(app.state().project.equipment.map(e=>e.system),['water','water','power']);
+  await prepareInterface(context);
   await page.goto(String(app.server.url));
   const scene=page.locator('.scene');await expect(scene.locator('[data-system]')).toHaveCount(3);
   const full=(await scene.getAttribute('viewBox'))!.split(' ').map(Number);
   await page.locator('[data-tree-id="system:water"]').click();
   await expect(scene.locator('[data-system="water"]')).toHaveAttribute('data-focused','true');
   await expect(page.locator('[data-tree-id="system:water"]')).toHaveAttribute('aria-selected','true');
+  await expect(page.locator('.project-tree [aria-selected="true"]')).toHaveCount(1);
   const focused=(await scene.getAttribute('viewBox'))!.split(' ').map(Number);
   assert(focused[2]!<full[2]!&&focused[3]!<full[3]!,`System did not focus: ${JSON.stringify({full,focused})}`);
   await page.screenshot({path:join(output,'2d-system.png'),fullPage:true});

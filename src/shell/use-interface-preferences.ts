@@ -8,9 +8,9 @@ export type Accent='blue'|'teal'|'orange';
 import type { InterfacePreset } from './model/navigation-catalog';
 export type { InterfacePreset } from './model/navigation-catalog';
 export function useInterfacePreferences(){
-  const [preset,setPreset]=useState<InterfacePreset|null>(()=>{const value=localStorage.getItem('saturn.preset')??new URLSearchParams(location.search).get('preset');return value==='home'||value==='business'?value:null;});
+  const [preset,setPreset]=useState<InterfacePreset>(()=>{const value=localStorage.getItem('saturn.preset')??new URLSearchParams(location.search).get('preset');return value==='home'?'home':'business';});
   const [language,setLanguage]=useState<LanguageMode>(()=>{const value=localStorage.getItem('saturn.locale');return value==='ru'||value==='en'?value:'system';});
-  const [theme,setTheme]=useState<ThemeMode>(()=>{const value=localStorage.getItem('saturn.theme');return value==='light'||value==='dark'?value:'system';});
+  const [theme,setTheme]=useState<ThemeMode>(()=>{const value=localStorage.getItem('saturn.theme');return value==='system'||value==='dark'?value:'light';});
   const [homeIcon,setHomeIcon]=useState<HomeIcon>(()=>localStorage.getItem('saturn.home.icon')==='site'?'site':localStorage.getItem('saturn.home.icon')==='home'?'home':preset==='business'?'site':'home');
   const [homeDimension,setHomeDimension]=useState<'2d'|'3d'>(()=>localStorage.getItem('saturn.home.dimension')==='2d'?'2d':'3d');
   const [accent,setAccent]=useState<Accent>(()=>{const value=localStorage.getItem('saturn.accent');return value==='blue'||value==='teal'||value==='orange'?value:preset==='home'?'teal':'blue';});

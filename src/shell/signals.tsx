@@ -51,19 +51,6 @@ export function Signals({project,authoringProject,appliedRevision,snapshot,selec
   </div>):<p className="muted">{ru?'Нет':'None'}</p>;
   return <section className="signals-surface">
     <div className="signals-scope" role="status"><strong>{authoringProject?ru?'Определения · Checked':'Definitions · Checked':applied?ru?'Определения · Applied':'Definitions · Applied':ru?'Модель проекта':'Project model'}</strong><span>{applied?ru?'Значения и качество · Applied':'Values and quality · Applied':ru?'Applied ещё нет: показаны только определения, без наблюдений.':'No Applied build yet: definitions only, without observations.'}</span></div>
-    <div className="table-scroll"><table><thead><tr><th>{ru?'Сигнал / сборка':'Signal / build'}</th><th>{ru?'Значение · Applied':'Value · Applied'}</th><th>{ru?'Качество · Applied':'Quality · Applied'}</th><th>{ru?'Получен · Applied':'Received · Applied'}</th></tr></thead><tbody>
-      {entries.map(item=>{
-        const live=item.applied,declared=item.checked??live;
-        const observation=live?snapshot.samples[live.id]:undefined;
-        const liveHealth=live?signalHealth(live,observation,context):undefined;
-        return <tr key={item.id} className={selected===item.id?'active':''} data-stage={item.stage}>
-          <td><button className="text-button" onClick={()=>select(item.id)}><code>{item.id}</code></button><small className={`signal-stage ${item.stage}`}>{stageLabel(item.stage,locale)}</small></td>
-          <td>{liveHealth?.usable?formatValue(observation?.value,locale):'—'} <span className="muted">{live?.unit??declared?.unit}</span></td>
-          <td className={liveHealth?.quality??''} title={liveHealth?healthReasonLabels[liveHealth.reason][locale]:ru?'В Applied этого сигнала нет':'This signal is absent from Applied'}>{liveHealth?.reason==='missing'?(ru?'Нет данных':'No data'):liveHealth?qualityLabels[liveHealth.quality][locale]:'—'}</td>
-          <td>{formatTime(measurementTime(observation),locale)}</td>
-        </tr>;
-      })}
-    </tbody></table>{entries.length===0&&<p className="signals-empty" role="status">{ru?'В Checked и Applied нет сигналов.':'No signals in Checked or Applied.'}</p>}</div>
     {selected&&!entry&&<section className="inspector-body" aria-label={ru?'Диагностика сигнала':'Signal diagnostics'}><p role="status">{ru?`Сигнал ${selected} больше не найден в Checked или Applied.`:`Signal ${selected} is no longer present in Checked or Applied.`}</p></section>}
     {entry&&inspection&&signal&&<section className="inspector-body" aria-label={ru?'Диагностика сигнала':'Signal diagnostics'}>
       <h2>{signal.id}</h2><p className={`signal-stage ${entry.stage}`} role="status">{stageLabel(entry.stage,locale)}</p>
@@ -81,6 +68,8 @@ export function Signals({project,authoringProject,appliedRevision,snapshot,selec
           <tr><th>{ru?'Событие истории':'History event'}</th><td>{health.ageMs===null?'—':formatTime(sample?.at,locale)}</td></tr>
         </tbody></table>
       </>}
+      {inspection.owner&&<>{references([inspection.owner])}{canOpen(inspection.owner,true)&&<button className="text-button" onClick={()=>open(inspection.owner!,true)}>{ru?'Открыть исходник владельца':'Open owner source'} ↗</button>}</>}
+      <details className="signal-contract"><summary>{ru?'Настройки сигнала и архива':'Signal and archive settings'}</summary>
       <h3>{entry.checked?ru?'Контракт · Checked':'Contract · Checked':ru?'Контракт · Applied':'Contract · Applied'}</h3>
       {signal.description&&<p>{text(signal.description,locale)}</p>}
       <table><tbody>
@@ -97,11 +86,26 @@ export function Signals({project,authoringProject,appliedRevision,snapshot,selec
         <tr><th>{ru?'Хранение':'Retention'}</th><td>{durationLabel(policy.retention,locale)}</td></tr>
       </tbody></table></>}
       <p className="muted">{entry.checked?ru?'Адресация и требования взяты из Checked; фактическая частота и состояние драйвера здесь не подтверждаются. Политика архива не меняет живые показания.':'Addressing and requirements come from Checked; actual cadence and driver status are not verified here. Archive policy does not change live readings.':ru?'Адресация и требования взяты из Applied; фактическая частота и состояние драйвера здесь не подтверждаются.':'Addressing and requirements come from Applied; actual cadence and driver status are not verified here.'}</p>
-      {inspection.owner&&<><h3>{ru?'Владелец':'Owner'}</h3>{references([inspection.owner])}{canOpen(inspection.owner,true)&&<button className="text-button" onClick={()=>open(inspection.owner!,true)}>{ru?'Открыть исходник владельца':'Open owner source'} ↗</button>}</>}
+      </details>
+      <details className="signal-relations"><summary>{ru?'Связи сигнала':'Signal relationships'} ({inspection.dependencies.length+inspection.consumers.length})</summary>
       <h3>{ru?'Зависит от':'Depends on'}</h3>{references(inspection.dependencies)}
       {inspection.unresolvedDependencies.length>0&&<p role="alert">{ru?'Не найдены зависимости: ':'Unresolved dependencies: '}{inspection.unresolvedDependencies.join(', ')}</p>}
       <h3>{ru?'Используется непосредственно':'Direct consumers'}</h3>{references(inspection.consumers)}
       <details><summary>{ru?'Все затронутые сущности':'All affected entities'} ({inspection.affected.length})</summary>{references(inspection.affected)}</details>
+      </details>
     </section>}
+    <details className="signal-catalog" open={!selected?true:undefined}><summary>{ru?'Все сигналы проекта':'All project signals'} ({entries.length})</summary><div className="table-scroll"><table><thead><tr><th>{ru?'Сигнал / сборка':'Signal / build'}</th><th>{ru?'Значение · Applied':'Value · Applied'}</th><th>{ru?'Качество · Applied':'Quality · Applied'}</th><th>{ru?'Получен · Applied':'Received · Applied'}</th></tr></thead><tbody>
+      {entries.map(item=>{
+        const live=item.applied,declared=item.checked??live;
+        const observation=live?snapshot.samples[live.id]:undefined;
+        const liveHealth=live?signalHealth(live,observation,context):undefined;
+        return <tr key={item.id} className={selected===item.id?'active':''} data-stage={item.stage}>
+          <td><button className="text-button" onClick={()=>select(item.id)}><code>{item.id}</code></button><small className={`signal-stage ${item.stage}`}>{stageLabel(item.stage,locale)}</small></td>
+          <td>{liveHealth?.usable?formatValue(observation?.value,locale):'—'} <span className="muted">{live?.unit??declared?.unit}</span></td>
+          <td className={liveHealth?.quality??''} title={liveHealth?healthReasonLabels[liveHealth.reason][locale]:ru?'В Applied этого сигнала нет':'This signal is absent from Applied'}>{liveHealth?.reason==='missing'?(ru?'Нет данных':'No data'):liveHealth?qualityLabels[liveHealth.quality][locale]:'—'}</td>
+          <td>{formatTime(measurementTime(observation),locale)}</td>
+        </tr>;
+      })}
+    </tbody></table>{entries.length===0&&<p className="signals-empty" role="status">{ru?'В Checked и Applied нет сигналов.':'No signals in Checked or Applied.'}</p>}</div></details>
   </section>;
 }

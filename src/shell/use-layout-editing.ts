@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { systemEquipment } from '../core/system-layout';
 import type { Locale } from '../core';
 import { LayoutEditing } from './model/layout-editing';
 import type { useShell } from './use-shell';
@@ -34,8 +35,19 @@ export function useLayoutEditing(shell: ReturnType<typeof useShell>, operator: b
     session.selectSource(position.path);
     return true;
   };
+  const beginSystem = async (id:string) => {
+    if(operator||!state)return false;
+    const members=systemEquipment(state.authoring?.scene??state.project,id);
+    const positions=state.positions,paths=new Set<string>();
+    for(const member of members){const position=positions[member.id];if(!position){setError(locale==='ru'?'У всех устройств группы должны быть редактируемые координаты в исходниках.':'Every group member needs editable source coordinates.');return false;}paths.add(position.path);}
+    try{await Promise.all([...paths].map(path=>session.documents.open(path)));}
+    catch(error){fail(error);return false;}
+    const origins=members.map(e=>editing.getSnapshot().previews[e.id]??{id:e.id,x:e.x,y:e.y});
+    if(!editing.beginGroup(origins,positions)){setError(locale==='ru'?'Не удалось начать перемещение группы: дождитесь сохранения или разрешите изменения в её исходниках.':'Cannot move this group: wait for saving or resolve changes in its source files.');return false;}
+    return true;
+  };
   const end = (cancel: boolean) => {
     if (editing.getSnapshot().dragging) void editing.end(cancel).then(refresh).catch(fail);
   };
-  return { ...snapshot, begin, move: editing.move, end };
+  return { ...snapshot, begin, beginSystem, moveSystem:editing.moveGroup, move: editing.move, end };
 }

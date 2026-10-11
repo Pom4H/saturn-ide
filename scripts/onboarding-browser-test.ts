@@ -1,6 +1,6 @@
 import { chromium, expect } from 'playwright/test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createProject } from '../src/workspace/project-template';
@@ -8,7 +8,7 @@ import { execute } from '../src/workspace/git';
 
 const appRoot = resolve(import.meta.dir, '..'), output = join(appRoot, 'artifacts/local-onboarding');
 mkdirSync(join(appRoot, '.saturn'), { recursive: true }); mkdirSync(output, { recursive: true });
-const base = mkdtempSync(join(tmpdir(), 'saturn-onboarding-browser-')), initial = join(base, 'first-run'), metadata = join(base, 'preferences');
+const base = realpathSync(mkdtempSync(join(tmpdir(), 'saturn-onboarding-browser-'))), initial = join(base, 'first-run'), metadata = join(base, 'preferences');
 mkdirSync(initial); mkdirSync(metadata);
 const occupied = join(initial, 'occupied'); mkdirSync(occupied); writeFileSync(join(occupied, 'notes.txt'), 'Existing user work');
 const source = createProject(join(base, 'local-fixture'));
@@ -46,9 +46,9 @@ page.on('pageerror', error => errors.push(error.message));
 page.setDefaultTimeout(15_000);
 const shot = (name: string) => page.screenshot({ path: join(output, name + '.png'), fullPage: true });
 const noOverflow = () => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
-const choosePreset = async () => {
-  const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Как вы будете использовать Saturn?' }) });
-  await expect(welcome).toBeVisible(); await welcome.getByRole('button', { name: /Для бизнеса/ }).click();
+const expectDirectWorkspace = async () => {
+  await expect(page.getByRole('heading',{name:'Добавьте первое оборудование',exact:true})).toBeVisible({timeout:30000});
+  await expect(page.getByRole('heading',{name:'Как вы будете использовать Saturn?'})).toHaveCount(0);
 };
 const editClone = async () => {
   const settings = page.locator('#clone-settings');
@@ -98,21 +98,25 @@ try {
 
   await page.getByLabel('Название проекта', { exact: true }).fill('water-station');
   await page.getByRole('button', { name: 'Создать и открыть', exact: true }).click();
-  await page.waitForURL(url => url.origin !== launcherOrigin); await choosePreset();
-  await expect(page.getByRole('heading', { name: 'Добавьте первое оборудование', exact: true })).toBeVisible();
+  await page.waitForURL(url => url.origin !== launcherOrigin); await expectDirectWorkspace();
+  await expect(page.getByRole('heading', { name: 'Добавьте первое оборудование', exact: true })).toBeVisible({timeout:30000});
   await shot('05-empty-real-shell');
-  await page.getByRole('button', { name: 'Добавить оборудование', exact: true }).click();
+  await page.locator('.empty-project').getByRole('button', { name: 'Добавить оборудование', exact: true }).click();
   const creation = page.getByRole('dialog', { name: 'Новое устройство', exact: true });
+  await creation.getByText('Дополнительно', { exact: true }).click();
   await creation.getByLabel('ID', { exact: true }).fill('P-01');
   await creation.getByLabel('Название', { exact: true }).fill('Насос подачи');
   await creation.getByRole('button', { name: 'Предпросмотр', exact: true }).click();
   await expect(creation.locator('.creation-preview')).toContainText('equipment/P-01.device.ts');
   await shot('06-device-preview');
-  await creation.getByRole('button', { name: 'Создать устройство', exact: true }).click();
+  await creation.getByRole('button', { name: 'Добавить на схему', exact: true }).click();
   await expect(creation).toHaveCount(0);
+  await expect(page.locator('.scene3d canvas')).toBeVisible();
+  await page.getByRole('button',{name:'Действия объекта',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Исходник',exact:true}).click();
   const editor = page.locator('.cm-content[contenteditable="true"]').first();
   await expect(editor).toContainText('Насос подачи');
-  await editor.click(); await page.keyboard.press('Control+End'); await page.keyboard.type('\n// Saved from the first-run browser flow.\n'); await page.keyboard.press('Control+s');
+  await editor.click(); await page.keyboard.press('ControlOrMeta+End'); await page.keyboard.type('\n// Saved from the first-run browser flow.\n'); await page.keyboard.press('ControlOrMeta+s');
   const devicePath = join(initial, 'water-station', 'equipment', 'P-01.device.ts');
   await expect.poll(() => readFileSync(devicePath, 'utf8')).toContain('Saved from the first-run browser flow.');
   const workspaceUrl = page.url(), workspaceOrigin = new URL(workspaceUrl).origin;
@@ -125,12 +129,12 @@ try {
   await shot('07-source-saved-reloaded');
   checks.push('New folder → canonical project + real Git → existing Shell → first equipment preview/create → real source edit/save/reload; Checked exists, Applied stays empty');
 
-  await editor.click(); await page.keyboard.press('Control+End'); await page.keyboard.type('\n// Unsaved navigation check.\n');
+  await editor.click(); await page.keyboard.press('ControlOrMeta+End'); await page.keyboard.type('\n// Unsaved navigation check.\n');
   await page.getByRole('button', { name: 'Меню проекта', exact: true }).click();
   const warning = page.waitForEvent('dialog');
   await Promise.all([page.getByRole('menuitem', { name: 'Открыть другой проект…', exact: true }).click(), warning.then(async dialog => { assert.equal(dialog.type(), 'beforeunload'); await dialog.dismiss(); })]);
   assert.equal(new URL(page.url()).origin, workspaceOrigin); await expect(editor).toContainText('Unsaved navigation check.');
-  await editor.click(); await page.keyboard.press('Control+s');
+  await editor.click(); await page.keyboard.press('ControlOrMeta+s');
   await expect.poll(() => readFileSync(devicePath, 'utf8')).toContain('Unsaved navigation check.');
   await projects();
   await expect(page.locator('.recent-open')).toHaveCount(1);
@@ -172,8 +176,8 @@ try {
   await expect(page.locator('#clone-results')).toContainText(join(initial, 'existing-project'));
   await shot('10-cloned-root-selection');
   await page.locator('#clone-results').getByRole('button', { name: 'Открыть проект', exact: true }).click();
-  await page.waitForURL(url => url.origin !== launcherOrigin); await choosePreset();
-  await expect(page.getByRole('heading', { name: 'Добавьте первое оборудование', exact: true })).toBeVisible();
+  await page.waitForURL(url => url.origin !== launcherOrigin); await expectDirectWorkspace();
+  await expect(page.getByRole('heading', { name: 'Добавьте первое оборудование', exact: true })).toBeVisible({timeout:30000});
   assert.equal((await execute(['git', 'remote', 'get-url', 'origin'], join(initial, 'existing-project'))).trim(), source);
   await projects(); await page.getByRole('tab', { name: 'Из Git', exact: true }).click(); await editClone();
   await page.getByLabel('Адрес репозитория', { exact: true }).fill(multiple); await page.getByLabel('Новая папка', { exact: true }).fill('systems');
@@ -184,7 +188,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 }); await shot('11-multiple-projects-phone'); assert.equal(await noOverflow(), true);
   await page.locator('#clone-results').getByRole('radio', { name: /^heat/ }).check();
   await page.locator('#clone-results').getByRole('button', { name: 'Открыть проект', exact: true }).click();
-  await page.waitForURL(url => url.origin !== launcherOrigin); await choosePreset();
+  await page.waitForURL(url => url.origin !== launcherOrigin); await expectDirectWorkspace();
   const chosen = await fetch(new URL('/api/state', page.url())).then(response => response.json()) as { project: { id: string } };
   assert.equal(chosen.project.id, 'heat');
   await projects(); await page.setViewportSize({ width: 1440, height: 1000 });

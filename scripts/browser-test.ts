@@ -1,3 +1,5 @@
+import {openProjectSurface} from './helpers/project-navigation';
+import type {EditorId} from '../src/core/resources';
 import { toggleShellDetails } from './helpers/shell-details';
 import { prepareInterface } from './helpers/interface-preferences';
 import { chromium, type Page } from 'playwright';
@@ -25,20 +27,18 @@ try{
   await until(async()=>(await fetch(`${base}/api/state`)).ok,'bun dev did not start');
   assert((await state()).problems.length===0,JSON.stringify((await state()).problems));checks.push('actual bun dev starts with the typed demo project');
   browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
-  const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(e.message));await prepareInterface(page);await page.goto(base);await page.locator('[data-rail-section="home"]').click();await chooseExplorerMode(page,'Код');await page.getByRole('navigation',{name:'Рабочие области'}).getByRole('button',{name:'Главная',exact:true}).click();
+  const page=await browser.newPage({viewport:{width:1440,height:960},deviceScaleFactor:1});page.on('pageerror',e=>errors.push(e.message));await prepareInterface(page);await page.goto(base);await openProjectSurface(page,'diagram');await chooseExplorerMode(page,'Код');await openProjectSurface(page,'diagram');
   await page.locator('[data-equipment="P-01"] [data-rpm="1450"]').waitFor({timeout:30000});
-  const activityNav=page.getByRole('tree',{name:'Структура проекта'}),rail=page.getByRole('navigation',{name:'Рабочие области'});
+  const activityNav=page.getByRole('tree',{name:'Структура проекта'});
   const openSurface=async(name:string)=>{
     if(name==='Исходник'){
-      await rail.getByRole('button',{name:'Объект',exact:true}).click();
-      await chooseExplorerMode(page,'Код');
-      await activityNav.getByRole('treeitem',{name:'P-01.device.ts',exact:true}).click();
-      return;
+      await openProjectSurface(page,'source');
+      await activityNav.locator('[data-tree-id="file:equipment/P-01.device.ts"]').click();return;
     }
-    const section:Record<string,string>={'Сигналы':'Мониторинг','Отчёты':'Отчёты','HMI':'Объект','Среда исполнения':'Среда','Git':'Изменения','Схема':'Объект'};
-    const target=section[name];if(!target)throw new Error(`Unknown surface ${name}`);
-    await rail.getByRole('button',{name:target,exact:true}).click();
-    if(name==='HMI'){await chooseExplorerMode(page,'Объекты');await activityNav.getByRole('treeitem',{name:'HMI',exact:true}).click();}
+    const sections:Record<string,EditorId>={'Сигналы':'signals','Отчёты':'reports','HMI':'hmi','Среда исполнения':'targets','Git':'git','Схема':'diagram'};
+    const target=sections[name];if(!target)throw new Error(`Unknown surface ${name}`);
+    await openProjectSurface(page,target);
+    if(name==='HMI')await page.getByRole('button',{name:'Применённые',exact:true}).click();
   };
   const captureSurface=async(name:string,file:string,ready?:()=>Promise<void>)=>{await openSurface(name);if(ready)await ready();await screenshot(page,`artifacts/${file}`);};
   await screenshot(page,'artifacts/menu-diagram.png');
@@ -56,7 +56,7 @@ try{
   await openSurface('Исходник');await page.locator('.cm-content').waitFor();
   assert((await page.locator('.code-pane .pane-heading').innerText()).includes('P-01.device.ts'),'device opens its real named source');
   await activityNav.getByRole('treeitem',{name:'P-01.device.ts',exact:true}).click();
-  await page.getByRole('button',{name:'Проекции',exact:true}).click();await page.getByRole('menuitem',{name:'Схема',exact:true}).click();
+  await openProjectSurface(page,'diagram');
   assert(await page.locator('.unified-sidebar [data-icon="pump"]').count()>=1,'Explicit view navigation must preserve device identity');
   checks.push('one device resource, one named source and a consistent class icon across editors');
   await page.getByRole('button',{name:'Правка',exact:true}).click();
@@ -85,7 +85,7 @@ try{
   await page.getByRole('spinbutton',{name:'V-01.opening'}).fill('75');await page.getByRole('button',{name:'Отправить',exact:true}).click();await page.getByRole('button',{name:'Скрыть панель'}).click();checks.push('commands, measured SVG motion, reduced-motion and alarm acknowledgement use the actual runtime');
   await openSurface('Отчёты');await page.getByRole('button',{name:'Сформировать',exact:true}).click();await page.locator('.report-table tbody tr').first().waitFor();
   assert(await page.locator('.report-table td[data-coverage]').count()>0,'report coverage missing');await screenshot(page,'artifacts/report.png');checks.push('report surface reads SQL observations and displays missing-data coverage');
-  await openSurface('Сигналы');await page.getByRole('button',{name:'P-01.pressure',exact:true}).click();await page.locator('.trend [data-series]').waitFor();
+  await openSurface('Сигналы');await page.locator('[data-tree-id="signal:P-01.pressure"]').click();await page.getByRole('button',{name:'Действия объекта',exact:true}).click();await page.getByRole('menuitem',{name:'История',exact:true}).click();await page.locator('.trend [data-series]').waitFor();
   await openSurface('Git');await page.getByRole('textbox',{name:'Описание коммита'}).fill('Move pump in Shell');await page.getByRole('button',{name:'Коммит',exact:true}).click();await until(async()=>!(await execute(['git','status','--porcelain'],fixtureProject.root)).trim(),'Git commit failed');checks.push('shared Shell navigation, archive chart and real Git commit');
   await page.keyboard.press('Control+k');await page.getByRole('textbox',{name:'Поиск',exact:true}).fill('P-01');await page.keyboard.press('Enter');await page.locator('[data-equipment="P-01"]').waitFor();checks.push('command palette finds equipment and opens its surface');
   await page.getByRole('button',{name:'3D',exact:true}).click();await until(async()=>Number(await page.locator('.scene3d').getAttribute('data-frames'))>3,'3D renderer did not produce frames');await screenshot(page,'artifacts/ide-3d.png');const invalidRoutes=await page.locator('.scene3d').getAttribute('data-invalid-routes');assert(invalidRoutes==='0',`3D graph differs from 2D: ${invalidRoutes} invalid routes`);assert(Number(await page.locator('.scene3d').getAttribute('data-pipe-bends'))>0,'3D pipe elbows are missing');checks.push('real WebGL 3D shares routes and rounds pipe bends');

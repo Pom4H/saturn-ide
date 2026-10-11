@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createApp } from '../src/host/dev';
 import type { IDEState } from '../src/protocol';
 import { connectionTip } from '../src/topology';
+import { isAttached } from '../src/core';
 import { fixture } from '../tests/helpers';
 import { prepareInterface } from './helpers/interface-preferences';
 
@@ -36,6 +37,19 @@ try{
   const firstFrame=Number(await data('frames'));
   await until(async()=>Number(await data('frames'))>firstFrame,'3D render loop stopped after initialization');
   const original=await state(),equipment=original.project.equipment.find(e=>e.id==='P-01');assert(equipment);
+  const assertConnectionHandles=async()=>{
+    const ports=JSON.parse(await data('port-screens')??'[]') as (XY&{device:string;port:string})[];
+    const handles=JSON.parse(await data('cable-plugs')??'[]') as (XY&{id:string;end:'from'|'to'})[];
+    const edges=[...original.project.pipes,...original.project.cables??[]];
+    assert.equal(handles.length,edges.length*2,'every pipe/cable end needs a handle');
+    for(const handle of handles){
+      const edge=edges.find(edge=>edge.id===handle.id);assert(edge);
+      const endpoint=edge[handle.end];if(!isAttached(endpoint))continue;
+      const port=ports.find(port=>port.device===endpoint.device&&port.port===endpoint.port);assert(port);
+      assert(Math.hypot(handle.x-port.x,handle.y-port.y)<=1,`${handle.id}.${handle.end} handle is detached from ${endpoint.device}.${endpoint.port}`);
+    }
+  };
+  await assertConnectionHandles();checks.push('all 3D pipe/cable handles coincide with their equipment ports');
   const screen=(JSON.parse(await data('equipment-screens')??'[]') as (XY&{id:string})[]).find(e=>e.id===equipment.id);assert(screen);
   const builds=await data('equipment-builds'),camera=JSON.parse(await data('camera-pose')??'[]') as number[];
   await page.mouse.move(screen.x,screen.y);await page.mouse.down();await page.mouse.move(screen.x+36,screen.y-12,{steps:8});
@@ -56,6 +70,7 @@ try{
   await page.mouse.up();await until(async()=>await data('drag-pointer')===null,'capture loss did not cancel');
   assert.equal((await state()).project.equipment.find(e=>e.id===equipment.id)!.x,equipment.x);
   checks.push('lostpointercapture preserves source');
+  await assertConnectionHandles();
   const plugs=JSON.parse(await data('cable-plugs')??'[]') as (XY&{id:string;end:'from'|'to'})[];
   let chosen:typeof plugs[number]|undefined;
   for(const plug of plugs){

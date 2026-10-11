@@ -1,3 +1,4 @@
+import {openProjectSurface} from './helpers/project-navigation';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -5,28 +6,31 @@ import { chromium, expect } from 'playwright/test';
 import { fixture } from '../tests/helpers';
 import { createApp } from '../src/host/dev';
 const evidence='artifacts/home-settings';mkdirSync(evidence,{recursive:true});
+const appearanceOnly=process.argv.includes('--appearance-only');
 const work=fixture(),app=await createApp({projectDir:work.root,dataDir:work.dir,databaseUrl:':memory:',port:0,preview:'simulation'});
 const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
-const context=await browser.newContext({viewport:{width:1600,height:1000},locale:'ru-RU',recordVideo:{dir:join(evidence,'recording')}});
+const context=await browser.newContext({viewport:{width:1600,height:1000},locale:'ru-RU',colorScheme:'dark',recordVideo:{dir:join(evidence,'recording')}});
 const page=await context.newPage(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+page.setDefaultTimeout(60000);
 const shot=async(name:string)=>page.screenshot({path:join(evidence,name+'.png')});
-const rail=page.getByRole('navigation',{name:'Рабочие области'});
+
 try{
   await page.goto(app.server.url.href);
-  const welcome=page.getByRole('dialog',{name:'Как вы будете использовать Saturn?'});await expect(welcome).toBeVisible();await shot('first-start');
-  await welcome.getByRole('button',{name:'Для бизнеса',exact:false}).click();await expect(welcome).toHaveCount(0);
+  await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+  await expect.poll(()=>page.evaluate(()=>localStorage.getItem('saturn.theme'))).toBe('light');
+  await expect(page.getByRole('dialog',{name:'Как вы будете использовать Saturn?'})).toHaveCount(0);
   await expect(page.locator('.scene3d canvas')).toBeVisible({timeout:30000});await page.waitForFunction(()=>Number(document.querySelector<HTMLElement>('.scene3d')?.dataset.frames)>4);await shot('business-home');
-  await expect(rail.locator('[data-rail-section="home"]')).toHaveAttribute('aria-current','page');
+  await expect(page.locator('[data-destination="diagram"]')).toHaveAttribute('aria-current','page');
   await expect(page.locator('.statusbar,.topbar .language-select,.topbar .theme-toggle,.explorer-operations')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Назад',exact:true})).toBeDisabled();
-  await rail.locator('[data-rail-section="settings"]').click();const settings=page.getByRole('region',{name:'Настройки интерфейса'});await expect(settings).toBeVisible();
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();const settings=page.getByRole('region',{name:'Настройки интерфейса'});await expect(settings).toBeVisible();
   await expect(page.getByRole('region',{name:'Инженерная задача'})).toBeHidden();await expect(page.locator('.workbench')).toBeHidden();
   await expect(page.getByRole('button',{name:'Назад',exact:true})).toBeEnabled();
   await page.getByRole('navigation',{name:'Разделы настроек'}).getByRole('button',{name:'Оформление',exact:true}).click();await expect(settings).toContainText('Иконка Home');await shot('appearance-light');
   await settings.getByRole('button',{name:'Тёмный',exact:true}).click();await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
   await settings.getByRole('combobox',{name:'Цвет акцента'}).selectOption('orange');
   await settings.getByRole('combobox',{name:'Пресет интерфейса'}).selectOption('home');
-  await expect(rail.locator('[data-rail-section="home"] svg')).toHaveAttribute('data-icon','home');await shot('appearance-dark');
+  await expect(settings.locator('.home-icon-options button[aria-pressed="true"] svg')).toHaveAttribute('data-icon','home');await shot('appearance-dark');
   await page.getByRole('button',{name:'Назад',exact:true}).click();await expect(settings).toContainText('Язык');
   await page.getByRole('button',{name:'Назад',exact:true}).click();await expect(page.locator('.scene3d canvas')).toBeVisible();await expect(page.getByRole('button',{name:'Вперёд',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'Вперёд',exact:true}).click();await expect(settings).toBeVisible();
@@ -38,14 +42,15 @@ try{
   await settings.getByRole('button',{name:'Светлый',exact:true}).click();
   await page.getByRole('navigation',{name:'Разделы настроек'}).getByRole('button',{name:'Основные',exact:true}).click();await settings.getByRole('combobox',{name:'Язык интерфейса'}).selectOption('en');
   await expect(page.getByRole('region',{name:'Interface settings'})).toContainText('Language');await page.getByRole('combobox',{name:'Interface language'}).selectOption('ru');
-  await page.keyboard.press('Alt+Digit1');await expect(page.locator('.scene3d canvas')).toBeVisible();await expect(page.getByRole('button',{name:'Управление домом',exact:true})).toBeVisible();await shot('home-preset');
+  await page.keyboard.press('Alt+Digit1');await expect(page.locator('.scene3d canvas')).toBeVisible();await expect(page.locator('[data-destination="hmi"]')).toBeVisible();await shot('home-preset');
   await page.keyboard.press('Alt+Digit3');await expect(page.getByRole('region',{name:'Состояние объекта',exact:true})).toBeVisible();
-  await rail.locator('[data-rail-section="source"]').click();await page.locator('[data-tree-id="file:equipment/P-01.device.ts"]').click();const cm=page.locator('.cm-content');await cm.click();await page.keyboard.press('ControlOrMeta+End');await page.keyboard.type('\n// settings keep this draft');
-  await page.keyboard.press('ControlOrMeta+Comma');await expect(settings).toBeVisible();await rail.locator('[data-rail-section="source"]').click();await expect(cm).toContainText('settings keep this draft');
+  await openProjectSurface(page,'source');await page.locator('[data-tree-id="file:equipment/P-01.device.ts"]').click();const cm=page.locator('.cm-content');await cm.click();await page.keyboard.press('ControlOrMeta+End');await page.keyboard.type('\n// settings keep this draft');
+  await page.keyboard.press('ControlOrMeta+Comma');await expect(settings).toBeVisible();await openProjectSurface(page,'source');await expect(cm).toContainText('settings keep this draft');
   await page.getByRole('button',{name:'Состояние подключённой среды'}).click();const summary=page.getByRole('dialog',{name:'Сводка проекта'});await expect(summary).toContainText('Режим симуляции');await expect(summary).toContainText('несохранённых файлов');await shot('environment-version');await page.keyboard.press('Escape');
-  await page.setViewportSize({width:390,height:844});await page.getByRole('navigation',{name:'Мобильная навигация'}).getByRole('button',{name:'Главная',exact:true}).click();await expect(page.locator('.scene3d canvas')).toBeVisible();await shot('home-mobile');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.setViewportSize({width:390,height:844});await page.getByRole('navigation',{name:'Мобильная навигация'}).getByRole('button',{name:'Объект',exact:true}).click();await expect(page.locator('.scene3d canvas')).toBeVisible();await shot('home-mobile');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.getByRole('button',{name:'Главное меню',exact:true}).click();await page.getByRole('dialog',{name:'Главное меню'}).getByRole('button',{name:'Настройки',exact:true}).click();await page.getByRole('button',{name:'Открыть навигацию',exact:true}).click();await page.getByRole('navigation',{name:'Разделы настроек'}).getByRole('button',{name:'Оформление',exact:true}).click();await expect(settings).toContainText('Иконка Home');await shot('settings-mobile');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   // Open real, separate authored demo projects, without replacing the current source/draft.
+  if(!appearanceOnly){
   await page.setViewportSize({width:1600,height:1000});await settings.getByRole('button',{name:'Открыть демо дома',exact:true}).click();
   await expect(page.locator('.project-chip')).toContainText('Демонстрационный дом',{timeout:30000});await expect(page.locator('.scene3d canvas')).toBeVisible({timeout:30000});await shot('home-demo-3d');
   await page.keyboard.press('Alt+Digit2');await expect(page.locator('.hmi-surface')).toBeVisible();await shot('home-demo-controls');
@@ -63,5 +68,6 @@ try{
   await command('set living-light.enabled true');await expect.poll(async()=>(await demo()).snapshot.samples['living-light.enabled']?.value).toBe(true);
   await page.goto(app.server.url.href+'?page=settings&settings=appearance');await settings.getByRole('combobox',{name:'Пресет интерфейса'}).selectOption('business');await settings.getByRole('button',{name:'Открыть демо станции',exact:true}).click();
   await expect(page.locator('.project-chip')).toContainText('Насосная станция',{timeout:30000});await expect(page.locator('.scene3d canvas')).toBeVisible({timeout:30000});await shot('business-demo-3d');
-  assert.deepEqual(errors,[]);console.log('PASS Home/settings/presets: native URL history and shortcuts, actual 3D Home, retained draft, language, reactive system theme, accent/icon/preset persistence, shell settings sidebar, no legacy footer, real separate home/business demo projects and simulated light/temperature/leak commands, responsive frames, no page errors.');
+  }
+  assert.deepEqual(errors,[]);console.log(appearanceOnly?'PASS appearance-only: daylight default with dark OS, actual 3D Home, retained draft, history/shortcuts, language, reactive system theme, saved dark/accent/preset, shell settings sidebar, responsive light/dark frames, no page errors. Separate demo acceptance was not run.':'PASS Home/settings/presets: native URL history and shortcuts, actual 3D Home, retained draft, language, reactive system theme, accent/icon/preset persistence, shell settings sidebar, no legacy footer, real separate home/business demo projects and simulated light/temperature/leak commands, responsive frames, no page errors.');
 }finally{await context.close();await browser.close();await app.close();work.clean();}

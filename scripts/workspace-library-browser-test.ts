@@ -32,10 +32,10 @@ try {
   await page.screenshot({path:'artifacts/workspace-library/catalog-templates.png'});
   await page.getByRole('button',{name:'Добавить: Клапан',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Новое устройство'});
-  await expect(dialog.getByRole('combobox')).toHaveValue('valve');await dialog.getByLabel('ID',{exact:true}).fill('V-02');await dialog.getByLabel('Название',{exact:true}).fill('Проверочный клапан');
+  await expect(dialog.locator('input[name=template][value=valve]')).toBeChecked();await dialog.getByText('Дополнительно',{exact:true}).click();await dialog.getByLabel('ID',{exact:true}).fill('V-02');await dialog.getByLabel('Название',{exact:true}).fill('Проверочный клапан');
   await dialog.getByRole('button',{name:'Предпросмотр',exact:true}).click();await expect(dialog.locator('.creation-preview')).toContainText('equipment/V-02.device.ts');
   assert.equal(existsSync(join(work.root,'equipment/V-02.device.ts')),false,'Preview wrote source');
-  await dialog.getByRole('button',{name:'Создать устройство',exact:true}).click();await expect(dialog).not.toBeVisible();
+  await dialog.getByRole('button',{name:'Добавить на схему',exact:true}).click();await expect(dialog).not.toBeVisible();
   await expect(page.locator('.code-pane .pane-heading')).toContainText('V-02.device.ts');
   assert.match(readFileSync(join(work.root,'equipment/V-02.device.ts'),'utf8'),/export default valve/);
   assert.match(readFileSync(join(work.root,'project.ts'),'utf8'),/import device_V_02 from/);

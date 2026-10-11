@@ -1,3 +1,4 @@
+import {openProjectSurface} from './helpers/project-navigation';
 import assert from 'node:assert/strict';
 import {existsSync,mkdirSync,readFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
@@ -19,7 +20,8 @@ page.on('pageerror',error=>errors.push(error.message));
 try {
   await page.addInitScript(()=>localStorage.setItem('saturn.locale','ru'));
   await page.goto(app.server.url.href);
-  await page.getByRole('navigation',{name:'Рабочие области'}).getByRole('button',{name:'Среда'}).click();
+  await openProjectSurface(page,'targets');
+  await page.locator('.environment-deployment summary').click();
   const plan=page.locator('.deployment-plan');
   await expect(plan).toBeVisible();
   const command=plan.getByRole('textbox',{name:'Команда · массив аргументов'}).first();

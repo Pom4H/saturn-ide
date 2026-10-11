@@ -12,3 +12,5 @@
 .shell-menu[aria-label="Режим проводника"] .menu-mark,.shell-menu[aria-label="Explorer mode"] .menu-mark{order:2;width:20px;color:var(--text)}
 .shell-menu[aria-label="Режим проводника"] .menu-label,.shell-menu[aria-label="Explorer mode"] .menu-label{order:1}
 .shell-menu[aria-label="Режим проводника"] .menu-label small,.shell-menu[aria-label="Explorer mode"] .menu-label small{display:block;margin-top:2px;color:var(--muted);font-size:12px;font-weight:400}
+
+.menu-label small{display:block;margin-top:3px;color:var(--muted);font-size:11px;line-height:1.5;white-space:normal}

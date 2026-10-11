@@ -1,3 +1,4 @@
+import {openProjectSurface} from './helpers/project-navigation';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
@@ -12,7 +13,7 @@ const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enabl
 const context=await browser.newContext({viewport:{width:1440,height:960},locale:'ru-RU'});
 const page=await context.newPage(),errors:string[]=[];
 page.on('pageerror',error=>errors.push(error.message));
-const row=(id:string)=>page.locator('.signals-surface>.table-scroll tbody tr').filter({has:page.getByRole('button',{name:id,exact:true})});
+const row=(id:string)=>page.locator('.signal-catalog>.table-scroll tbody tr').filter({has:page.getByRole('button',{name:id,exact:true})});
 const releases=async()=>fetch(new URL('/api/releases',app.server.url)).then(response=>response.json()) as Promise<{key:string;checked:string;published:string|null;applied:string|null}>;
 const post=async(path:string,body:unknown)=>{
   const key=(await releases()).key;
@@ -23,7 +24,9 @@ const post=async(path:string,body:unknown)=>{
 
 try{
   await page.goto(app.server.url.href);
-  await page.getByRole('navigation',{name:'Рабочие области'}).locator('[data-rail-section="monitor"]').click();
+  await openProjectSurface(page,'performance');
+  await page.locator('[data-tree-id="signal:P-01.pressure"]').click();
+  await page.locator('.signal-catalog>summary').click();
   await expect(row('P-01.pressure')).toHaveAttribute('data-stage','checked-only');
   await expect(row('P-01.pressure').locator('td').nth(2)).toHaveText('—');
   await row('P-01.pressure').getByRole('button',{name:'P-01.pressure'}).click();
@@ -69,6 +72,8 @@ try{
   await row('P-01.pressure').getByRole('button',{name:'P-01.pressure'}).click();
   await expect(page.locator('.signals-surface>.inspector-body')).toContainText('Определение и требования ниже взяты из Checked');
   await expect(page.locator('.signals-surface>.inspector-body')).toContainText('Наблюдение · Applied');
+  await page.locator('.signal-contract>summary').click();
+  await expect(page.locator('.signal-contract')).toContainText('Хранение');
   await page.screenshot({path:'artifacts/signals-lifecycle/changed-contract.png'});
 
   await post('publish',{hash:changed.checked,expectedPublished:first.checked});
@@ -82,13 +87,21 @@ try{
   await expect(page.locator('.signals-surface>.inspector-body')).toContainText('Наблюдение · Applied');
   await page.screenshot({path:'artifacts/signals-lifecycle/applied-only-selected.png'});
 
-  await page.getByRole('combobox',{name:'Language'}).selectOption('en');
+  await page.keyboard.press('ControlOrMeta+Comma');
+  await page.getByRole('combobox',{name:'Язык интерфейса'}).selectOption('en');
+  await openProjectSurface(page,'performance');
+  await page.locator('[data-tree-id="signal:ml.training"]').click();
+  await page.locator('.signal-catalog>summary').click();
   await expect(row('ml.training')).toContainText('Applied only · removed in Checked');
   await expect(page.locator('.signals-surface>.inspector-body')).toContainText('This signal remains in Applied but was removed from Checked');
-  await page.getByRole('combobox',{name:'Language'}).selectOption('ru');
+  await page.keyboard.press('ControlOrMeta+Comma');
+  await page.getByRole('combobox',{name:'Interface language'}).selectOption('ru');
+  await openProjectSurface(page,'performance');
+  await page.locator('[data-tree-id="signal:ml.training"]').click();
 
   await page.setViewportSize({width:390,height:844});
   await expect(page.locator('.signals-surface')).toBeVisible();
+  await page.locator('.signal-catalog>summary').click();
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'mobile Signals overflow horizontally');
   await page.screenshot({path:'artifacts/signals-lifecycle/mobile-applied-only.png'});
   assert.deepEqual(errors,[]);

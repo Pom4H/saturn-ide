@@ -166,3 +166,28 @@ test('different files keep independent ranges and save queues', async () => {
   f.complete(0); f.complete(1);
   await Promise.all([first, second]);
 });
+
+test('group remaps every member from its original pose without accumulating move events',async()=>{
+ const f=await fixture();assert(f.edits.beginGroup([{id:'p',x:1,y:2},{id:'q',x:3,y:4}],f.positions));
+ f.edits.moveGroup(10000,-200);f.edits.moveGroup(20,30);
+ assert.equal(f.documents.getSnapshot().get('equipment.ts')!.draft,'const p = pump("p", { x: 21, y: 32 });\nconst q = pump("q", { x: 23, y: 34 });\n');
+ const save=f.edits.end(false);assert.equal(f.pending.length,1);f.complete(0);await save;
+ assert.equal(f.documents.dirty,false);
+});
+test('group cancellation restores every member and exact source without writing',async()=>{
+ const f=await fixture();f.edits.beginGroup([{id:'p',x:1,y:2},{id:'q',x:3,y:4}],f.positions);f.edits.moveGroup(-250,900);await f.edits.end(true);
+ assert.equal(f.documents.getSnapshot().get('equipment.ts')!.draft,source);assert.deepEqual(f.edits.getSnapshot(),{previews:{},dragging:false});assert.equal(f.pending.length,0);
+});
+test('a group with one dirty or unauthored member cannot partially move',async()=>{
+ const f=await fixture();assert.equal(f.edits.beginGroup([{id:'p',x:1,y:2},{id:'missing',x:3,y:4}],f.positions),false);f.edits.moveGroup(30,40);
+ assert.equal(f.documents.getSnapshot().get('equipment.ts')!.draft,source);assert.equal(f.edits.getSnapshot().dragging,false);
+});
+test('multi-file group uses one versioned transaction; failed save preserves all drafts',async()=>{
+ const writes:SourceFile[][]=[];
+ const docs=new Documents({read:async path=>({path,source,version:'v0'}),save:async()=>{throw Error('single write forbidden');},saveMany:async files=>{writes.push([...files]);throw Error('version conflict');}});
+ await Promise.all(['a.ts','b.ts'].map(path=>docs.open(path)));const edits=new LayoutEditing(docs);
+ const positions={p:position(source,'p','a.ts'),q:position(source,'q','b.ts')};
+ assert(edits.beginGroup([{id:'p',x:1,y:2},{id:'q',x:3,y:4}],positions));edits.moveGroup(5,6);
+ await assert.rejects(edits.end(false),/version conflict/);assert.equal(writes.length,1);assert.equal(writes[0]!.length,2);
+ assert(docs.getSnapshot().get('a.ts')!.error);assert(docs.getSnapshot().get('b.ts')!.error);assert.equal(edits.begin('p',positions),false);assert.equal(docs.dirty,true);
+});

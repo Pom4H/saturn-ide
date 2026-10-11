@@ -1,0 +1,127 @@
+/* A single labelled navigation column and a compact project/runtime header. */
+.engineering-shell .topbar{gap:8px;padding:0 14px;min-width:0;height:52px;flex-basis:52px}
+.engineering-shell .project-chip{max-width:clamp(130px,22vw,320px);min-width:0;font-size:13px;font-weight:600;flex-shrink:1}
+.current-surface{min-width:0;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px;border-left:1px solid var(--border);padding-left:14px;margin-right:6px}
+.engineering-shell .safety-context{flex-shrink:0;background:transparent;border:0;gap:2px;padding:0;height:32px}
+.engineering-shell .environment-chip,.engineering-shell .version-chip{height:30px;padding:0 8px}
+.engineering-shell .environment-chip>span{display:inline;font-size:11px;font-weight:600}
+.environment-chip.simulation{background:var(--accent-soft);color:var(--accent)}
+.environment-chip.live{background:color-mix(in srgb,var(--bad) 12%,var(--panel));color:var(--bad)}
+.environment-chip.offline{background:var(--active);color:var(--muted)}
+.engineering-shell .version-chip>span{font:11px var(--mono)}
+.engineering-shell .version-chip>small{font-size:12px;display:inline!important;color:var(--warn)}
+.engineering-shell .palette-trigger{width:auto;min-width:34px;height:32px;padding:0 8px;gap:8px;background:transparent;border:0;flex-shrink:0}
+.engineering-shell .palette-trigger kbd{display:inline;font-size:10px}
+.shell-view-menu{height:32px;border:0;background:transparent;padding:0 8px;font-size:12px;flex-shrink:0}
+.engineering-shell .unified-sidebar{padding:10px 8px 6px;width:260px;flex-basis:260px;gap:0}
+.sidebar-context{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+.engineering-shell .explorer-heading{min-height:44px;padding:6px 4px 2px;gap:2px}
+.engineering-shell .unified-sidebar .explorer-heading strong{font-size:11px;font-weight:550;letter-spacing:0;color:var(--muted)}
+.engineering-shell .explorer-heading .icon-button{width:26px;height:28px}
+.engineering-shell .sidebar-filter{height:30px;flex:0 0 30px;margin:4px 2px 10px;width:calc(100% - 4px);font-size:12px;border-radius:6px}
+.engineering-shell .unified-sidebar .tree-row:not(.tree-tile){font-size:12px;min-height:32px}
+.engineering-shell .unified-sidebar .tree-row.tree-described{min-height:42px}
+.sidebar-utilities{display:flex;align-items:center;gap:4px;padding:8px 4px 0;border-top:1px solid var(--border);flex-shrink:0}
+.sidebar-utilities .icon-button{width:32px;height:32px}
+.sidebar-tools{display:flex;justify-content:space-between;flex:1;min-width:0;border:0;background:transparent;text-align:left;padding:8px;color:var(--muted);font-size:12px}
+.session-authority{border-top:1px solid var(--border);padding-top:12px;color:var(--muted)}
+/* A closed sidebar releases its space completely. */
+.engineering-shell.sidebar-collapsed .unified-sidebar:not(.mobile-open){display:none}
+.sidebar-collapsed .sidebar-context,.sidebar-collapsed .sidebar-resize,.sidebar-collapsed .sidebar-tools,.sidebar-collapsed .sidebar-utilities>button:last-child{display:none}
+.sidebar-collapsed .sidebar-utilities{margin-top:auto;flex-direction:column;padding:8px 0 0}
+@media(max-width:1100px){.current-surface{max-width:120px}.engineering-shell .topbar{gap:5px;padding-inline:10px}.engineering-shell .palette-trigger kbd{display:none}}
+@media(max-width:900px){.current-surface{display:none}.engineering-shell .project-chip{max-width:200px}.engineering-shell .version-chip .applied-hash{display:none}}
+@media(max-width:760px),(pointer:coarse) and (max-width:1024px){
+  .engineering-shell .unified-sidebar:not(.mobile-open){display:none}
+  .engineering-shell .unified-sidebar.mobile-open{width:100%!important;flex-basis:auto!important;padding:calc(10px + env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));inset:0!important}
+  .engineering-shell .unified-sidebar.mobile-open .sidebar-context{display:flex}
+  .engineering-shell .unified-sidebar.mobile-open .sidebar-tools{display:flex}
+  .engineering-shell .unified-sidebar.mobile-open .sidebar-utilities{flex-direction:row;margin:0}
+  .engineering-shell .explorer-heading .sidebar-close{display:none}
+  .engineering-shell .sidebar-utilities .sidebar-close{display:none}
+}
+
+@media(max-width:760px),(pointer:coarse) and (max-width:1024px){.mobile-shell-header .mobile-environment{width:auto;min-width:50px;padding:0 6px;font-size:10px;font-weight:600;background:var(--accent-soft);color:var(--accent)}.mobile-environment>i{right:4px;bottom:7px}.mobile-shell-header .mobile-environment.offline{color:var(--muted);background:var(--active)}.mobile-shell-header .mobile-environment.faulted{color:var(--bad)}}
+
+@media(max-width:760px),(pointer:coarse) and (max-width:1024px){.mobile-shell-header .mobile-environment.live{background:color-mix(in srgb,var(--bad) 12%,var(--panel));color:var(--bad)}.mobile-shell-header .mobile-environment.offline{background:var(--active);color:var(--muted)}}
+/* Details consume a width budget; constrained screens show an explicit sheet. */
+@media(max-width:1100px){.engineering-shell .shell-details-slot{position:relative;inset:auto;width:350px;flex:0 0 350px;box-shadow:none}.engineering-shell .shell-details-slot>.inspector.resource-details,.engineering-shell .shell-details-slot>.equipment-catalog-panel{width:100%;flex-basis:100%}}
+.details-sheet-return{display:none}
+.engineering-shell.details-sheet-open .shell-details-slot{position:absolute;inset:0;width:100%;z-index:24;display:flex;flex-direction:column;box-shadow:none}
+.engineering-shell.details-sheet-open .shell-details-slot>.inspector.resource-details,.engineering-shell.details-sheet-open .shell-details-slot>.equipment-catalog-panel{flex:1;min-height:0;width:100%;height:auto;border:0}
+.details-sheet-open .details-sheet-return{display:flex;align-items:center;flex:0 0 44px;min-height:44px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:var(--sidebar);text-align:left;padding:0 16px;font-size:13px;color:var(--accent)}
+.details-sheet-open .inspector-body{max-width:900px;width:100%;margin-inline:auto}
+.shell-details-controls .menu-trigger{display:flex;align-items:center;gap:6px;width:auto;padding:0 8px;border:0;background:transparent;font-size:12px}
+.details-slot-name{white-space:nowrap;color:var(--muted)}
+.object-context-anchor{display:flex;align-items:center;gap:8px;min-height:36px;flex:0 0 36px;padding:0 14px;border-bottom:1px solid var(--border);background:var(--panel);font-size:12px;min-width:0}
+.object-context-anchor>strong{font:600 12px var(--mono);flex-shrink:0}.object-context-anchor>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.object-context-anchor .menu-trigger{margin-left:auto;flex-shrink:0;border:0;background:transparent;padding:4px 6px;font-size:12px}
+.object-source-state{display:flex;align-items:center;color:var(--warn);flex-shrink:0}.entity-state.pending{color:var(--muted)}
+.sidebar-mobile-heading{display:none}
+.source-file-actions{display:flex;gap:4px;align-items:center;flex-shrink:0;margin-left:auto;padding:0 8px}.source-file-actions button{border:0;background:transparent;padding:6px 8px;font-size:12px}.source-file-actions button:not(:disabled):last-child{color:var(--accent)}
+.source-workspace .code-pane>.pane-heading{display:none}
+.hmi-gallery article[data-related=true],.hmi-gallery article[data-focused=true]{border-color:var(--accent)}
+
+@media(max-width:1100px){.details-slot-name{display:none}}
+@media(max-width:760px),(pointer:coarse) and (max-width:1024px){
+ .engineering-shell .sidebar-resize{display:none}
+ .sidebar-mobile-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:0 4px 8px;margin-bottom:8px;border-bottom:1px solid var(--border);flex-shrink:0}
+ .sidebar-mobile-heading>div{min-width:0}.sidebar-mobile-heading strong{font-size:13px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebar-mobile-heading small{font-size:11px;font-weight:600;color:var(--accent)}
+ .sidebar-mobile-heading button{width:44px;height:44px;border:0;background:transparent}
+ .source-workspace .code-pane>.pane-heading{display:flex;min-height:44px;flex:0 0 44px}.source-file-actions{padding:0;gap:0}
+ .object-context-anchor{min-height:40px;flex-basis:40px;padding-inline:12px}
+ .sidebar-collapsed .sidebar-mobile-heading{display:flex}
+}
+
+/* Mobile HMI is a vertical reading flow; flex wrapping must not distribute blank rows. */
+@media(max-width:760px),(pointer:coarse) and (max-width:1024px){
+ .engineering-shell .hmi-surface{flex-direction:column;flex-wrap:nowrap;justify-content:flex-start;align-items:stretch;gap:16px;padding:16px 14px}
+ .hmi-surface>.surface-description{max-width:none;flex-shrink:0}
+ .hmi-surface>.hmi-gallery{width:100%;padding:0;gap:12px;flex-shrink:0}
+ .hmi-gallery header{flex-wrap:wrap;gap:8px}
+ .hmi-gallery header button,.hmi-gallery header a,.hmi-surface .primary,.source-file-actions button{min-height:44px}
+}
+
+/* Navigation location and selected resources use different visual semantics. */
+.object-context-anchor>small{color:var(--muted);font-size:11px;flex-shrink:0}
+.hmi-model-switch{display:flex;gap:4px;flex-wrap:wrap;margin:12px 0}
+.hmi-model-switch button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent)}
+.hmi-stage-label{margin-left:auto;color:var(--muted);font-size:11px}
+.hmi-inline-preview{min-height:320px;height:480px;overflow:auto}
+.hmi-inline-preview>.hmi{width:100%;height:100%;min-height:320px;min-width:0}
+.hmi-inline-preview .hmi-overview-heading{padding:16px}
+.hmi-inline-preview .hmi-overview-heading h1{font-size:20px}
+.hmi-gallery article[data-stage=checked]{border-style:dashed}
+@media(max-width:760px){.object-context-anchor>small{display:none}.hmi-inline-preview{height:400px}.hmi-model-switch button{min-height:44px}}
+
+.shell-details-slot:has(.source-context){width:520px;flex-basis:520px}
+.details-sheet-open .shell-details-slot:has(.source-context){width:100%;flex-basis:auto}
+.environment-next-step{margin:24px 0;padding:20px;background:var(--accent-soft);border-radius:8px}
+.environment-next-step h2{margin:0 0 10px}.environment-next-step button{margin-right:8px}
+.environment-deployment{margin:24px 0;border-block:1px solid var(--border);padding:16px 0}
+.environment-deployment>summary{cursor:pointer;font-weight:600}.environment-deployment[open]>.deployment-plan{margin-top:20px}
+
+.signal-contract,.signal-relations{margin-block:16px;border-top:1px solid var(--border);padding-top:14px}.signal-contract>summary,.signal-relations>summary{cursor:pointer;font-weight:600}
+.engineering-shell .hmi-surface{flex-direction:column;flex-wrap:nowrap;align-items:stretch;justify-content:flex-start;gap:24px;padding:24px}
+.hmi-surface>.surface-description{max-width:none}.hmi-surface>.hmi-gallery{width:100%;padding:0}
+
+.engineering-shell:not(.sidebar-collapsed) .current-surface{display:none}
+
+.signal-catalog{margin:16px;border-top:1px solid var(--border);padding-top:14px}.signal-catalog>summary{cursor:pointer;font-weight:600}.signal-catalog[open]>.table-scroll{margin-top:12px}
+.hmi-inline-preview>.hmi>header{height:auto;min-height:34px;flex-wrap:wrap;gap:6px}.hmi-inline-preview>.hmi>header .status{max-width:100%;white-space:normal}
+
+@media(max-width:760px),(pointer:coarse) and (max-width:1024px){.engineering-shell .hmi-surface{gap:16px;padding:16px 14px}}
+
+.signals-surface{overflow:auto}.signals-surface>.inspector-body{flex:0 0 auto;min-height:auto;overflow:visible}.signal-catalog[open]>.table-scroll{max-height:360px;overflow:auto}
+
+.engineering-shell .shell-details-slot>.inspector.resource-details.source-context{width:100%;flex:1;min-width:0}
+
+/* One project hierarchy, no independent list of destinations above it. */
+.engineering-shell .unified-sidebar .tree-row.tree-group[aria-level="1"]{min-height:42px;margin-top:8px;font-size:13px;font-weight:600}
+.engineering-shell .unified-sidebar .tree-row[aria-level="2"]{min-height:38px}
+.engineering-shell .unified-sidebar .explorer-heading{margin-bottom:8px}
+.engineering-shell .unified-sidebar .explorer-heading strong{font-size:13px;color:var(--text)}
+.engineering-shell .shell-panel[data-open="false"]{display:none}
+@media(max-width:760px),(pointer:coarse) and (max-width:1024px){.engineering-shell .unified-sidebar .tree-row:not(.tree-tile){min-height:44px}}
+
+.project-return{display:flex;align-items:center;gap:9px;min-height:44px;margin-bottom:8px;background:transparent;border:0;text-align:left;color:var(--accent);font-size:13px}

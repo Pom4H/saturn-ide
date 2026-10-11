@@ -30,3 +30,8 @@ test('catalog can be linked alongside either TS or the same 3D project',()=>{
 });
 
 test('a view link names the exact device port without authored or runtime mutation',()=>{const view=readBrowserView('?page=diagram&device=P-01&port=outlet&dimension=3d');expect(view.port).toBe('outlet');expect(readBrowserView(browserViewSearch(view))).toEqual(view);});
+
+test('screen preview links preserve Checked or Applied and operator links always use Applied',()=>{
+  for(const hmiModel of ['checked','applied'] as const){const view=readBrowserView('?page=hmi&hmiModel='+hmiModel);expect(view.hmiModel).toBe(hmiModel);expect(readBrowserView(browserViewSearch(view))).toEqual(view);}
+  expect(readBrowserView('?page=hmi&mode=operator&hmiModel=checked').hmiModel).toBe('applied');
+});

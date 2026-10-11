@@ -1,0 +1,80 @@
+import {openProjectSurface,revealProjectTree} from './helpers/project-navigation';
+import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { chromium, expect } from 'playwright/test';
+import { fixture } from '../tests/helpers';
+import { createApp } from '../src/host/dev';
+import { execute } from '../src/workspace/git';
+import { prepareInterface } from './helpers/interface-preferences';
+import { chooseExplorerLayout } from './helpers/explorer-mode';
+
+const evidence='artifacts/shell-navigation';mkdirSync(evidence,{recursive:true});
+const work=fixture(),git=(...args:string[])=>execute(['git',...args],work.root);
+await git('init','-b','main');await git('config','user.name','Shell acceptance');await git('config','user.email','shell@example.test');await git('add','.');await git('commit','-m','Reference');
+const app=await createApp({projectDir:work.root,dataDir:work.dir,databaseUrl:':memory:',port:0,preview:'simulation'});
+const browser=await chromium.launch({headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
+const context=await browser.newContext({viewport:{width:1536,height:864},locale:'ru-RU',recordVideo:{dir:join(evidence,'recording')}});
+await prepareInterface(context);
+const page=await context.newPage(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+const snap=(name:string)=>page.screenshot({path:join(evidence,name+'.png'),animations:'disabled'});
+const destination=(editor:string)=>page.locator(`[data-destination="${editor}"]`);
+const noOverflow=async()=>{
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Document overflows');
+  assert.ok(await page.locator('.topbar').evaluate(node=>node.scrollWidth<=node.clientWidth),'Header overflows');
+  for(const button of await page.locator('.topbar button:visible').all()){
+    const box=await button.boundingBox();assert.ok(box&&box.x>=0&&box.x+box.width<=await page.evaluate(()=>innerWidth),'Header button is clipped');
+  }
+};
+try{
+  await page.goto(app.server.url.href);
+  await expect(page.locator('svg.scene')).toBeVisible({timeout:30000});
+  await expect(destination('diagram')).toHaveAttribute('aria-current','page');
+  await expect(page.getByRole('button',{name:'Режим навигатора',exact:true})).toHaveCount(0);
+  await expect(page.locator('.artifact-heading')).toHaveCount(0);
+  await expect(page.locator('.workbench-rail')).toHaveCount(0);await expect(page.locator('.shell-panel')).toBeHidden();await expect(page.locator('.project-tree [aria-level="1"]')).toHaveCount(3);
+  await expect(page.locator('.environment-chip')).toContainText('SIM');
+  await expect(page.locator('.version-chip')).toBeVisible();
+  const pump=page.locator('[data-tree-id^="object:"][data-resource-id="P-01"]');await pump.click();
+  await expect(pump).toHaveAttribute('aria-selected','true');await snap('desktop-object');await noOverflow();
+  await openProjectSurface(page,'hmi');await expect(page.locator('.hmi-surface')).toBeVisible();await pump.click();await expect(destination('diagram')).toHaveAttribute('aria-current','page');await expect(pump).toHaveAttribute('aria-selected','true');await expect(page.locator('.object-context-anchor')).toContainText('P-01');
+  await openProjectSurface(page,'diagram');await page.locator('[data-tree-id="screen:default"]').click();await expect(page.locator('.hmi-gallery article[data-focused="true"]')).toHaveCount(1);await expect(page.locator('.project-tree [aria-selected="true"]')).toHaveCount(1);await openProjectSurface(page,'diagram');await expect(pump).toHaveAttribute('aria-selected','true');await openProjectSurface(page,'performance');await expect(page.getByRole('region',{name:'Состояние объекта',exact:true})).toBeVisible();await expect(destination('performance')).toHaveAttribute('aria-current','page');
+  await openProjectSurface(page,'reports');await expect(page.locator('.reports-surface')).toBeVisible();
+  await openProjectSurface(page,'source');const editor=page.locator('.cm-content');await expect(editor).toBeVisible();
+  await expect(page.locator('.artifact-heading [role=tab]')).toHaveCount(1);
+  const source=page.locator('[data-tree-id="file:equipment/P-01.device.ts"]');await source.click();await expect(page.locator('.code-pane .pane-heading')).toContainText('P-01.device.ts');
+  await chooseExplorerLayout(page,'Список файлов');await expect(source).toContainText('equipment/P-01.device.ts');await chooseExplorerLayout(page,'Папки');
+  await editor.click();await page.keyboard.press('ControlOrMeta+End');await page.keyboard.type('\n// shell navigation draft');
+  await expect(page.locator('.artifact-heading .modified')).toHaveCount(1);await expect(page.locator('.version-chip')).toContainText('Не сохранено · 1');
+  await openProjectSurface(page,'hmi');await openProjectSurface(page,'source');await expect(editor).toContainText('shell navigation draft');
+  await openProjectSurface(page,'git');await expect(page.locator('.git-surface')).toBeVisible();
+  await openProjectSurface(page,'targets');await expect(page.locator('.environment-surface')).toBeVisible();
+  await page.getByRole('button',{name:'Инструменты проекта',exact:true}).click();await page.getByRole('menuitem',{name:'Документация',exact:true}).click();await expect(page.locator('.documentation-surface').getByRole('heading',{name:'Документация проекта',exact:true})).toBeVisible();
+  await openProjectSurface(page,'source');await snap('desktop-source');
+  await page.getByRole('button',{name:'Вид и панели',exact:true}).click();await snap('view-menu');await page.keyboard.press('Escape');await expect(page.getByRole('button',{name:'Вид и панели',exact:true})).toBeFocused();
+  await page.getByRole('button',{name:'Скрыть боковую панель',exact:true}).click();await expect(page.locator('.unified-sidebar')).toBeHidden();
+  await openProjectSurface(page,'reports');await expect(page.locator('.reports-surface')).toBeVisible();
+  await openProjectSurface(page,'source');
+  await editor.click();await page.keyboard.press('ControlOrMeta+End');
+  for(const width of [1024,800]){await page.setViewportSize({width,height:768});await noOverflow();if(width===1024){await expect(page.locator('.shell')).toHaveClass(/sidebar-collapsed/);await expect(page.locator('.unified-sidebar')).toBeHidden();assert.ok((await editor.boundingBox())!.width>=520,'Editor needs a usable width with Review open');}else{await expect(page.locator('#shell-details')).toHaveAttribute('aria-modal','true');await expect(page.locator('.engineering-workspace')).toHaveAttribute('inert','');for(let step=0;step<12;step++){await page.keyboard.press('Tab');assert.ok(await page.locator('#shell-details').evaluate(node=>node.contains(document.activeElement)),`Details focus escaped at ${step}: ${await page.evaluate(()=>document.activeElement?.outerHTML.slice(0,300))}`);}}await expect(page.locator('.version-chip')).toBeVisible();await expect(page.locator('.version-chip')).toContainText('Не сохранено · 1');await snap('desktop-'+width);}
+  await page.keyboard.press('Escape');await expect(page.locator('#shell-details')).toHaveCount(0);await expect(editor).toContainText('shell navigation draft');await expect(editor).toBeFocused();await page.keyboard.type(' retained');await expect(editor).toContainText('shell navigation draft retained');
+  await page.setViewportSize({width:1536,height:864});await expect(page.locator('.shell')).not.toHaveClass(/sidebar-collapsed/);
+  if(!await page.locator('.review-pane').isVisible()){await page.getByRole('button',{name:'Содержимое боковой панели',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:'Ревью',exact:true}).click();}await expect(page.locator('.review-pane')).toBeVisible();await expect(page.locator('.review-draft-notice')).toContainText('ещё не включены');await snap('desktop-review');
+  await page.getByRole('button',{name:'Содержимое боковой панели',exact:true}).click();await page.getByRole('menuitem',{name:'Скрыть боковую панель',exact:true}).click();
+  await page.getByRole('button',{name:'Вид и панели',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:'Операторский вид',exact:true}).click();
+  await expect(destination('source')).toHaveCount(0);await expect(destination('hmi')).toBeVisible();await openProjectSurface(page,'hmi');await expect(page.getByRole('button',{name:'Создать экран',exact:true})).toHaveCount(0);await expect(page.locator('.topbar .shell-view-menu')).toContainText('Оператор');await snap('operator');
+  await page.getByRole('button',{name:'Состояние подключённой среды',exact:true}).click();await expect(page.getByRole('dialog',{name:'Сводка проекта'})).toContainText('Локальная сессия');await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Вид и панели',exact:true}).click();await page.getByRole('menuitemcheckbox',{name:'Проект',exact:true}).click();
+  await page.setViewportSize({width:390,height:844});
+  await expect(page.locator('.mobile-environment')).toContainText('SIM');
+  await page.getByRole('button',{name:'Открыть навигацию',exact:true}).click();await expect(destination('hmi')).toBeVisible();await expect(page.locator('.sidebar-mobile-heading')).toContainText('Насосная станция');await expect(page.locator('.sidebar-mobile-heading')).toContainText('SIM');for(let step=0;step<16;step++){await page.keyboard.press('Tab');assert.ok(await page.locator('.unified-sidebar').evaluate(node=>node.contains(document.activeElement)),'Navigator focus escaped');}const mobileNavigator=(await page.locator('.unified-sidebar').boundingBox())!;assert.equal(Math.round(mobileNavigator.y),0,'Navigator leaves a blank header band');assert.equal(Math.round(mobileNavigator.height),844,'Navigator must use the full phone height');await snap('mobile-navigation');
+  await openProjectSurface(page,'hmi');await expect(page.locator('.unified-sidebar')).toBeHidden();await expect(page.locator('.hmi-surface')).toBeVisible();const descriptionBox=(await page.locator('.hmi-surface>.surface-description').boundingBox())!,galleryBox=(await page.locator('.hmi-gallery').boundingBox())!;assert.ok(galleryBox.y-(descriptionBox.y+descriptionBox.height)<=20,'HMI has a blank stretched row');await snap('mobile-hmi');await page.getByRole('button',{name:'Открыть навигацию',exact:true}).click();await openProjectSurface(page,'source');await expect(editor).toContainText('shell navigation draft');await snap('mobile-source');
+  await page.getByRole('button',{name:'Главное меню',exact:true}).click();await expect(page.getByRole('dialog',{name:'Главное меню'}).getByRole('button',{name:'Разделы проекта',exact:true})).toBeVisible();await page.getByRole('dialog',{name:'Главное меню'}).getByRole('button',{name:'Разделы проекта',exact:true}).click();await expect(destination('hmi')).toBeVisible();await page.locator('.sidebar-mobile-heading').getByRole('button',{name:'Закрыть навигацию',exact:true}).click();
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile overflows');
+  await page.setViewportSize({width:1536,height:864});await openProjectSurface(page,'source');await expect(editor).toContainText('shell navigation draft');
+  await page.evaluate(()=>{localStorage.setItem('saturn.theme','dark');document.documentElement.dataset.theme='dark';});await snap('dark-source');
+  await Bun.write(join(work.root,'project.ts'),'broken TypeScript {');await expect(page.locator('.shell-alert')).toBeVisible({timeout:20000});await snap('failed');
+  await app.close();await expect(page.locator('.environment-chip')).toHaveClass(/offline/,{timeout:15000});
+  await page.getByRole('button',{name:'Состояние подключённой среды',exact:true}).click();await expect(page.getByRole('dialog',{name:'Сводка проекта'})).toContainText('Состояние исполнения не подтверждено');await snap('offline');await page.keyboard.press('Escape');await page.setViewportSize({width:800,height:768});await noOverflow();await snap('offline-800');await openProjectSurface(page,'diagram');await expect(pump).toHaveAttribute('data-state','offline');await expect(pump.locator('.object-source-state')).toHaveCount(1);await snap('offline-object');
+  assert.deepEqual(errors,[]);console.log('PASS shell navigation: one project tree, no second navigation rail or closed panel bar, all surfaces, equipment selection, folder/list files, retained draft, file-only tabs, collapsed navigation, unclipped 1536/1024/800 header, one details menu, operator UI/unchanged authority, mobile HMI, dark/failed/offline. Bun '+Bun.version+'; Chromium '+browser.version());
+}finally{await context.close();await page.video()?.saveAs(join(evidence,'walkthrough.webm'));await browser.close();await app.close();work.clean();}

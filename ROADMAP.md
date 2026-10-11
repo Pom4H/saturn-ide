@@ -70,6 +70,52 @@ production UI с явно обозначенными HTTP fixtures, без за�
 
 ## Shell / UX evidence
 
+- [x] **2026-10-06 — устранено смещение 3D-маркеров концов труб/кабелей.**
+  `scene3d.tsx` повторно менял оси у уже преобразованных route points, из-за чего
+  координата на плане становилась высотой. Маркеры теперь используют те же world
+  points, что и отрисованная труба. В существующую browser-приёмку physical editor
+  добавлена проверка совпадения каждого attached handle с соответствующим портом.
+  macOS arm64 / Bun 1.4.2: `bun run check` — PASS (201 modules), геометрия /
+  picking / physical interaction — 22 PASS, 0 FAIL, 121 assertions.
+  В настоящем Chrome через CUA до исправления воспроизведено смещение; после
+  перезапуска host все 10 концов пользовательского примера совпали с портами
+  (0 px). На отдельной временной копии настоящее перетаскивание переподключило
+  `discharge.to` с V-01.inlet на TK-01.inlet, сохранило обычный TS и Checked без
+  ошибок; маркер после drop также совпал с портом (0 px). Пользовательский проект
+  этим тестом не редактировался. Кадры: `artifacts/connection-handles/`.
+  Полный `scripts/physical-interaction-browser-test.ts` в этом запуске не выполнялся;
+  новые позиционные assertions отдельно проверены в живом браузере через CUA.
+- [ ] **P0 — читаемая среда исполнения при любой ширине.** UX-аудит 2026-10-06:
+  в текущем узком Codex preview симуляция обозначена только колбой и зелёной точкой;
+  desktop CSS скрывает текст среды при ширине до 1100 px, mobile header не содержит
+  видимого названия режима. Зелёный статус соединения общий для simulation/live.
+  Нужны постоянные текстовые «Симуляция» / «Физический объект» с идентичностью цели,
+  отдельные признаки связи/свежести и понятная среда у управляющих действий.
+  3D остаётся моделью; происхождение данных и Source/Checked/Applied должны различаться.
+  Приёмка: desktop, узкая панель/mobile, fullscreen/HMI, offline с последними данными;
+  распознавание simulation/live без tooltip и открытия сводки. Физическое подключение
+  в этом аудите не проверялось; live-ветка исследована по исходникам.
+- **2026-10-06 — явно задан получатель воды в локальном pumping-station preview.**
+  В рабочей копии `saturn-preview-examples-20261006` добавлен project-owned TK-02
+  и обычный `pipe('delivery')`: TK-01 → P-01 → V-01 → TK-02. Симулятор переносит
+  один и тот же объём между двумя резервуарами по расходу и фактически прошедшему времени,
+  ограничивает перенос доступной водой/свободным объёмом и сохраняет уровни при перезапуске.
+  Ёмкости по 10 м³ — явно описанные демонстрационные параметры; давление остаётся
+  иллюстративным, гидравлическая достоверность не заявляется.
+  macOS arm64 / Bun 1.4.2: examples `bun run check` — PASS; сценарии станции и
+  водного баланса — 6 PASS, 0 FAIL, 27 assertions; `git diff --check` — PASS.
+  В настоящем Chrome визуально проверены новая труба и TK-02 в 2D/3D, runtime
+  `simulation / running`, `problems: []`. Кадр:
+  `saturn-preview-examples-20261006/.saturn/ux-evidence/water-destination-3d.jpg`.
+  Изменения локальные, публикация в `saturn-examples` ещё не выполнена.
+- **2026-10-06 — локальный preview для ручного просмотра UX.** Актуальный `main`
+  (`26f09c5`) запущен на macOS arm64 / Bun 1.4.2 штатной командой
+  `SATURN_PROJECT=/Users/rom/Documents/saturn-preview-examples-20261006/pumping-station bun dev`.
+  Использован чистый `saturn-examples@a1631e3`; существующие локальные правки примеров сохранены.
+  `http://127.0.0.1:3000/` открыт в Chrome и панели Codex, настоящая 3D-сцена отображается;
+  `/api/state`: `simulation`, `running`, 4 устройства, 7 сигналов, `problems: []`.
+  Исправления кода не потребовались. Это smoke запуска; полная UX-приёмка остаётся за
+  ручным просмотром пользователя, новые возможности этим запуском не закрываются.
 - [x] **2026-10-04 — safety-context и regression repair.** Постоянный topbar показывает surface/environment/applied + mismatch и локальную authority отдельно от view. Routing сохраняет валидный коридор во время drag и проверяет free-end collision против всей геометрии; Modbus due-channel capability синхронизирован с `saturn-plugins` без ослабления core policy.
 - [x] **2026-10-02 — воспроизводимые light-theme кадры Shell.** Capture использует self-contained DSL fixture, явно фиксирует `light`, а workflow `37043603969` успешно пересобрал и опубликовал object-first screenshots. Evidence commit ребейзится на актуальный `main` перед push, поэтому параллельная работа больше не превращает успешный capture в ложный failure.
 - [x] **P0 — object-first вместо IDE-first.** TypeScript остаётся authored source of truth, Git/diff/agent format и advanced/debugging surface, но обычный human UX начинается с физической модели объекта и не требует ручного редактирования кода.

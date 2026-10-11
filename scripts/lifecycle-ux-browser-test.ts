@@ -92,10 +92,10 @@ try{
   await post('devices/create',{template:'pump',id:'P-02',label:'Дополнительный насос',projectVersion:preview.projectVersion,apply:true});
   await rail.locator('[data-rail-section="object"]').click();
   await tree.getByRole('treeitem',{name:'HMI',exact:true}).click();
-  await page.getByRole('button',{name:'Создать HMI',exact:true}).click();
-  const dialog=page.getByRole('dialog',{name:'Создать HMI'});
+  await page.getByRole('button',{name:'Создать экран',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Создать экран'});
   await expect(dialog.locator('.hmi-device-choice').filter({hasText:'P-02'})).toBeVisible();
-  await expect(dialog.getByRole('group',{name:'Оборудование · Checked'})).toBeVisible();
+  await expect(dialog.getByRole('group',{name:'Что показать на экране?'})).toBeVisible();
   await page.screenshot({path:'artifacts/lifecycle-ux/hmi-checked-device.png'});
   await dialog.getByRole('button',{name:'Закрыть'}).click();
 
@@ -124,6 +124,7 @@ try{
   await expect(inspector.getByRole('button',{name:'История измерений · Applied'})).toBeVisible();
   await page.screenshot({path:'artifacts/lifecycle-ux/changed-signal-properties.png'});
   await rail.locator('[data-rail-section="monitor"]').click();
+  await page.locator('.signal-catalog>summary').click();
   await page.locator('.signals-surface tr[data-stage="changed"]').filter({hasText:'P-01.pressure'}).getByRole('button').click();
   await expect(page.locator('.signals-surface>.inspector-body').getByRole('status')).toContainText('Checked ≠ Applied');
   await expect(inspector.getByRole('status')).toContainText('Checked ≠ Applied');

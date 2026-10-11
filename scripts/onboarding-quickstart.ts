@@ -131,11 +131,7 @@ try {
   await click(view.getByRole('button', { name: 'Создать и открыть', exact: true }));
   await view.waitForURL(url => url.origin !== new URL(launcherUrl).origin);
   workspaceUrl = new URL('/', view.url()).href;
-  const welcome = view.getByRole('dialog').filter({ has: view.getByRole('heading', { name: 'Как вы будете использовать Saturn?' }) });
-  await expect(welcome).toBeVisible();
-  await shot('03-preset-choice', 'Первый вход в IDE: видимый выбор рабочего места', 4000);
-  await click(welcome.getByRole('button', { name: /Для бизнеса/ }));
-  await expect(welcome).toHaveCount(0);
+  await expect(view.getByRole('heading',{name:'Как вы будете использовать Saturn?'})).toHaveCount(0);
   await expect(view.getByRole('heading', { name: 'Добавьте первое оборудование', exact: true })).toBeVisible();
   await real3d();
   const empty = await state(); assert.deepEqual(empty.project.equipment, []); assert.equal(empty.mode, 'offline'); assert.deepEqual(empty.problems, []);
@@ -145,11 +141,12 @@ try {
     return { renderer: String(gl.getParameter(info?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER)), vendor: String(gl.getParameter(info?.UNMASKED_VENDOR_WEBGL ?? gl.VENDOR)), version: String(gl.getParameter(gl.VERSION)) };
   });
   await shot('04-empty-3d', 'Пустой созданный проект в настоящем 3D-представлении', 4000);
-  checks.push('Compiled binary launched from empty cwd with new data/cache; fresh browser storage; business preset visibly chosen; actual empty project and WebGL 3D.');
+  checks.push('Compiled binary launched from empty cwd with new data/cache; fresh browser storage; project opens directly without a preset modal; actual empty project and WebGL 3D.');
 
-  await click(view.getByRole('button', { name: 'Добавить оборудование', exact: true }));
+  await click(view.locator('.empty-project').getByRole('button', { name: 'Добавить оборудование', exact: true }));
   const creation = view.getByRole('dialog', { name: 'Новое устройство', exact: true });
   await expect(creation).toBeVisible();
+  await click(creation.getByText('Дополнительно', { exact: true }));
   await type(creation.getByLabel('ID', { exact: true }), 'P-01');
   await type(creation.getByLabel('Название', { exact: true }), 'Насос подачи');
   await shot('05-pump-fields', 'Первое оборудование: P-01 «Насос подачи»', 2500);
@@ -158,8 +155,11 @@ try {
   await expect(creation.locator('.creation-preview')).toContainText('Насос подачи');
   assert.equal(existsSync(devicePath), false);
   await shot('06-generated-source-preview', 'Предпросмотр TypeScript до записи файла', 5500);
-  await click(creation.getByRole('button', { name: 'Создать устройство', exact: true }));
+  await click(creation.getByRole('button', { name: 'Добавить на схему', exact: true }));
   await expect(creation).toHaveCount(0);
+  await real3d();await shot('07-created-diagram','Созданное устройство остаётся на схеме',2500);
+  await click(view.getByRole('button',{name:'Действия объекта',exact:true}));
+  await click(view.getByRole('menuitem',{name:'Исходник',exact:true}));
   const editor = view.locator('.cm-content[contenteditable="true"]').first();
   await expect(editor).toContainText('Насос подачи');
   const sourceBefore = readFileSync(devicePath, 'utf8'); sourceBeforeSha256 = sourceHash(sourceBefore);
