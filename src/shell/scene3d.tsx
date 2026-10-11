@@ -422,6 +422,18 @@ export default function Scene3D(props:SceneProps){
       controls.target.copy(center);camera.position.copy(center).addScaledVector(direction,distance);camera.far=Math.max(200,distance+size.length()*3);camera.updateProjectionMatrix();controls.update();
       node.dataset.focusedRoute=id;node.dataset.focusedRoutePart=free?'free-end':'connection';
     };
+    focusCad.current=(guid)=>{
+      if(dirty)synchronize();
+      const run=cadRunPlans(current.current.project).find(item=>item.guid===guid);
+      if(!run||!cadRunVisible(run,current.current.cadFilter??'all'))return;
+      const bounds=new T.Box3().setFromPoints(run.points.map(point=>vector(point).multiplyScalar(.01)));
+      if(bounds.isEmpty())return;
+      const center=bounds.getCenter(new T.Vector3()),size=bounds.getSize(new T.Vector3());
+      const direction=camera.position.clone().sub(controls.target).normalize(),distance=Math.max(2.5,size.length()*1.8);
+      controls.target.copy(center);camera.position.copy(center).addScaledVector(direction,distance);
+      camera.far=Math.max(200,distance+size.length()*3);camera.updateProjectionMatrix();controls.update();
+      current.current.onCadSelect?.(guid);node.dataset.focusedCad=guid;
+    };
     fit.current=()=>{if(dirty)synchronize();world.updateWorldMatrix(true,true);const box=new T.Box3();const group=systemLayout(current.current.project).find(item=>item.id===current.current.systemFocus);if(group)box.set(new T.Vector3((group.x-28)*.01,group.z*.01,(group.y-28)*.01),new T.Vector3((group.x+group.width+28)*.01,group.z*.01+2.5,(group.y+group.height+28)*.01));else{for(const root of roots.values())box.expandByObject(root);box.expandByObject(routeWorld);box.expandByObject(cadWorld);if(!roots.size||systemPortPositions(current.current.project).length)box.expandByObject(groupWorld);}if(box.isEmpty())return;const center=box.getCenter(new T.Vector3()),radius=box.getSize(new T.Vector3()).length()/2;
       if(node.clientWidth&&node.clientHeight)camera.aspect=node.clientWidth/node.clientHeight;
       const vertical=T.MathUtils.degToRad(camera.fov),horizontal=2*Math.atan(Math.tan(vertical/2)*camera.aspect);
@@ -444,6 +456,17 @@ export default function Scene3D(props:SceneProps){
     const placementGeometry=new T.BoxGeometry(1,1,1),placementMesh=new T.Mesh(placementGeometry,placementMaterial);placementMesh.visible=false;world.add(placementMesh);
     const placement=(event:globalThis.PointerEvent)=>{const point=ground(event,0),kind=current.current.placing?.template;if(!point||!kind)return null;return placementAt({x:point.x*100,y:point.z*100},kind,current.current.project.equipment.map(e=>({x:e.x,y:e.y,width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150})));};
     const showPlacement=(event:globalThis.PointerEvent)=>{const p=placement(event),kind=current.current.placing?.template;if(!p||!kind){placementMesh.visible=false;return null;}const size=templateDimensions(kind);placementMesh.scale.set(size.width,8,size.height);placementMesh.position.set(p.x+size.width/2,8,p.y+size.height/2);placementMaterial.color.set(p.valid?0x248997:0xb44750);placementMesh.visible=true;node.dataset.placementCandidate=JSON.stringify(p);node.dataset.placementValid=String(p.valid);return p;};
+    const pick=(event:MouseEvent|globalThis.PointerEvent):{kind:'equipment'|'route'|'cad';id:string}|undefined=>{
+      aim(event);
+      const equipment=ray.intersectObjects([...roots.values()],true)[0];
+      const route=ray.intersectObjects(routeWorld.children.filter(object=>typeof object.userData.routeId==='string'&&!object.userData.cablePlug),false)[0];
+      const cad=ray.intersectObjects(cadWorld.children.filter(object=>object.visible),false)[0];
+      const hits=[equipment?{kind:'equipment' as const,id:'',distance:equipment.distance}:undefined,
+        route?{kind:'route' as const,id:String(route.object.userData.routeId),distance:route.distance}:undefined,
+        cad?{kind:'cad' as const,id:String(cad.object.userData.cadGuid),distance:cad.distance}:undefined].filter((hit):hit is {kind:'equipment'|'route'|'cad';id:string;distance:number}=>!!hit)
+        .sort((a,b)=>a.distance-b.distance);
+      return hits[0];
+    };
     const hitEquipment=(event:MouseEvent|globalThis.PointerEvent)=>{aim(event);const hit=ray.intersectObjects([...roots.values()],true)[0];let object:T.Object3D|null=hit?.object??null;while(object&&!object.userData.equipment)object=object.parent;if(object)return object;
       let nearest:T.Group|null=null,distance=Infinity;for(const root of roots.values()){const point=ray.ray.intersectBox(new T.Box3().setFromObject(root),new T.Vector3());if(point){const d=point.distanceToSquared(ray.ray.origin);if(d<distance){distance=d;nearest=root;}}}return nearest;};
     const targetGroup=new T.Group();world.add(targetGroup);
@@ -453,7 +476,7 @@ export default function Scene3D(props:SceneProps){
     const capture=(event:globalThis.PointerEvent)=>{node.dataset.dragPointer=String(event.pointerId);node.dataset.dragKind=gesture?.kind??'';controls.enabled=false;event.preventDefault();event.stopImmediatePropagation();renderer.domElement.setPointerCapture(event.pointerId);};
     const release=(pointer:number)=>{controls.enabled=true;if(renderer.domElement.hasPointerCapture(pointer))renderer.domElement.releasePointerCapture(pointer);targetGroup.clear();setDragPorts(null);delete node.dataset.connectionTarget;delete node.dataset.dragPointer;delete node.dataset.dragKind;delete node.dataset.compatibleTargets;};
     const pointerDown=(e:globalThis.PointerEvent)=>{if(gesture)return;down=[e.clientX,e.clientY];renderer.domElement.focus({preventScroll:true});if(current.current.placing&&e.button===0){const p=showPlacement(e);e.preventDefault();e.stopImmediatePropagation();if(p?.valid)current.current.place?.(p);return;}if(current.current.interaction!=='edit'||e.button!==0)return;
-      aim(e);const plugHit=ray.intersectObjects(plugMeshes,false)[0],equipmentHit=ray.intersectObjects([...roots.values()],true)[0];
+      aim(e);const plugHit=ray.intersectObjects(plugMeshes.filter(mesh=>mesh.visible),false)[0],equipmentHit=ray.intersectObjects([...roots.values()],true)[0];
       const candidate=plugHit?.object.userData.cablePlug as {id:string;end:'from'|'to'}|undefined;
       const candidateEnd=candidate&&[...current.current.project.pipes,...current.current.project.cables??[]].find(edge=>edge.id===candidate.id)?.[candidate.end];
       let obstacle:T.Object3D|null=equipmentHit?.object??null,obstaclePort:string|undefined;
@@ -535,13 +558,20 @@ export default function Scene3D(props:SceneProps){
     };
     const pointerCancel=()=>{const g=gesture;gesture=null;if(!g)return;release(g.pointer);if(g.kind==='plug')current.current.endCable?.(undefined,true);else if(g.started)current.current.end?.(true);};
     const pressButton=(id:string,key:'up'|'down'|'left'|'right')=>{const driver=buttonDrivers.get(id);if(!driver)return;try{driver.press(key);driver.refresh(current.current.snapshot);buttonScreens.get(id)!.needsUpdate=true;node.dataset.lastButton=key;}catch(reason){const canvas=buttonCanvases.get(id);if(canvas)displayUnavailable(id,canvas,reason);}};
-    const select=(event:globalThis.PointerEvent)=>{if(Math.hypot(event.clientX-down[0]!,event.clientY-down[1]!)>4)return;const object=hitEquipment(event);if(!object)return;current.current.select(String(object.userData.equipment),current.current.interaction==='select'&&(event.shiftKey||event.metaKey||event.ctrlKey));
+    const select=(event:globalThis.PointerEvent)=>{if(Math.hypot(event.clientX-down[0]!,event.clientY-down[1]!)>4)return;
+      const chosen=pick(event);
+      if(chosen?.kind==='route'){current.current.select(chosen.id);node.dataset.selectedRoute=chosen.id;return;}
+      if(chosen?.kind==='cad'){current.current.onCadSelect?.(chosen.id);node.dataset.selectedCad=chosen.id;return;}
+      const object=hitEquipment(event);if(!object)return;current.current.select(String(object.userData.equipment),current.current.interaction==='select'&&(event.shiftKey||event.metaKey||event.ctrlKey));
       const rect=renderer.domElement.getBoundingClientRect();ray.setFromCamera(new T.Vector2((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2),camera);
       const hit=ray.intersectObject(object,true)[0]?.object,key=hit?.userData.button as 'up'|'down'|'left'|'right'|undefined;
       if(key)pressButton(String(object.userData.equipment),key);
     };
     const keyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'&&current.current.placing){event.preventDefault();current.current.cancelPlace?.();return;}if(event.key==='Escape'&&gesture){event.preventDefault();pointerCancel();return;}const key=({ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'} as const)[event.key as 'ArrowUp'|'ArrowDown'|'ArrowLeft'|'ArrowRight'];if(!key||!buttonDrivers.has(current.current.selected))return;event.preventDefault();pressButton(current.current.selected,key);};
     const focusEquipment=(event:MouseEvent)=>{
+      const chosen=pick(event);
+      if(chosen?.kind==='route'){focusRoute.current(chosen.id);return;}
+      if(chosen?.kind==='cad'){focusCad.current(chosen.id);return;}
       const object=hitEquipment(event);if(!object)return;
       const bounds=new T.Box3().setFromObject(object),center=bounds.getCenter(new T.Vector3()),size=bounds.getSize(new T.Vector3());
       const direction=camera.position.clone().sub(controls.target).normalize();
@@ -581,7 +611,19 @@ export default function Scene3D(props:SceneProps){
       }
       return centers;
     };
-    const tick=(now:number)=>{const dt=Math.min(.1,(now-last)/1000);last=now;if(!document.hidden){if(!current.current.placing){placementMesh.visible=false;delete node.dataset.placementCandidate;delete node.dataset.placementValid;}if(gesture&&current.current.interaction!=='edit')pointerCancel();if(dirty)synchronize();if(focusedSystem!==current.current.systemFocus){focusedSystem=current.current.systemFocus;for(const [id,material] of groupBorders)material.color.set(id===focusedSystem?0x17879a:0xa8bec8);}const elapsed=reduced.matches?0:dt;for(const scope of [...deviceResources.values(),routeResources])for(const update of scope.updaters)update(elapsed);
+    const routeSelectedMaterial=new T.MeshBasicMaterial({color:0x258ebb,wireframe:true,transparent:true,opacity:.76,depthTest:false,depthWrite:false});
+    let routeSelectedKey='',routeSelectedMesh:T.Mesh|null=null;
+    const highlightRoute=()=>{
+      const key=current.current.selected+'@'+routeRevision;
+      if(key===routeSelectedKey)return;routeSelectedKey=key;
+      if(routeSelectedMesh){routeSelectedMesh.removeFromParent();routeSelectedMesh.geometry.dispose();routeSelectedMesh=null;}
+      const route=current.current.routes.find(item=>item.id===current.current.selected);if(!route?.valid)return;
+      const path=roundedRoute(route.points.map(vector),route.kind==='pipe'?12:6);
+      if(!path.path.curves.length)return;
+      const geometry=new T.TubeGeometry(path.path,Math.max(24,Math.ceil(path.path.getLength()/4)),route.kind==='pipe'?11:3.6,8,false);
+      routeSelectedMesh=new T.Mesh(geometry,routeSelectedMaterial);routeSelectedMesh.renderOrder=6;world.add(routeSelectedMesh);
+    };
+    const tick=(now:number)=>{const dt=Math.min(.1,(now-last)/1000);last=now;if(!document.hidden){if(!current.current.placing){placementMesh.visible=false;delete node.dataset.placementCandidate;delete node.dataset.placementValid;}if(gesture&&current.current.interaction!=='edit')pointerCancel();if(dirty)synchronize();for(const handle of plugMeshes)handle.visible=handle.userData.cablePlug.id===current.current.selected;highlightRoute();if(focusedSystem!==current.current.systemFocus){focusedSystem=current.current.systemFocus;for(const [id,material] of groupBorders)material.color.set(id===focusedSystem?0x17879a:0xa8bec8);}const elapsed=reduced.matches?0:dt;for(const scope of [...deviceResources.values(),routeResources])for(const update of scope.updaters)update(elapsed);
       const selected=new Set(current.current.selectedIds??[current.current.selected]);node.dataset.selectedEquipment=[...selected].join(',');for(const [id,helper] of selections)if(!selected.has(id)||!roots.has(id)){scene.remove(helper);helper.geometry.dispose();helper.material.dispose();selections.delete(id);}
       for(const id of selected){const chosen=roots.get(id);if(!chosen)continue;let helper=selections.get(id);if(!helper){helper=new T.BoxHelper(chosen,0x258ebb);scene.add(helper);selections.set(id,helper);}helper.setFromObject(chosen);}
       const activePort=current.current.selectedPort,portAnchor=activePort?roots.get(current.current.selected)?.getObjectByName(`${current.current.selected}.${activePort}`):undefined;portHalo.visible=!!portAnchor;if(portAnchor){portAnchor.getWorldPosition(portHalo.position);world.worldToLocal(portHalo.position);}node.dataset.selectedPort=portAnchor?`${current.current.selected}.${activePort}`:'';
@@ -600,11 +642,12 @@ export default function Scene3D(props:SceneProps){
         node.dataset.equipmentScreens=JSON.stringify(updateLabels(rect,projectPoint));
       }
     }frame=requestAnimationFrame(tick);};frame=requestAnimationFrame(tick);
-    return()=>{pointerCancel();window.removeEventListener('blur',pointerCancel);cancelAnimationFrame(frame);resize.disconnect();theme.removeEventListener('change',applyTheme);renderer.domElement.removeEventListener('pointerdown',pointerDown,true);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerup',pointerUp);renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('lostpointercapture',pointerCancel);renderer.domElement.removeEventListener('dblclick',focusEquipment);clearTimeout(cameraTimer);restoreCamera.current=()=>{};controls.dispose();for(const helper of selections.values()){helper.geometry.dispose();helper.material.dispose();}portHaloGeometry.dispose();portHaloMaterial.dispose();targetGeometry.dispose();targetAvailable.dispose();targetSelected.dispose();placementGeometry.dispose();placementMaterial.dispose();dragGeometry.dispose();dragMaterial.dispose();environment.dispose();for(const scope of deviceResources.values())dispose(scope);dispose(groupResources);dispose(routeResources);dispose(cadResources);for(const m of materials)m.dispose();floor.geometry.dispose();floor.material.dispose();grid.geometry.dispose();for(const m of Array.isArray(grid.material)?grid.material:[grid.material])m.dispose();renderer.dispose();renderer.domElement.remove();labelLayer.remove();rebuild.current=()=>{};fit.current=()=>{};};
+    return()=>{pointerCancel();window.removeEventListener('blur',pointerCancel);cancelAnimationFrame(frame);resize.disconnect();theme.removeEventListener('change',applyTheme);renderer.domElement.removeEventListener('pointerdown',pointerDown,true);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerup',pointerUp);renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('lostpointercapture',pointerCancel);renderer.domElement.removeEventListener('dblclick',focusEquipment);clearTimeout(cameraTimer);restoreCamera.current=()=>{};focusCad.current=()=>{};routeSelectedMesh?.removeFromParent();routeSelectedMesh?.geometry.dispose();routeSelectedMaterial.dispose();controls.dispose();for(const helper of selections.values()){helper.geometry.dispose();helper.material.dispose();}portHaloGeometry.dispose();portHaloMaterial.dispose();targetGeometry.dispose();targetAvailable.dispose();targetSelected.dispose();placementGeometry.dispose();placementMaterial.dispose();dragGeometry.dispose();dragMaterial.dispose();environment.dispose();for(const scope of deviceResources.values())dispose(scope);dispose(groupResources);dispose(routeResources);dispose(cadResources);for(const m of materials)m.dispose();floor.geometry.dispose();floor.material.dispose();grid.geometry.dispose();for(const m of Array.isArray(grid.material)?grid.material:[grid.material])m.dispose();renderer.dispose();renderer.domElement.remove();labelLayer.remove();rebuild.current=()=>{};fit.current=()=>{};};
   },[]);
-  useEffect(()=>rebuild.current(),[props.project,props.routes,props.interaction,props.cablePreview?.id,props.locale]);useEffect(()=>fit.current(),[props.fit,props.systemFocus]);
+  useEffect(()=>rebuild.current(),[props.project,props.routes,props.interaction,props.cablePreview?.id,props.locale,props.cadFilter,props.selectedCad]);useEffect(()=>fit.current(),[props.fit,props.systemFocus]);
   return error ? <div className="scene3d-fallback"><Scene {...props}/><p role="status">{props.locale==='ru'?'3D недоступна. Продолжаем в 2D.':'3D unavailable. Continuing in 2D.'}</p></div> : <div ref={host} className="scene3d" aria-label="3D process model">
     {dragPorts&&<div className="scene3d-compatible" role="status" aria-live="polite"><strong>{props.locale==='ru'?'Порты по контракту':'Ports matching the contract'} · {dragPorts.count}</strong><span>{dragPorts.target?`${dragPorts.target} · ${props.locale==='ru'?'отпустите для подключения':'release to connect'}`:props.locale==='ru'?'Наведите конец на подсвеченный порт или оставьте свободным':'Move the end to a highlighted port or leave it free'}</span></div>}
+    {props.onCadFilter&&<CadNavigator runs={cadRunPlans(props.project)} filter={props.cadFilter??'all'} selected={props.selectedCad} locale={props.locale} onFilter={props.onCadFilter} onFocus={guid=>focusCad.current(guid)}/>}
     {invalidRoutes.length>0&&<details open={routesExpanded} onToggle={event=>setRoutesExpanded(event.currentTarget.open)} className="scene3d-route-issue" aria-label={props.locale==='ru'?'Проблемы маршрутов':'Route issues'}>
       <summary><strong>{props.locale==='ru'?'Маршрут требует правки':'Route needs editing'} · {invalidRoutes.length}</strong></summary>
       <p>{props.locale==='ru'?'Красный пунктир обозначает проблему, а не проложенное соединение.':'Red dashes mark a problem, not a routed connection.'}</p>
