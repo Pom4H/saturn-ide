@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { cadRunPlans, systemPortPositions, endLabel, isAttached, isConnected, cableAppearance, interfaceProfile, text, waypointPosition, type Endpoint, type Equipment, type Locale, type Project, type RoutePoint, type RouteWaypoint, type Snapshot } from '../core';
-import { cadRunBounds, cadRunVisible, type CadFilter } from './model/cad-navigation';
+import { cadRunBounds, cadRunKey, cadRunVisible, type CadFilter } from './model/cad-navigation';
 import { CadNavigator } from './cad-navigator';
 import { routeWaypointInsertIndex } from './model/route-waypoints';
 import { anchor, connectionTip, routingWaypoints, routePath, type PhysicalRoute } from '../topology';
@@ -118,7 +118,7 @@ export function Scene(props:SceneProps){
     setBox([(minX+maxX-width)/2,(minY+maxY-height)/2,width,height]);
   };
   useEffect(()=>{if(props.focusRouteId&&!props.focus)focusRoute(props.focusRouteId);},[props.focusRouteId]);
-  const focusCad=(guid:string)=>{const run=cadRoutes.find(item=>item.guid===guid);if(!run)return;props.onCadSelect?.(guid);const bounds=cadRunBounds(run);if(!bounds)return;
+  const focusCad=(guid:string)=>{const run=cadRoutes.find(item=>cadRunKey(item)===guid);if(!run)return;props.onCadSelect?.(guid);const bounds=cadRunBounds(run);if(!bounds)return;
     const padding=65,width=Math.max(320,bounds.width+padding*2),height=Math.max(240,bounds.height+padding*2);
     setBox([bounds.x+(bounds.width-width)/2,bounds.y+(bounds.height-height)/2,width,height]);
   };
@@ -161,11 +161,11 @@ export function Scene(props:SceneProps){
         {systemTitleLines(text(group.label,props.locale),group.width).map((line,index)=><text className="scene-system-title" key={index} x={group.x+18} y={group.y+42+index*20}>{line}</text>)}
       </g>
     </g>)}
-    {!props.focus&&visibleCadRoutes.map(run=><g key={`cad-${run.guid}`} data-cad-run={run.guid} data-cad-network={run.network} data-selected={props.selectedCad===run.guid||undefined} pointerEvents="stroke" style={{cursor:"pointer"}} onPointerDown={event=>event.stopPropagation()} onClick={()=>props.onCadSelect?.(run.guid)} onDoubleClick={()=>focusCad(run.guid)}>
+    {!props.focus&&visibleCadRoutes.map(run=><g key={`cad-${cadRunKey(run)}`} data-cad-run={run.guid} data-cad-key={cadRunKey(run)} data-cad-network={run.network} data-selected={props.selectedCad===cadRunKey(run)||undefined} pointerEvents="stroke" style={{cursor:"pointer"}} onPointerDown={event=>event.stopPropagation()} onClick={()=>props.onCadSelect?.(cadRunKey(run))} onDoubleClick={()=>focusCad(cadRunKey(run))}>
       <title>{`CAD / IFC · ${run.label} · ${run.network} · ${run.source} · проектная пространственная модель`}</title>
       <path d={run.points.map((point,index)=>`${index?'L':'M'}${point.x} ${point.y}`).join(' ')} fill="none"
         stroke={run.network==='pipe'?'#5f91a5':run.network==='raceway'?'#b58c5d':'#a79a7f'}
-        strokeOpacity={props.selectedCad===run.guid?1:.7} strokeWidth={(run.network==='raceway'?12:run.network==='pipe'?7:2.5)+(props.selectedCad===run.guid?3:0)}
+        strokeOpacity={props.selectedCad===cadRunKey(run)?1:.7} strokeWidth={(run.network==='raceway'?12:run.network==='pipe'?7:2.5)+(props.selectedCad===cadRunKey(run)?3:0)}
         strokeLinecap="round" strokeLinejoin="round" strokeDasharray="6 4" />
     </g>)}
     {!props.focus&&routes.map(route=>{
