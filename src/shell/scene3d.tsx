@@ -492,6 +492,21 @@ export default function Scene3D(props:SceneProps){
     const release=(pointer:number)=>{controls.enabled=true;if(renderer.domElement.hasPointerCapture(pointer))renderer.domElement.releasePointerCapture(pointer);targetGroup.clear();setDragPorts(null);delete node.dataset.connectionTarget;delete node.dataset.dragPointer;delete node.dataset.dragKind;delete node.dataset.compatibleTargets;};
     const pointerDown=(e:globalThis.PointerEvent)=>{if(gesture)return;down=[e.clientX,e.clientY];renderer.domElement.focus({preventScroll:true});if(current.current.placing&&e.button===0){const p=showPlacement(e);e.preventDefault();e.stopImmediatePropagation();if(p?.valid)current.current.place?.(p);return;}if(current.current.interaction!=='edit'||e.button!==0)return;
       aim(e);const plugHit=ray.intersectObjects(plugMeshes.filter(mesh=>mesh.visible),false)[0],equipmentHit=ray.intersectObjects([...roots.values()],true)[0];
+      const bendHit=ray.intersectObjects(bendMeshes.filter(mesh=>mesh.visible),false)[0];
+      if(bendHit&&(!equipmentHit||bendHit.distance<equipmentHit.distance)){
+        const {id,index}=bendHit.object.userData.routeWaypoint as {id:string;index:number};
+        const p=current.current.project,edge=[...p.pipes,...p.cables??[]].find(item=>item.id===id),waypoint=edge?.via?.[index];
+        if(!edge||!waypoint||waypoint.kind==='route-port')return;
+        const automaticZ=Math.max(anchor(p,edge.from).z,anchor(p,edge.to).z);
+        const effectiveZ=waypoint.z??automaticZ,origin=ground(e,effectiveZ*.01);
+        if(!origin)return;
+        if(current.current.beginRoutePoint?.(id,'move',index,waypoint)){
+          gesture={kind:'bend',pointer:e.pointerId,id,index,moved:false,height:effectiveZ*.01,point:waypoint,
+            offset:vector(waypointPosition(p,waypoint,automaticZ)).multiplyScalar(.01).sub(origin),
+            lastY:e.clientY,vertical:false,raised:false};
+          capture(e);
+        }return;
+      }
       const candidate=plugHit?.object.userData.cablePlug as {id:string;end:'from'|'to'}|undefined;
       const candidateEnd=candidate&&[...current.current.project.pipes,...current.current.project.cables??[]].find(edge=>edge.id===candidate.id)?.[candidate.end];
       let obstacle:T.Object3D|null=equipmentHit?.object??null,obstaclePort:string|undefined;
@@ -520,6 +535,24 @@ export default function Scene3D(props:SceneProps){
       const origin=ground(e,equipmentElevation(current.current.project,equipment)*.01);if(!origin)return;gesture={kind:'equipment',pointer:e.pointerId,id,x:equipment.x,y:equipment.y,origin,moved:false,started:false};capture(e);
     };
     const pointerMove=(e:globalThis.PointerEvent)=>{if(current.current.placing){showPlacement(e);return;}if(!gesture||gesture.pointer!==e.pointerId)return;
+      if(gesture.kind==='bend'){
+        const bend=gesture;if(!bend.moved&&Math.hypot(e.clientX-down[0]!,e.clientY-down[1]!)<=4)return;bend.moved=true;
+        let point:T.Vector3|null;
+        if(e.shiftKey){
+          const scale=2*camera.position.distanceTo(controls.target)*Math.tan(T.MathUtils.degToRad(camera.fov)/2)/Math.max(1,node.clientHeight);
+          bend.height=Math.max(-150,Math.min(150,bend.height-(e.clientY-bend.lastY)*scale));
+          point=vector({...bend.point,z:bend.height*100}).multiplyScalar(.01);bend.raised=true;
+        }else{
+          point=ground(e,bend.height);
+          if(point){if(bend.vertical)bend.offset.copy(vector({...bend.point,z:bend.height*100}).multiplyScalar(.01).sub(point));
+            point.add(bend.offset);point.y=bend.height;}
+        }
+        bend.lastY=e.clientY;bend.vertical=e.shiftKey;if(!point)return;
+        bend.point={x:e.shiftKey?bend.point.x:Math.round(point.x*100),
+          y:e.shiftKey?bend.point.y:Math.round(point.z*100),
+          ...(bend.raised||bend.point.z!==undefined?{z:Math.round(point.y*100)}:{})};
+        current.current.moveRoutePoint?.(bend.point);return;
+      }
       if(gesture.kind==='plug'){
         const plug=gesture;if(!plug.moved&&Math.hypot(e.clientX-down[0]!,e.clientY-down[1]!)<=4)return;plug.moved=true;
         let point:T.Vector3|null;
@@ -568,10 +601,11 @@ export default function Scene3D(props:SceneProps){
       if(gesture&&gesture.pointer!==e.pointerId)return;
       const g=gesture;gesture=null;if(g)release(g.pointer);
       if(g?.kind==='plug'){current.current.endCable?.(g.target?{device:g.target.device,port:g.target.port}:undefined,!g.moved);return;}
+      if(g?.kind==='bend'){current.current.endRoutePoint?.(!g.moved);return;}
       if(g?.kind==='equipment'&&g.started){current.current.end?.(!g.moved);if(g.moved)return;}
       select(e);
     };
-    const pointerCancel=()=>{const g=gesture;gesture=null;if(!g)return;release(g.pointer);if(g.kind==='plug')current.current.endCable?.(undefined,true);else if(g.started)current.current.end?.(true);};
+    const pointerCancel=()=>{const g=gesture;gesture=null;if(!g)return;release(g.pointer);if(g.kind==='plug')current.current.endCable?.(undefined,true);else if(g.kind==='bend')current.current.endRoutePoint?.(true);else if(g.started)current.current.end?.(true);};
     const pressButton=(id:string,key:'up'|'down'|'left'|'right')=>{const driver=buttonDrivers.get(id);if(!driver)return;try{driver.press(key);driver.refresh(current.current.snapshot);buttonScreens.get(id)!.needsUpdate=true;node.dataset.lastButton=key;}catch(reason){const canvas=buttonCanvases.get(id);if(canvas)displayUnavailable(id,canvas,reason);}};
     const select=(event:globalThis.PointerEvent)=>{if(Math.hypot(event.clientX-down[0]!,event.clientY-down[1]!)>4)return;
       const chosen=pick(event);
@@ -638,7 +672,7 @@ export default function Scene3D(props:SceneProps){
       const geometry=new T.TubeGeometry(path.path,Math.max(24,Math.ceil(path.path.getLength()/4)),route.kind==='pipe'?11:3.6,8,false);
       routeSelectedMesh=new T.Mesh(geometry,routeSelectedMaterial);routeSelectedMesh.renderOrder=6;world.add(routeSelectedMesh);
     };
-    const tick=(now:number)=>{const dt=Math.min(.1,(now-last)/1000);last=now;if(!document.hidden){if(!current.current.placing){placementMesh.visible=false;delete node.dataset.placementCandidate;delete node.dataset.placementValid;}if(gesture&&current.current.interaction!=='edit')pointerCancel();if(dirty)synchronize();for(const handle of plugMeshes)handle.visible=handle.userData.cablePlug.id===current.current.selected;highlightRoute();if(focusedSystem!==current.current.systemFocus){focusedSystem=current.current.systemFocus;for(const [id,material] of groupBorders)material.color.set(id===focusedSystem?0x17879a:0xa8bec8);}const elapsed=reduced.matches?0:dt;for(const scope of [...deviceResources.values(),routeResources])for(const update of scope.updaters)update(elapsed);
+    const tick=(now:number)=>{const dt=Math.min(.1,(now-last)/1000);last=now;if(!document.hidden){if(!current.current.placing){placementMesh.visible=false;delete node.dataset.placementCandidate;delete node.dataset.placementValid;}if(gesture&&current.current.interaction!=='edit')pointerCancel();if(dirty)synchronize();for(const handle of plugMeshes)handle.visible=handle.userData.cablePlug.id===current.current.selected;for(const handle of bendMeshes)handle.visible=handle.userData.routeWaypoint.id===current.current.selected;highlightRoute();if(focusedSystem!==current.current.systemFocus){focusedSystem=current.current.systemFocus;for(const [id,material] of groupBorders)material.color.set(id===focusedSystem?0x17879a:0xa8bec8);}const elapsed=reduced.matches?0:dt;for(const scope of [...deviceResources.values(),routeResources])for(const update of scope.updaters)update(elapsed);
       const selected=new Set(current.current.selectedIds??[current.current.selected]);node.dataset.selectedEquipment=[...selected].join(',');for(const [id,helper] of selections)if(!selected.has(id)||!roots.has(id)){scene.remove(helper);helper.geometry.dispose();helper.material.dispose();selections.delete(id);}
       for(const id of selected){const chosen=roots.get(id);if(!chosen)continue;let helper=selections.get(id);if(!helper){helper=new T.BoxHelper(chosen,0x258ebb);scene.add(helper);selections.set(id,helper);}helper.setFromObject(chosen);}
       const activePort=current.current.selectedPort,portAnchor=activePort?roots.get(current.current.selected)?.getObjectByName(`${current.current.selected}.${activePort}`):undefined;portHalo.visible=!!portAnchor;if(portAnchor){portAnchor.getWorldPosition(portHalo.position);world.worldToLocal(portHalo.position);}node.dataset.selectedPort=portAnchor?`${current.current.selected}.${activePort}`:'';
@@ -651,6 +685,7 @@ export default function Scene3D(props:SceneProps){
         screenRevision=nextScreens;
         const rect=renderer.domElement.getBoundingClientRect(),projectPoint=(point:T.Vector3)=>{point.project(camera);return {x:Math.round(rect.left+(point.x+1)*rect.width/2),y:Math.round(rect.top+(1-point.y)*rect.height/2)};},project=(mesh:T.Object3D)=>projectPoint(mesh.getWorldPosition(new T.Vector3()));
         node.dataset.cablePlugs=JSON.stringify(plugMeshes.map(mesh=>({...mesh.userData.cablePlug,...project(mesh)})));
+        node.dataset.routeWaypoints=JSON.stringify(bendMeshes.filter(mesh=>mesh.visible).map(mesh=>({...mesh.userData.routeWaypoint,...project(mesh)})));
         const ports:{device:string;port:string;x:number;y:number}[]=[];
         for(const root of roots.values())root.traverse(object=>{if(object.userData.port&&object.userData.device)ports.push({device:String(object.userData.device),port:String(object.userData.port),...project(object)});});
         node.dataset.portScreens=JSON.stringify(ports);
