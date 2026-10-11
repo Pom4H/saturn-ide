@@ -1,5 +1,6 @@
 import { collectSignals, free, isAttached, type Equipment, type Pipe, type Cable, type Project } from '../core';
 import type { PositionSource, Range } from '../source-edits';
+import type { RouteWaypoint } from './spatial';
 
 export interface AuthoredFile { path: string; source: string; version: string }
 export type AuthoredKind = 'equipment' | 'pipe' | 'cable' | 'alarm' | 'report' | 'hmi';
@@ -25,7 +26,8 @@ export interface AuthoringFrame {
 }
 export type AuthoringOperation =
   | { kind: 'enabled'; id: string; entity: AuthoredKind; enabled: boolean }
-  | { kind: 'endpoint'; id: string; end: 'from' | 'to'; target: { device: string; port: string } | { x: number; y: number; z: number } };
+  | { kind: 'endpoint'; id: string; end: 'from' | 'to'; target: { device: string; port: string } | { x: number; y: number; z: number } }
+  | { kind: 'route-point'; id: string; action: 'add' | 'move' | 'remove'; index: number; point?: { x: number; y: number; z?: number } };
 export interface AuthoredChange { path: string; before: string; source: string; version: string }
 
 /** Inactive entities retain their canonical shape. Only their design-time pose changes. */
@@ -48,8 +50,11 @@ export function inactiveScene(project: Project, inactive: readonly InactiveEntit
 }
 
 /** Shared transient scene projection for 2D and 3D hosts; never changes authored data. */
-export function previewScene(frame:AuthoringFrame, poses:Readonly<Record<string,{x:number;y:number}>>, plug:{id:string;end:'from'|'to';x:number;y:number;z:number}|null):Project {
-  const update=<T extends Pipe|Cable>(edge:T):T=>plug?.id===edge.id?{...edge,[plug.end]:free(edge[plug.end],{x:plug.x,y:plug.y,z:plug.z})}:edge;
+export function previewScene(frame:AuthoringFrame, poses:Readonly<Record<string,{x:number;y:number}>>, plug:{id:string;end:'from'|'to';x:number;y:number;z:number}|null, route?:{id:string;via:readonly RouteWaypoint[]}|null):Project {
+  const update=<T extends Pipe|Cable>(edge:T):T=>{
+    const next=plug?.id===edge.id?{...edge,[plug.end]:free(edge[plug.end],{x:plug.x,y:plug.y,z:plug.z})}:edge;
+    return route?.id===edge.id?{...next,via:route.via}:next;
+  };
   return {...frame.scene,equipment:frame.scene.equipment.map(e=>{
     const diagram=poses[e.id],mounted=poses[`mount:${e.id}`];
     return diagram||mounted?{...e,...(diagram?{x:diagram.x,y:diagram.y}:{}),...(mounted&&e.mount?{mount:{...e.mount,x:mounted.x,y:mounted.y}}:{})}:e;
@@ -62,6 +67,17 @@ export function readAuthoringOperation(value:unknown):AuthoringOperation {
     const t=value.target;
     if('device' in t&&'port' in t&&typeof t.device==='string'&&typeof t.port==='string')return {kind:'endpoint',id:value.id,end:value.end,target:{device:t.device,port:t.port}};
     if('x' in t&&'y' in t&&'z' in t&&typeof t.x==='number'&&typeof t.y==='number'&&typeof t.z==='number'&&[t.x,t.y,t.z].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000))return {kind:'endpoint',id:value.id,end:value.end,target:{x:t.x,y:t.y,z:t.z}};
+  }
+  if(value.kind==='route-point'&&'action' in value&&['add','move','remove'].includes(String(value.action))&&
+    'index' in value&&typeof value.index==='number'&&Number.isSafeInteger(value.index)&&value.index>=0&&value.index<=16){
+    const action=value.action as 'add'|'move'|'remove';
+    if(action==='remove'&&!('point' in value))return {kind:'route-point',id:value.id,action,index:value.index};
+    if(action!=='remove'&&'point' in value&&value.point&&typeof value.point==='object'){
+      const p=value.point;
+      if('x' in p&&'y' in p&&typeof p.x==='number'&&typeof p.y==='number'&&(!('z' in p)||p.z===undefined||typeof p.z==='number')&&
+        [p.x,p.y,'z' in p ? p.z??0 : 0].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000))
+        return {kind:'route-point',id:value.id,action,index:value.index,point:{x:p.x,y:p.y,...('z' in p&&p.z!==undefined?{z:p.z}:{})}};
+    }
   }
   throw new Error('Unsupported source operation');
 }
