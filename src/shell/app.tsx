@@ -63,6 +63,7 @@ import { InterfaceSettings, SettingsNavigation, type SettingsSection } from './i
 import { PresetWelcome } from './preset-welcome';
 const Scene3D = lazy(() => import('./scene3d'));
 import { findNavigationViews, navigationCatalog, visibleResource, quickViews, visibleView } from './model/navigation-catalog';
+import type {CadFilter} from './model/cad-navigation';
 import { layoutReducer, layoutFromView, layoutViewFields, detailsVisible } from './model/layout';
 const ROUTE_PAGE_SIZE=16,ROUTE_PAGING_THRESHOLD=64;
 
@@ -114,7 +115,8 @@ function Workbench({displays,importers,embedded=false}:AppProps) {
   const alarmHistory=useAlarmHistory(state?.project.id,shell.alarmVersion,connected);
   const [dimension, setDimension] = useState<'2d' | 'mounting' | '3d'>('2d'), [interaction, setInteraction] = useState<'select'|'edit'>('select'), [selectedIds,setSelectedIds]=useState<string[]>([]), [ports, setPorts] = useState(false), [selectedPort,setSelectedPort]=useState<string>(), [fit, setFit] = useState(0);
   const [systemFocus,setSystemFocus]=useState<string|null>(null);
-  useEffect(()=>setSystemFocus(null),[state?.project.id]);
+  const [cadFilter,setCadFilter]=useState<CadFilter>('all'),[selectedCad,setSelectedCad]=useState('');
+  useEffect(()=>{setSystemFocus(null);setSelectedCad('');setCadFilter('all');},[state?.project.id]);
   const [zoom,setZoom]=useState({step:0,factor:1});
   const sourceEditing = useSourceEditing(shell, operator);
   const [git, setGit] = useState<GitState | null>(null), [gitBusy, setGitBusy] = useState(false);
@@ -367,7 +369,7 @@ function Workbench({displays,importers,embedded=false}:AppProps) {
       setError('');
     }catch(reason){fail(reason);}
   };
-  const scene = { viewRestore,onViewBox:setViewBox,onCameraPose:setCamera,canOpenSource:(id:string)=>!operator&&catalog.resources.some(item=>item.entityId===id&&!!item.source), openSource:operator?undefined:(id:string)=>{const resource=catalog.resources.find(item=>item.entityId===id&&item.source);if(resource)void showSourceContext(resource);}, inactive:operator?[]:state.authoring?.inactive.map(item=>item.source.id), project: previewProject, displayProject: operator?state.project:state.authoring?.project??state.project, placing,place:placeEquipment,cancelPlace:()=>{setPlacing(null);setCreationError('');}, routes, snapshot, locale, selected, selectedPort, selectedIds, interaction, select: selectEquipment, fit, zoom, ports, systemFocus, focusSystem, begin, move, end,
+  const scene = { viewRestore,onViewBox:setViewBox,onCameraPose:setCamera,cadFilter,onCadFilter:setCadFilter,selectedCad,onCadSelect:setSelectedCad,canOpenSource:(id:string)=>!operator&&catalog.resources.some(item=>item.entityId===id&&!!item.source), openSource:operator?undefined:(id:string)=>{const resource=catalog.resources.find(item=>item.entityId===id&&item.source);if(resource)void showSourceContext(resource);}, inactive:operator?[]:state.authoring?.inactive.map(item=>item.source.id), project: previewProject, displayProject: operator?state.project:state.authoring?.project??state.project, placing,place:placeEquipment,cancelPlace:()=>{setPlacing(null);setCreationError('');}, routes, snapshot, locale, selected, selectedPort, selectedIds, interaction, select: selectEquipment, fit, zoom, ports, systemFocus, focusSystem, begin, move, end,
     cablePreview:sourceEditing.cablePreview,beginCable:sourceEditing.beginCable,moveCable:sourceEditing.moveCable,endCable:sourceEditing.endCable,displays };
   const sourcePanel = <section className="code-pane"><div className="pane-heading"><code title={active}>{active}</code>{file&&file.draft!==file.source&&<button onClick={()=>{if(confirm(ru?'Отбросить несохранённый текст этого файла?':'Discard this file’s unsaved text?'))void session.documents.reload(active,true).catch(fail);}}>{ru?'Перечитать':'Reload'}</button>}<button disabled={!file || file.draft === file.source || file.saving || dragging} onClick={() => void save()}>{file?.saving ? '…' : ru ? 'Сохранить' : 'Save'}</button></div>
     {file ? <Editor language={(operation,path,source,position,locale)=>api('language',{operation,path,source,position,locale})} path={active} source={file.draft} savedSource={file.source} problems={state.problems} locale={locale} dragging={dragging} snapshot={snapshot} signals={state.project.signals} now={now} change={draft => session.documents.edit(active, draft)} save={() => void save()}/> : <p>{ru ? 'Откройте исходник объекта' : 'Open an object source'}</p>}</section>;
