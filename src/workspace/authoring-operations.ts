@@ -69,7 +69,7 @@ export function authoringChanges(files: readonly AuthoredFile[], frame: Authorin
     for (const entry of selected) edits.push(...enableEdits(files.find(file => file.path === entry.path)!, entry, value));
   };
   if (operation.kind === 'enabled') enabled(operation.id, operation.entity, operation.enabled);
-  else {
+  else if(operation.kind==='endpoint') {
     const edge = [...frame.scene.pipes, ...frame.scene.cables ?? []].find(edge => edge.id === operation.id);
     if (!edge) throw new Error('Connection not found');
     const matches: { file: AuthoredFile; tree: ts.SourceFile; call: ts.CallExpression; options: ts.ObjectLiteralExpression }[] = [];
@@ -110,6 +110,62 @@ export function authoringChanges(files: readonly AuthoredFile[], frame: Authorin
       text = `${name}(${connector}, { x: ${Math.round(point.x)}, y: ${Math.round(point.y)}, z: ${Math.round(point.z)} })`;
     }
     edits.push({ path: file.path, from: property.initializer.getStart(tree), to: property.initializer.end, text });
+  } else {
+    // The route stays owned by its TypeScript factory. Never create a second route store.
+    const edge=[...frame.project.pipes,...frame.project.cables??[]].find(item=>item.id===operation.id);
+    if(!edge)throw new Error('Active route not found');
+    const existing=edge.via??[];
+    if(operation.action==='add'&&existing.length>=16)throw new Error('Too many routing points (16 maximum)');
+    if(operation.index>(operation.action==='add'?existing.length:existing.length-1))throw new Error('Unknown routing point');
+    if(operation.action!=='add'&&existing[operation.index]?.kind==='route-port')
+      throw new Error('Room passage belongs to the system; edit its system port instead');
+    if(operation.action!=='remove'&&!operation.point)throw new Error('Route point coordinates required');
+    const point=operation.point;
+    if(point&&![point.x,point.y,point.z??0].every(n=>Number.isFinite(n)&&Math.abs(n)<=15000))throw new Error('Invalid routing point');
+    const literal=point?`{ x: ${Math.round(point.x)}, y: ${Math.round(point.y)}${point.z===undefined?'':`, z: ${Math.round(point.z)}`} }`:'';
+    const matches:{file:AuthoredFile;tree:ts.SourceFile;options:ts.ObjectLiteralExpression}[]=[];
+    for(const file of files){const tree=treeOf(file);
+      const visit=(node:ts.Node)=>{
+        if(ts.isCallExpression(node)&&node.arguments[0]&&ts.isStringLiteral(node.arguments[0])&&node.arguments[0].text===edge.id&&
+          node.arguments[1]&&ts.isObjectLiteralExpression(node.arguments[1])&&
+          (ts.isIdentifier(node.expression)&&node.expression.text===edge.kind||ts.isPropertyAccessExpression(node.expression)&&node.expression.name.text===edge.kind))
+          matches.push({file,tree,options:node.arguments[1]});
+        ts.forEachChild(node,visit);
+      };visit(tree);
+    }
+    if(matches.length!==1)throw new Error('Route declaration is missing or ambiguous');
+    const {file,tree,options}=matches[0]!;
+    const properties=options.properties.filter((p):p is ts.PropertyAssignment=>ts.isPropertyAssignment(p)&&
+      (ts.isIdentifier(p.name)||ts.isStringLiteral(p.name))&&p.name.text==='via');
+    if(properties.length>1)throw new Error('Ambiguous via property');
+    const property=properties[0];
+    if(!property){
+      if(operation.action!=='add')throw new Error('Route has no authored via array');
+      const insert=options.getEnd()-1;
+      const separator=options.properties.length&&!options.properties.hasTrailingComma?',':'';
+      edits.push({path:file.path,from:insert,to:insert,text:`${separator} via: [${literal}], `});
+    }else{
+      if(!ts.isArrayLiteralExpression(property.initializer))throw new Error('Computed via expression; edit its TypeScript factory');
+      const array=property.initializer,items=array.elements;
+      if(items.length!==existing.length||items.some(item=>ts.isSpreadElement(item)))throw new Error('Computed routing points; edit their TypeScript factory');
+      if(operation.action==='add'){
+        const insert=operation.index<items.length?items[operation.index]!.getStart(tree):array.end-1;
+        const prefix=operation.index===items.length&&items.length&&!items.hasTrailingComma?', ':'';
+        const suffix=operation.index<items.length?', ':items.hasTrailingComma?',':'';
+        edits.push({path:file.path,from:insert,to:insert,text:`${prefix}${literal}${suffix}`});
+      }else if(operation.action==='move'){
+        const item=items[operation.index]!;
+        if(!ts.isObjectLiteralExpression(item))throw new Error('Computed routing point; edit its TypeScript factory');
+        edits.push({path:file.path,from:item.getStart(tree),to:item.end,text:literal});
+      }else{
+        const item=items[operation.index]!;
+        const after=items[operation.index+1];
+        const before=items[operation.index-1];
+        const from=before?before.end:item.getStart(tree);
+        const to=after?after.getStart(tree):array.end-1;
+        edits.push({path:file.path,from,to,text:''});
+      }
+    }
   }
   return files.flatMap(file => {
     const selected = [...new Map(edits.filter(edit => edit.path === file.path).map(edit => [`${edit.from}:${edit.to}`, edit])).values()].sort((a, b) => b.from - a.from);
