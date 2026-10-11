@@ -609,14 +609,41 @@ export default function Scene3D(props:SceneProps){
     const pressButton=(id:string,key:'up'|'down'|'left'|'right')=>{const driver=buttonDrivers.get(id);if(!driver)return;try{driver.press(key);driver.refresh(current.current.snapshot);buttonScreens.get(id)!.needsUpdate=true;node.dataset.lastButton=key;}catch(reason){const canvas=buttonCanvases.get(id);if(canvas)displayUnavailable(id,canvas,reason);}};
     const select=(event:globalThis.PointerEvent)=>{if(Math.hypot(event.clientX-down[0]!,event.clientY-down[1]!)>4)return;
       const chosen=pick(event);
-      if(chosen?.kind==='route'){current.current.select(chosen.id);node.dataset.selectedRoute=chosen.id;return;}
+      if(chosen?.kind==='route'){
+        if(addingBend&&current.current.interaction==='edit'&&chosen.id===current.current.selected){
+          const p=current.current.project,edge=[...p.pipes,...p.cables??[]].find(item=>item.id===chosen.id),route=current.current.routes.find(item=>item.id===chosen.id);
+          if(edge&&route&&route.points.length>=2){
+            aim(event);
+            const hit=ray.intersectObjects(routeWorld.children.filter(obj=>obj.userData.routeId===chosen.id&&!obj.userData.cablePlug&&!obj.userData.routeWaypoint),false)[0];
+            if(hit){
+              // Snap to the exact routed centerline rather than the visible tube's exterior.
+              const vertices=route.points.map(point=>vector(point).multiplyScalar(.01));
+              let closest=vertices[0]!,distance=Infinity;
+              for(let i=1;i<vertices.length;i++){
+                const a=vertices[i-1]!,b=vertices[i]!,direction=b.clone().sub(a),length=direction.lengthSq();
+                if(length<1e-10)continue;
+                const t=Math.max(0,Math.min(1,hit.point.clone().sub(a).dot(direction)/length));
+                const point=a.clone().addScaledVector(direction,t),d=point.distanceToSquared(hit.point);
+                if(d<distance){closest=point;distance=d;}
+              }
+              const point={x:Math.round(closest.x*100),y:Math.round(closest.z*100),z:Math.round(closest.y*100)};
+              const automaticZ=Math.max(anchor(p,edge.from).z,anchor(p,edge.to).z);
+              const index=routeWaypointInsertIndex(p,edge.via??[],route.points,point,automaticZ,true);
+              if(current.current.beginRoutePoint?.(chosen.id,'add',index,point)){
+                current.current.endRoutePoint?.(false);setAddingBend(false);
+              }
+            }
+          }return;
+        }
+        current.current.select(chosen.id);node.dataset.selectedRoute=chosen.id;return;
+      }
       if(chosen?.kind==='cad'){current.current.onCadSelect?.(chosen.id);node.dataset.selectedCad=chosen.id;return;}
       const object=hitEquipment(event);if(!object)return;current.current.select(String(object.userData.equipment),current.current.interaction==='select'&&(event.shiftKey||event.metaKey||event.ctrlKey));
       const rect=renderer.domElement.getBoundingClientRect();ray.setFromCamera(new T.Vector2((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2),camera);
       const hit=ray.intersectObject(object,true)[0]?.object,key=hit?.userData.button as 'up'|'down'|'left'|'right'|undefined;
       if(key)pressButton(String(object.userData.equipment),key);
     };
-    const keyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'&&current.current.placing){event.preventDefault();current.current.cancelPlace?.();return;}if(event.key==='Escape'&&gesture){event.preventDefault();pointerCancel();return;}const key=({ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'} as const)[event.key as 'ArrowUp'|'ArrowDown'|'ArrowLeft'|'ArrowRight'];if(!key||!buttonDrivers.has(current.current.selected))return;event.preventDefault();pressButton(current.current.selected,key);};
+    const keyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'&&addingBend){event.preventDefault();setAddingBend(false);return;}if(event.key==='Escape'&&current.current.placing){event.preventDefault();current.current.cancelPlace?.();return;}if(event.key==='Escape'&&gesture){event.preventDefault();pointerCancel();return;}const key=({ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'} as const)[event.key as 'ArrowUp'|'ArrowDown'|'ArrowLeft'|'ArrowRight'];if(!key||!buttonDrivers.has(current.current.selected))return;event.preventDefault();pressButton(current.current.selected,key);};
     const focusEquipment=(event:MouseEvent)=>{
       const chosen=pick(event);
       if(chosen?.kind==='route'){focusRoute.current(chosen.id);return;}
@@ -695,8 +722,15 @@ export default function Scene3D(props:SceneProps){
     return()=>{pointerCancel();window.removeEventListener('blur',pointerCancel);cancelAnimationFrame(frame);resize.disconnect();theme.removeEventListener('change',applyTheme);renderer.domElement.removeEventListener('pointerdown',pointerDown,true);renderer.domElement.removeEventListener('pointermove',pointerMove);renderer.domElement.removeEventListener('pointerup',pointerUp);renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('lostpointercapture',pointerCancel);renderer.domElement.removeEventListener('dblclick',focusEquipment);clearTimeout(cameraTimer);restoreCamera.current=()=>{};focusCad.current=()=>{};routeSelectedMesh?.removeFromParent();routeSelectedMesh?.geometry.dispose();routeSelectedMaterial.dispose();controls.dispose();for(const helper of selections.values()){helper.geometry.dispose();helper.material.dispose();}portHaloGeometry.dispose();portHaloMaterial.dispose();targetGeometry.dispose();targetAvailable.dispose();targetSelected.dispose();placementGeometry.dispose();placementMaterial.dispose();dragGeometry.dispose();dragMaterial.dispose();environment.dispose();for(const scope of deviceResources.values())dispose(scope);dispose(groupResources);dispose(routeResources);dispose(cadResources);for(const m of materials)m.dispose();floor.geometry.dispose();floor.material.dispose();grid.geometry.dispose();for(const m of Array.isArray(grid.material)?grid.material:[grid.material])m.dispose();renderer.dispose();renderer.domElement.remove();labelLayer.remove();rebuild.current=()=>{};fit.current=()=>{};};
   },[]);
   useEffect(()=>rebuild.current(),[props.project,props.routes,props.interaction,props.cablePreview?.id,props.locale,props.cadFilter,props.selectedCad]);useEffect(()=>fit.current(),[props.fit,props.systemFocus]);
+  const selectedRoute=props.routes.find(item=>item.id===props.selected);
+  const selectedEdge=[...props.project.pipes,...props.project.cables??[]].find(item=>item.id===props.selected);
   return error ? <div className="scene3d-fallback"><Scene {...props}/><p role="status">{props.locale==='ru'?'3D недоступна. Продолжаем в 2D.':'3D unavailable. Continuing in 2D.'}</p></div> : <div ref={host} className="scene3d" aria-label="3D process model">
     {dragPorts&&<div className="scene3d-compatible" role="status" aria-live="polite"><strong>{props.locale==='ru'?'Порты по контракту':'Ports matching the contract'} · {dragPorts.count}</strong><span>{dragPorts.target?`${dragPorts.target} · ${props.locale==='ru'?'отпустите для подключения':'release to connect'}`:props.locale==='ru'?'Наведите конец на подсвеченный порт или оставьте свободным':'Move the end to a highlighted port or leave it free'}</span></div>}
+    {props.interaction==='edit'&&selectedRoute&&selectedEdge&&<div className="scene-route-guide" role="group" aria-label={props.locale==='ru'?'Редактирование трассы в 3D':'3D route editing'}>
+      <strong>{selectedEdge.id}</strong><button type="button" aria-pressed={addingBend} disabled={!props.beginRoutePoint||(selectedEdge.via?.length??0)>=16}
+        onClick={()=>setAddingBend(value=>!value)}>{props.locale==='ru'?'+ Изгиб':'+ Bend'}</button>
+      <span>{addingBend?(props.locale==='ru'?'Нажмите на линию для добавления точки':'Click the route to add a point'):(props.locale==='ru'?'Тяните точку; Shift — высота':'Drag a point; Shift — elevation')}</span>
+    </div>}
     {props.onCadFilter&&<CadNavigator runs={cadRunPlans(props.project)} filter={props.cadFilter??'all'} selected={props.selectedCad} locale={props.locale} onFilter={props.onCadFilter} onFocus={guid=>focusCad.current(guid)}/>}
     {invalidRoutes.length>0&&<details open={routesExpanded} onToggle={event=>setRoutesExpanded(event.currentTarget.open)} className="scene3d-route-issue" aria-label={props.locale==='ru'?'Проблемы маршрутов':'Route issues'}>
       <summary><strong>{props.locale==='ru'?'Маршрут требует правки':'Route needs editing'} · {invalidRoutes.length}</strong></summary>
