@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createApp } from '../src/host/dev';
 import type { IDEState } from '../src/protocol';
@@ -83,7 +83,24 @@ try{
   await page.keyboard.press('Escape');await page.mouse.up();
   await until(async()=>await data('drag-tip')==='null','cancel left preview');
   assert.deepEqual((await state()).project.cables,original.project.cables);
-  checks.push('world-space cable pickup, Shift elevation and source-safe cancellation');assert.deepEqual(errors,[]);
+  checks.push('world-space cable pickup, Shift elevation and source-safe cancellation');
+  await page.getByRole('button',{name:'2D',exact:true}).click();
+  await page.locator('[data-pipe="suction"] path[data-route-hit="suction"]').waitFor();
+  const rendered=await page.locator('[data-pipe="suction"] path[data-route-hit="suction"]').evaluate(element=>{
+    const path=element as SVGPathElement,point=path.getPointAtLength(path.getTotalLength()*.5),svg=path.ownerSVGElement!;
+    const hit=svg.createSVGPoint();hit.x=point.x;hit.y=point.y;
+    const p=hit.matrixTransform(path.getScreenCTM()!);return{x:p.x,y:p.y};
+  });
+  await page.mouse.click(rendered.x,rendered.y);
+  const editor=page.locator('[data-pipe-size="suction"]');await editor.waitFor();
+  await editor.getByRole('spinbutton',{name:'Наружный диаметр трубы, мм'}).fill('60.3');
+  await editor.getByRole('button',{name:'Записать'}).click();
+  await until(async()=>(app.state().authoring?.project.pipes.find(edge=>edge.id==='suction')?.outerDiameterMm??0)===60.3,
+    'Pipe diameter did not persist via source AST');
+  assert(readFileSync(join(input.root,'project.ts'),'utf8').includes('outerDiameterMm: 60.3'));
+  await page.screenshot({path:join(artifacts,'pipe-diameter.png')});
+  checks.push('Selected pipe diameter is edited in 2D and saved as ordinary project TypeScript');
+  assert.deepEqual(errors,[]);
 }catch(error){
   errors.push(String(error));console.log('FAILURE',await page.evaluate(()=>({hidden:document.hidden,scene:document.querySelector('.scene3d')?.outerHTML})).catch(()=>null));
   await page.screenshot({path:join(artifacts,'failure.png'),timeout:3000}).catch(()=>{});throw error;
