@@ -171,7 +171,7 @@ export function Scene(props:SceneProps){
     {!props.focus&&routes.map(route=>{
       const edge=[...props.project.pipes,...props.project.cables??[]].find(e=>e.id===route.id)!;
       const isPipe=route.kind==='pipe',d=isPipe&&route.valid?roundedPipePath(route.points,8,routingWaypoints(props.project,edge)):routePath(route),preview=props.cablePreview?.id===route.id;
-      return <g key={route.id} data-pipe={isPipe?route.id:undefined} data-cable={!isPipe?route.id:undefined} data-route-valid={route.valid} data-selected={props.selected===route.id||undefined} data-route-preview={preview||undefined} data-inactive={props.inactive?.includes(route.id)||undefined} data-leak-state={isPipe?props.pipeLeakStates?.[route.id]:undefined} data-cable-integrity={isPipe?undefined:props.cableIntegrityStates?.[route.id]} onClick={()=>props.select(route.id)} className={preview?'preview-route':route.valid?(isPipe?'pipe':'cable'):'invalid-route'}>
+      return <g key={route.id} data-pipe={isPipe?route.id:undefined} data-cable={!isPipe?route.id:undefined} data-route-valid={route.valid} data-selected={props.selected===route.id||undefined} data-route-preview={preview||undefined} data-inactive={props.inactive?.includes(route.id)||undefined} data-leak-state={isPipe?props.pipeLeakStates?.[route.id]:undefined} data-cable-integrity={isPipe?undefined:props.cableIntegrityStates?.[route.id]} onPointerDown={event=>{if(addingBend&&props.selected===route.id)event.stopPropagation();}} onClick={event=>{if(addingBend&&props.selected===route.id&&props.interaction==='edit'){event.stopPropagation();addBend(event,route);}else props.select(route.id);}} className={preview?'preview-route':route.valid?(isPipe?'pipe':'cable'):'invalid-route'}>
         <title>{route.id}: {endLabel(edge.from)} → {endLabel(edge.to)}{edge.kind==='cable'?` · ${cablePurposeLabel(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family,props.locale)}${edge.signal?.unit?` · ${edge.signal.unit}`:''}${!isConnected(edge)?props.locale==='ru'?' · свободный конец':' · disconnected':''}`:''}{preview?props.locale==='ru'?' · маршрут уточняется при отпускании':' · route resolves on release':route.error?` — ${routeIssueReason(route.error,props.locale)}`:''}</title>
         {props.selected===route.id&&<path d={d} fill="none" stroke="var(--accent)" strokeOpacity={.35} strokeWidth={isPipe?30:11} strokeLinejoin="round" pointerEvents="none"/>}
         <path data-route-diagnostic={!route.valid&&!preview||undefined} d={d} fill="none" stroke={route.valid?(isPipe?'var(--pipe-rim)':cableAppearance(edge.from.terminal.medium as 'control'|'power'|'bus',edge.from.terminal.family).color):preview?'var(--warn)':'var(--bad)'} strokeWidth={!route.valid?2:isPipe?22:3} strokeLinecap="butt" vectorEffect={!route.valid?'non-scaling-stroke':undefined} strokeLinejoin="round" strokeDasharray={!route.valid?'6 6':!isConnected(edge)?'8 5':undefined}/>
@@ -202,6 +202,23 @@ export function Scene(props:SceneProps){
         </g>;
       })}
     </g>;})}
+    {!props.focus&&props.interaction==='edit'&&selectedEdge?.via?.map((waypoint,index)=>{
+      const automaticZ=Math.max(anchor(props.project,selectedEdge.from).z,anchor(props.project,selectedEdge.to).z);
+      const point=waypointPosition(props.project,waypoint,automaticZ),fixed=waypoint.kind==='route-port';
+      return <g key={`bend-${selectedEdge.id}-${index}`} data-route-waypoint={`${selectedEdge.id}.${index}`}
+        transform={`translate(${point.x} ${point.y})`}>
+        <circle r={fixed?10:15} fill="var(--raised)" stroke={fixed?'var(--muted)':'var(--accent)'} strokeWidth={2} strokeDasharray={fixed?'3 2':undefined}
+          style={{cursor:fixed?'help':'grab'}} onPointerDown={fixed?undefined:event=>startBend(event,index,waypoint)} />
+        <circle r={3} fill={fixed?'var(--muted)':'var(--accent)'} pointerEvents="none"/>
+        <title>{fixed?(props.locale==='ru'?'Проход помещения: редактируется в свойствах системы':'System passage: edit in system properties'):(props.locale==='ru'?'Точка трассы: перетащите для изменения':'Route bend: drag to move')}</title>
+        {!fixed&&<g data-remove-route-waypoint={index} role="button" tabIndex={0}
+          aria-label={props.locale==='ru'? `Удалить точку ${index+1}`:`Remove bend ${index+1}`}
+          onPointerDown={event=>{event.stopPropagation();props.removeRoutePoint?.(selectedEdge.id,index);}}
+          onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();props.removeRoutePoint?.(selectedEdge.id,index);}}}
+          style={{cursor:'pointer'}}><circle cx={19} cy={-19} r={9} fill="var(--raised)" stroke="var(--border)" strokeWidth={1.5}/>
+          <path d="M15 -23l8 8m0 -8l-8 8" fill="none" stroke="var(--text)" strokeWidth={2} pointerEvents="none"/></g>}
+      </g>;
+    })}
     {!props.focus&&props.interaction==='edit'&&routes.filter(route=>route.id===props.selected||props.cablePreview?.id===route.id).flatMap(route=>[0,1].map(index=>{const point=index===0?route.points[0]:route.points.at(-1);if(!point)return null;const end=index===0?'from':'to';return <g key={`${route.id}-${end}`} data-cable-plug={`${route.id}.${end}`} onPointerDown={event=>startPlug(event,route.id,end)} style={{cursor:'grab'}}><circle cx={point.x} cy={point.y} r={12} fill="transparent" stroke="transparent" strokeWidth={2}/><circle cx={point.x} cy={point.y} r={6} fill="#f7ca72" stroke="#344955" strokeWidth={2} pointerEvents="none"/></g>;}))}
     {availablePorts.length>0&&<g pointerEvents="none" data-compatible-port-count={availablePorts.length} role="status" aria-label={props.locale==='ru'?`Порты по контракту: ${availablePorts.length}`:`Ports matching the contract: ${availablePorts.length}`}>
       {availablePorts.map(endpoint=>{const point=anchor(props.project,endpoint),id=`${endpoint.device}.${endpoint.port}`,hovered=id===hoveredPort;return <g key={id} data-compatible-port={id} data-snap-target={hovered||undefined}>
