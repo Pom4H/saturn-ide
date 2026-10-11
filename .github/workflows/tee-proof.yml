@@ -75,4 +75,4 @@ jobs:
           name: tee-topology-proof-${{ github.sha }}
           path: saturn-ide/artifacts/tee-proof/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1

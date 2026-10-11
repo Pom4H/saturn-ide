@@ -12,6 +12,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
+    timeout-minutes: 20
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
@@ -23,11 +24,13 @@ jobs:
       - run: bun run pages:build
       - uses: actions/upload-pages-artifact@v3
         with:
+          retention-days: 1
           path: dist-pages
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    timeout-minutes: 20
     runs-on: [self-hosted, Linux, X64]
     needs: build
     steps:

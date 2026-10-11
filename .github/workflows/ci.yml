@@ -83,7 +83,7 @@ jobs:
           name: local-onboarding-evidence
           path: saturn-ide/artifacts/local-onboarding/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1
       - name: Decision text UX and System One contract acceptance
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         timeout-minutes: 3
@@ -95,7 +95,7 @@ jobs:
           name: decision-ux-evidence
           path: saturn-ide/artifacts/decision/
           if-no-files-found: ignore
-          retention-days: 3
+          retention-days: 1
       - name: Importer browser acceptance
         run: bun scripts/importer-browser-test.ts
         working-directory: saturn-ide
@@ -110,7 +110,7 @@ jobs:
           name: operator-pipe-leak-evidence
           path: saturn-ide/artifacts/pipe-leak-operator/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1
       - name: Operator control-cable fault localization browser acceptance
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         timeout-minutes: 3
@@ -122,7 +122,7 @@ jobs:
           name: operator-cable-integrity-evidence
           path: saturn-ide/artifacts/cable-integrity-operator/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1
       - name: Object-first equipment creation and property editing
         timeout-minutes: 3
         run: timeout --kill-after=10s 150s bun scripts/entity-ux-browser-test.ts
@@ -133,7 +133,7 @@ jobs:
           name: object-first-creation-evidence
           path: saturn-ide/artifacts/entity-ux/
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 1
       - name: Physical editor browser acceptance
         timeout-minutes: 3
         run: timeout --kill-after=10s 150s bun scripts/physical-interaction-browser-test.ts
@@ -144,10 +144,11 @@ jobs:
           name: physical-editor-evidence
           path: saturn-ide/artifacts/physical-editor/
           if-no-files-found: ignore
-          retention-days: 3
+          retention-days: 1
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
+          retention-days: 1
           name: importer-browser-failure
           path: |
             saturn-ide/artifacts/importer-failure.png
@@ -164,4 +165,4 @@ jobs:
           name: spatial-browser-evidence
           path: saturn-ide/artifacts/spatial/
           if-no-files-found: ignore
-          retention-days: 3
+          retention-days: 1

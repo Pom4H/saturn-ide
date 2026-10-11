@@ -5,6 +5,11 @@ on:
     tags: ['ide-v*']
 permissions:
   contents: read
+# Keep only the newest automatic verification for each ref.
+concurrency:
+  group: ide-release-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
 jobs:
   binary:
     strategy:
@@ -23,11 +28,13 @@ jobs:
       - run: bun scripts/ide-smoke.ts
       - uses: actions/upload-artifact@v4
         with:
+          retention-days: 7
           name: ide-${{ matrix.os }}
           path: artifacts/distribution/*
   publish:
     if: startsWith(github.ref, 'refs/tags/ide-v')
     needs: binary
+    timeout-minutes: 20
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write

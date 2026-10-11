@@ -57,7 +57,7 @@ jobs:
           name: saturn-screenshots
           path: docs/screenshots/
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
       - name: Store screenshots in selected branch
         env:

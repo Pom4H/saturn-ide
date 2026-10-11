@@ -67,4 +67,4 @@ jobs:
           name: saturn-cad-real-ux
           path: saturn-ide/artifacts/cad-import/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
