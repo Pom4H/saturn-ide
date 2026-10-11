@@ -62,6 +62,15 @@ try{
   assert.equal(await page.locator('.empty-project').count(),0,'Empty state hides imported CAD routes');
   assert.equal(imported()!.ports.length,2);
   assert.equal(imported()!.connections.length,1);
+  const cadInlet=imported()!.runs.find(run=>run.guid==='0000000000000000000005');
+  const cadDischarge=imported()!.runs.find(run=>run.guid==='0000000000000000000006');
+  assert.equal(cadInlet?.diameter?.nominalMm,50);
+  assert.equal(cadInlet?.diameter?.outerMm,60.3);
+  assert.equal(cadDischarge?.diameter?.nominalMm,150);
+  assert.equal(cadDischarge?.diameter?.outerMm,168.3);
+  const renderedWidth=async(guid:string)=>Number(await page.locator(`[data-cad-run="${guid}"] path`).getAttribute('stroke-width'));
+  assert(Math.abs(await renderedWidth('0000000000000000000005')-6.03)<.01);
+  assert(Math.abs(await renderedWidth('0000000000000000000006')-16.83)<.01);
   const oldTray=await page.locator('[data-cad-run="0000000000000000000007"] path').getAttribute('d');
   await pace(1200);await screenshot('03-imported-2d.png');
   checks.push('Actual IFC file parsed; two pipe runs and two cable trays rendered in 2D with original identities');
@@ -82,8 +91,14 @@ try{
   await seek(async()=>await page.locator('.scene3d').getAttribute('data-cad-filter')==='raceway','3D forgot the CAD layer filter');
   assert.equal(await page.locator('.scene3d').getAttribute('data-selected-cad'),selectedKey,'3D lost IFC reference identity');
   await seek(async()=>Number(await page.locator('.scene3d').getAttribute('data-frames'))>2,'No live 3D frames');
+  const measured3d=JSON.parse(await page.locator('.scene3d').getAttribute('data-cad-diameters')??'[]') as {id:string;outerMm:number|null;radius:number|null}[];
+  assert(Math.abs((measured3d.find(item=>item.id==='0000000000000000000005')?.radius??0)-3.015)<.01);
+  assert(Math.abs((measured3d.find(item=>item.id==='0000000000000000000006')?.radius??0)-8.415)<.01);
+  await page.getByRole('button',{name:'Показать слои и оси CAD'}).click();
+  await page.locator('.cad-navigator-filters').getByRole('button',{name:'Все',exact:true}).click();
+  await seek(async()=>await page.locator('.scene3d').getAttribute('data-cad-filter')==='all','3D reference layers were not restored');
   await pace(1600);await screenshot('04-imported-3d.png');
-  checks.push('3D projects the same four authored CAD route axes, not mock canvas imagery');
+  checks.push('Real 3D IFC tubes use physical radii from verified OD, distinct from nominal DN');
 
   await page.getByRole('button',{name:'2D',exact:true}).click();
   await page.getByRole('button',{name:'Показать слои и оси CAD'}).click();
