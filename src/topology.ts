@@ -1,8 +1,13 @@
 import { equipmentElevation, systemElevation, waypointPosition, isAttached, reportSignals, type ConnectionEnd, type Cable, type Endpoint, type Equipment, type Pipe, type Point, type Project } from './core';
+import { calibratedPipeRadius } from './core/pipe-dimensions';
 export interface PhysicalRoute {id:string;kind:'pipe'|'cable';points:Point[];valid:boolean;error?:string}
 interface Box {id:string;x:number;y:number;right:number;bottom:number}
 export const connections=(project:Project)=>([...project.pipes,...project.cables??[]]);
 const size=(e:Equipment)=>({width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150});
+/** Conservative plan clearance considers outside radius only with a calibrated CAD scale.
+ * This does not certify vertical crossings, bend radii or pipe-to-pipe separation. */
+export const connectionClearance=(project:Project,edge:Pipe|Cable):number=>
+  edge.kind==='pipe'?Math.max(14,(calibratedPipeRadius(project,edge.outerDiameterMm)??0)+5):9;
 const boxesFor=(project:Project,clearance:number):Box[]=>project.equipment.map(e=>{const g=size(e);return{id:e.id,x:e.x-clearance,y:e.y-clearance-28,right:e.x+g.width+clearance,bottom:e.y+g.height+clearance};});
 const blocked=(boxes:readonly Box[],a:Point,b:Point,ignore='')=>a.x===b.x&&a.y===b.y&&a.z===b.z?false:boxes.some(r=>r.id!==ignore&&(a.x===b.x?a.x>r.x+.01&&a.x<r.right-.01&&Math.max(a.y,b.y)>r.y+.01&&Math.min(a.y,b.y)<r.bottom-.01:a.y===b.y?a.y>r.y+.01&&a.y<r.bottom-.01&&Math.max(a.x,b.x)>r.x+.01&&Math.min(a.x,b.x)<r.right-.01:true));
 const owner=(end:ConnectionEnd)=>isAttached(end)?end.device:'';
@@ -168,7 +173,7 @@ function routeConnectionWithBoxes(project:Project,edge:Pipe|Cable,boxes:readonly
   result.points=compactPoints(points,routingWaypoints(project,edge));return result;
 }
 export function routeConnection(project:Project,edge:Pipe|Cable):PhysicalRoute {
-  const boxes=boxesFor(project,edge.kind==='pipe'?14:9);
+  const boxes=boxesFor(project,connectionClearance(project,edge));
   const start=connectionTip(project,edge,'from'),end=connectionTip(project,edge,'to');
   const inside=(point:Point)=>boxes.some(box=>point.x>box.x+.01&&point.x<box.right-.01&&point.y>box.y+.01&&point.y<box.bottom-.01);
   // Fast-path routing may ignore unrelated equipment while choosing a corridor, but
@@ -199,7 +204,7 @@ export function routeConnections(project:Project,previous?:{project:Project;rout
       systemElevation(previous.project,oldFrom.system)!==systemElevation(project,nextFrom.system)||
       systemElevation(previous.project,oldTo.system)!==systemElevation(project,nextTo.system))return routeConnection(project,edge);
     const points=oldRoute.points,start=connectionTip(project,edge,'from'),end=connectionTip(project,edge,'to');
-    const boxes=boxesFor(project,edge.kind==='pipe'?14:9);
+    const boxes=boxesFor(project,connectionClearance(project,edge));
     if(points.length<2||!samePoint(points[0]!,start)||!samePoint(points.at(-1)!,end))return retargetRoute(project,edge,oldRoute,boxes)??routeConnection(project,edge);
     if(!routeClear(oldRoute,boxes,edge))return routeConnection(project,edge);
     return oldRoute;
