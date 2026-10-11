@@ -1,6 +1,7 @@
 import {useState} from 'react';
 import {endLabel, type Locale, type Project, type PipeLeakFinding} from '../core';
 import {Scene, type SceneProps} from './scene';
+import {pipeRenderRadii} from '../core/pipe-dimensions';
 import './pipe-inspection.css';
 
 const labels:Record<PipeLeakFinding['reason'],Record<Locale,string>>={
@@ -66,6 +67,12 @@ export function PipeInspection({project,scene,findings,locale,connected,mode,bac
           <dl>
             <div><dt>{ru?'От':'From'}</dt><dd>{endLabel(pipe.from)}</dd></div>
             <div><dt>{ru?'До':'To'}</dt><dd>{endLabel(pipe.to)}</dd></div>
+            <div><dt>{ru?'Условный проход':'Nominal diameter'}</dt><dd>{pipe.nominalDiameterMm===undefined?'—':`DN ${format(pipe.nominalDiameterMm,locale)}`}</dd></div>
+            <div><dt>{ru?'Наружный Ø':'Outside Ø'}</dt>
+              <dd>{pipe.outerDiameterMm===undefined?'—':`${format(pipe.outerDiameterMm,locale)} мм`}
+                {pipe.outerDiameterMm!==undefined&&<small> · {pipeRenderRadii(project,pipe).calibrated?(ru?'масштаб CAD':'CAD scale'):(ru?'условная схема':'schematic')}</small>}
+              </dd>
+            </div>
             {pipe.leak&&<><div><dt>{ru?'Расход на входе':'Inlet flow'}</dt><dd>{format(active.inlet,locale)} {active.unit}</dd></div>
             <div><dt>{ru?'Расход на выходе':'Outlet flow'}</dt><dd>{format(active.outlet,locale)} {active.unit}</dd></div>
             <div><dt>{ru?'Разница':'Difference'}</dt><dd>{format(active.difference,locale)} {active.unit}</dd></div>
