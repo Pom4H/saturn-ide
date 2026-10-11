@@ -3,7 +3,7 @@ import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { cadRunPlans, equipmentElevation, systemPortPositions, isAttached, text, type ConnectionEnd, cableAppearance, equipmentSignal, interfaceProfile, type Endpoint, type Equipment, type Point } from '../core';
+import { cadRunPlans, equipmentElevation, systemPortPositions, waypointPosition, isAttached, text, type ConnectionEnd, cableAppearance, equipmentSignal, interfaceProfile, type Endpoint, type Equipment, type Point, type RoutePoint } from '../core';
 import { anchor, connectionTip, routingWaypoints } from '../topology';
 import { geometryRevision } from './model/geometry-revision';
 import { connectionHandleVisible } from './model/connection-picking';
@@ -18,6 +18,7 @@ import { placementAt, templateDimensions } from './model/entity-placement';
 import { routeIssueReason,routeIssueLabel,routeHasFreeEnd } from './route-issue';
 import { cadRunVisible } from './model/cad-navigation';
 import { CadNavigator } from './cad-navigator';
+import { routeWaypointInsertIndex } from './model/route-waypoints';
 import './scene3d-route-issue.css';
 // Diagram x/y maps to world x/z; port elevation maps to world y. No independent 3D topology.
 const vector=(p:Point)=>new T.Vector3(p.x,p.z,p.y);
@@ -54,6 +55,8 @@ export default function Scene3D(props:SceneProps){
   const [displayFailures,setDisplayFailures]=useState<Record<string,string>>({});
   const [dragPorts,setDragPorts]=useState<{count:number;target:string}|null>(null);
   const [routesExpanded,setRoutesExpanded]=useState(true);
+  const [addingBend,setAddingBend]=useState(false);
+  useEffect(()=>setAddingBend(false),[props.selected,props.interaction]);
   const invalidRoutes=props.routes.filter(route=>!route.valid&&route.id!==props.cablePreview?.id);
   const genericEquipment=props.project.equipment.filter(e=>!e.capabilities.instrument&&!['tank','pump','valve','tee','plc'].includes(e.kind)&&!(e.capabilities.scene3d?.kind==='control-panel'&&e.capabilities.diagram));
   const focusRoute=useRef<(id:string,free?:boolean)=>void>(()=>{});
@@ -88,7 +91,7 @@ export default function Scene3D(props:SceneProps){
     const allocate=()=>({geometries:new Set<T.BufferGeometry>(),textures:new Set<T.Texture>(),materials:new Set<T.Material>(),updaters:[] as ((dt:number)=>void)[]});
     const groupResources=allocate(),routeResources=allocate(),cadResources=allocate(),deviceResources=new Map<string,ReturnType<typeof allocate>>(),deviceRevisions=new Map<string,string>();let resources=groupResources;
     const dispose=(scope:ReturnType<typeof allocate>)=>{for(const geometry of scope.geometries)geometry.dispose();for(const texture of scope.textures)texture.dispose();for(const material of scope.materials)material.dispose();scope.geometries.clear();scope.textures.clear();scope.materials.clear();scope.updaters.length=0;};
-    const roots=new Map<string,T.Group>(),groupBorders=new Map<string,T.LineBasicMaterial>();let plugMeshes:T.Mesh[]=[],equipmentRevision='',routeRevision='',equipmentBuilds=0,routeBuilds=0,groupRevision='',cadRevision='',dirty=true,focusedSystem:string|null|undefined;
+    const roots=new Map<string,T.Group>(),groupBorders=new Map<string,T.LineBasicMaterial>();let plugMeshes:T.Mesh[]=[],bendMeshes:T.Mesh[]=[],equipmentRevision='',routeRevision='',equipmentBuilds=0,routeBuilds=0,groupRevision='',cadRevision='',dirty=true,focusedSystem:string|null|undefined;
     const buttonDrivers=new Map<string,{refresh:(snapshot:SceneProps['snapshot'])=>void;press:(key:'up'|'down'|'left'|'right')=>void}>(),buttonScreens=new Map<string,T.CanvasTexture>(),buttonCanvases=new Map<string,HTMLCanvasElement>();
     const displayUnavailable=(id:string,canvas:HTMLCanvasElement,reason:unknown)=>{
       const message=reason instanceof Error?reason.message:String(reason);unavailableDisplay(canvas,current.current.locale);
@@ -358,7 +361,7 @@ export default function Scene3D(props:SceneProps){
       node.dataset.cadFilter=p.cadFilter??'all';node.dataset.selectedCad=p.selectedCad??'';
       const nextRoutes=JSON.stringify([p.routes,p.project.pipes,p.project.cables,p.project.systems,p.interaction,p.cablePreview?.id]);
       if(nextRoutes===routeRevision)return;
-      routeRevision=nextRoutes;dispose(routeResources);routeWorld.clear();plugMeshes=[];resources=routeResources;
+      routeRevision=nextRoutes;dispose(routeResources);routeWorld.clear();plugMeshes=[];bendMeshes=[];resources=routeResources;
       node.dataset.routeBuilds=String(++routeBuilds);
       const routes=p.routes;node.dataset.routeCount=String(routes.length);node.dataset.invalidRoutes=String(routes.filter(r=>!r.valid&&r.id!==p.cablePreview?.id).length);
       let pipeBends=0,pipeShells=0,pipeLiquids=0;
@@ -388,6 +391,14 @@ export default function Scene3D(props:SceneProps){
           const guide=new T.Line(geometry,material);guide.computeLineDistances();guide.renderOrder=5;guide.userData.routeDiagnostic=route.id;routeWorld.add(guide);
         }else for(let i=1;i<points.length;i++)tube(routeWorld,points[i-1]!,points[i]!,route.kind==='pipe'?5:1.5,m);
         if(p.interaction==='edit')for(const end of ['from','to'] as const){const point=end==='from'?points[0]:points.at(-1);if(!point)continue;const position=vector(point),handle=mesh(routeWorld,new T.SphereGeometry(6,16,10),amber,position.x,position.y,position.z);handle.userData.cablePlug={id:route.id,end};handle.visible=route.id===p.selected;plugMeshes.push(handle);}
+        const authored=pipe??cable;
+        if(p.interaction==='edit'&&authored)for(const [index,waypoint] of (authored.via??[]).entries()){
+          if(waypoint.kind==='route-port')continue; // Named building passages are edited on their owner, never broken off.
+          const automaticZ=Math.max(anchor(p.project,authored.from).z,anchor(p.project,authored.to).z);
+          const position=vector(waypointPosition(p.project,waypoint,automaticZ));
+          const handle=mesh(routeWorld,new T.SphereGeometry(7,12,10),amber,position.x,position.y,position.z);
+          handle.userData.routeWaypoint={id:route.id,index};handle.visible=route.id===p.selected;bendMeshes.push(handle);
+        }
         for(const object of routeWorld.children.slice(start))object.userData.routeId=route.id;
         if(route.kind!=='pipe'||!route.valid)continue;
         const edge=pipe!;
@@ -449,7 +460,11 @@ export default function Scene3D(props:SceneProps){
     let cameraTimer:ReturnType<typeof setTimeout>|undefined,lastCamera='';
     let fittedAspect=node.clientWidth&&node.clientHeight?node.clientWidth/node.clientHeight:1;
     const resize=new ResizeObserver(()=>{const w=node.clientWidth,h=node.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();const aspect=w/h;if(Math.abs(Math.log(aspect/fittedAspect))>.15){fittedAspect=aspect;fit.current();}});resize.observe(node);
-    const ray=new T.Raycaster();let down=[0,0],gesture:{kind:'equipment';pointer:number;id:string;x:number;y:number;origin:T.Vector3;moved:boolean;started:boolean}|{kind:'plug';pointer:number;id:string;end:'from'|'to';moved:boolean;height:number;point:Point;offset:T.Vector3;lastY:number;vertical:boolean;targets:Endpoint[];target?:Endpoint}|null=null;
+    const ray=new T.Raycaster();let down=[0,0],gesture:
+      |{kind:'equipment';pointer:number;id:string;x:number;y:number;origin:T.Vector3;moved:boolean;started:boolean}
+      |{kind:'plug';pointer:number;id:string;end:'from'|'to';moved:boolean;height:number;point:Point;offset:T.Vector3;lastY:number;vertical:boolean;targets:Endpoint[];target?:Endpoint}
+      |{kind:'bend';pointer:number;id:string;index:number;moved:boolean;height:number;point:RoutePoint;offset:T.Vector3;lastY:number;vertical:boolean;raised:boolean}
+      |null=null;
     const aim=(event:MouseEvent|globalThis.PointerEvent)=>{const rect=renderer.domElement.getBoundingClientRect();ray.setFromCamera(new T.Vector2((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2),camera);};
     const ground=(event:globalThis.PointerEvent,height:number)=>{aim(event);return ray.ray.intersectPlane(new T.Plane(new T.Vector3(0,1,0),-height),new T.Vector3());};
     const placementMaterial=new T.MeshBasicMaterial({color:0x30899b,transparent:true,opacity:.35,depthWrite:false});
