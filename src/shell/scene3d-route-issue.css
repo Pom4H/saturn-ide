@@ -11,3 +11,13 @@
 .scene3d-compatible{position:absolute;right:12px;top:12px;z-index:2;max-width:min(420px,calc(100% - 24px));display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding:8px 11px;border:1px solid var(--border);border-radius:7px;background:var(--raised);box-shadow:var(--shadow);font-size:11px;pointer-events:none}
 .scene3d-compatible strong{color:var(--good);white-space:nowrap}
 .scene3d-compatible span{color:var(--muted)}
+
+/* Selected connection owns its tools; the global Shell chrome stays quiet. */
+.scene-route-guide{position:absolute;right:12px;bottom:12px;z-index:3;display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;max-width:min(420px,calc(100% - 24px));padding:8px 10px;background:var(--raised);color:var(--text);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);font-size:12px;line-height:1.35;pointer-events:auto}
+.scene-route-guide strong{font-weight:600;overflow-wrap:anywhere}
+.scene-route-guide span{color:var(--muted);font-size:11px}
+.scene-route-guide button{background:transparent;color:var(--text);border:1px solid var(--border);border-radius:4px;padding:5px 9px;min-height:30px;font:inherit;cursor:pointer}
+.scene-route-guide button[aria-pressed=true]{border-color:var(--accent);color:var(--accent);background:var(--panel)}
+.scene-route-guide button:disabled{opacity:.5;cursor:not-allowed}
+.scene-route-guide button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:760px){.scene-route-guide{right:8px;bottom:50px;max-width:calc(100% - 16px)}}
