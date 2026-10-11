@@ -1,10 +1,11 @@
 import {useEffect,useState} from 'react';
 import type {Pipe,Project,Locale} from '../core';
 import {pipeRenderRadii} from '../core/pipe-dimensions';
+import {PipeRouteInspection} from './pipe-route-inspection';
 
 /** A small authoring control shared by 2D and 3D. Writes to the existing TS source,
  * not to an independent drawing or CAD property table. */
-export function PipeDiameterEditor({pipe,project,locale,busy,onChange}:{pipe:Pipe;project:Pick<Project,'cad'>;
+export function PipeDiameterEditor({pipe,project,locale,busy,onChange}:{pipe:Pipe;project:Project;
   locale:Locale;busy?:boolean;onChange?:(id:string,outerMm:number|null)=>void}){
   const ru=locale==='ru',[draft,setDraft]=useState(pipe.outerDiameterMm?.toString()??''),[error,setError]=useState('');
   useEffect(()=>{setDraft(pipe.outerDiameterMm?.toString()??'');setError('');},[pipe.id,pipe.outerDiameterMm]);
@@ -18,7 +19,7 @@ export function PipeDiameterEditor({pipe,project,locale,busy,onChange}:{pipe:Pip
     }
     setError('');onChange(pipe.id,value);
   };
-  return <form className="pipe-diameter-editor" data-pipe-size={pipe.id} onSubmit={event=>{event.preventDefault();commit();}}>
+  return <><form className="pipe-diameter-editor" data-pipe-size={pipe.id} onSubmit={event=>{event.preventDefault();commit();}}>
     <label>{ru?'Наружный Ø, мм':'Outside Ø, mm'}
       <input aria-label={ru?'Наружный диаметр трубы, мм':'Pipe outside diameter, mm'} type="number"
         min="0.001" max="1000000" step="any" inputMode="decimal"
@@ -31,5 +32,5 @@ export function PipeDiameterEditor({pipe,project,locale,busy,onChange}:{pipe:Pip
       {calibrated?(ru?'масштаб CAD':'CAD scale'):(ru?'условная схема':'schematic')}
     </small>
     {error&&<span role="alert">{error}</span>}
-  </form>;
+  </form><PipeRouteInspection project={project} locale={locale} disabled={busy||changed}/></>;
 }

@@ -1,5 +1,7 @@
 import type { Project, Signal } from '../core';
 import { graphImpact, semanticGraph, type SemanticGraph, type SemanticNode } from '../semantic';
+export {inspectPipeInstallation,type InstallationPipe,type InstallationFitting,type InstallationRules,type InstallationReport,type InstallationFinding} from './pipe-installation';
+export {inspectProjectPipeRoutes} from './pipe-installation-project';
 
 /** A read-only projection of the existing Project and semantic graph, never authored or persisted. */
 export interface SignalInspection {
