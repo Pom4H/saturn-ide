@@ -163,7 +163,7 @@ export function authoringChanges(files: readonly AuthoredFile[], frame: Authorin
         const before=items[operation.index-1];
         const from=before?before.end:item.getStart(tree);
         const to=after?after.getStart(tree):array.end-1;
-        edits.push({path:file.path,from,to,text:''});
+        edits.push({path:file.path,from,to,text:before&&after?', ':''});
       }
     }
   }
