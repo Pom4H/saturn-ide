@@ -56,6 +56,13 @@ try{
   await page.mouse.up();await until(async()=>await data('drag-pointer')===null,'capture loss did not cancel');
   assert.equal((await state()).project.equipment.find(e=>e.id===equipment.id)!.x,equipment.x);
   checks.push('lostpointercapture preserves source');
+  // Route endpoints are intentionally contextual now: choose the cable before dragging its plug.
+  const cableId=original.project.cables?.[0]?.id;assert(cableId,'fixture must contain a cable');
+  await page.getByRole('button',{name:'2D',exact:true}).click();
+  await page.locator(`[data-cable="${cableId}"]`).first().click({force:true});
+  await page.getByRole('button',{name:'3D',exact:true}).click();
+  await scene.waitFor();
+  await until(async()=>await data('selected-equipment')===cableId,'3D did not retain selected cable');
   const plugs=JSON.parse(await data('cable-plugs')??'[]') as (XY&{id:string;end:'from'|'to'})[];
   let chosen:typeof plugs[number]|undefined;
   for(const plug of plugs){
