@@ -4,6 +4,7 @@ import { cadRunBounds, cadRunKey, cadRunVisible, type CadFilter } from './model/
 import { CadNavigator } from './cad-navigator';
 import { routeWaypointInsertIndex } from './model/route-waypoints';
 import { pipeRenderRadii } from '../core/pipe-dimensions';
+import { PipeDiameterEditor } from './pipe-diameter-editor';
 import { anchor, connectionTip, routingWaypoints, routePath, type PhysicalRoute } from '../topology';
 import { useSvgMotion } from './svg-motion';
 import { roundedPipePath } from './pipe-path';
@@ -31,6 +32,7 @@ export interface SceneProps {
   cablePreview?:{id:string;end:'from'|'to';x:number;y:number;z:number}|null;
   beginCable?:(id:string,end:'from'|'to',x:number,y:number,z:number)=>boolean;moveCable?:(x:number,y:number,z:number)=>void;endCable?:(target?:{device:string;port:string},cancel?:boolean)=>void;
   routePreview?:{id:string;via:readonly RouteWaypoint[]}|null;
+  diameterBusy?:boolean;setPipeDiameter?:(id:string,outerMm:number|null)=>void;
   beginRoutePoint?:(id:string,action:'add'|'move',index:number,point:RoutePoint)=>boolean;moveRoutePoint?:(point:RoutePoint)=>void;endRoutePoint?:(cancel?:boolean)=>void;removeRoutePoint?:(id:string,index:number)=>void;
   displays?:Record<string,(canvas:HTMLCanvasElement,project:Project,controller:Equipment)=>{refresh:(snapshot:Snapshot)=>void;press:(key:'up'|'down'|'left'|'right')=>void}>;
 }
@@ -243,6 +245,7 @@ export function Scene(props:SceneProps){
     <button type="button" aria-pressed={addingBend} disabled={!props.beginRoutePoint||(selectedEdge.via?.length??0)>=16}
       onClick={()=>setAddingBend(value=>!value)}>{props.locale==='ru'?'+ Изгиб':'+ Bend'}</button>
     <span>{addingBend?(props.locale==='ru'?'Нажмите на трассу, чтобы поставить точку':'Click the route to place a bend'):(props.locale==='ru'?'Тяните точки для изменения трассы':'Drag handles to reshape the route')}</span>
+    {selectedEdge.kind==='pipe'&&<PipeDiameterEditor pipe={selectedEdge} project={props.project} locale={props.locale} busy={props.diameterBusy} onChange={props.setPipeDiameter}/>}
   </div>}
   {!props.focus&&props.onCadFilter&&<CadNavigator runs={cadRoutes} filter={props.cadFilter??'all'} selected={props.selectedCad} locale={props.locale} onFilter={props.onCadFilter} onFocus={focusCad}/>}{!props.focus&&invalidRoutes.length>0&&<details open={routesExpanded} onToggle={event=>setRoutesExpanded(event.currentTarget.open)} className="scene3d-route-issue" data-route-issue="true" aria-label={props.locale==='ru'?'Проблемы маршрутов':'Route issues'}>
     <summary><strong>{props.locale==='ru'?'Маршрут требует правки':'Route needs editing'} · {invalidRoutes.length}</strong></summary>
