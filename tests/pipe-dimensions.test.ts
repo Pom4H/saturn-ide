@@ -2,6 +2,7 @@ import {expect,test} from 'bun:test';
 import {cadRunPlans,pipe,project,pump,signal,tank,type CadReference} from '../src/core';
 import {pipeRenderRadii,calibratedPipeRadius} from '../src/core/pipe-dimensions';
 import {connectionClearance} from '../src/topology';
+import {semanticDiff} from '../src/semantic';
 
 const measured:CadReference={
   source:{type:'IFC',schema:'IFC4',documentKey:'plant.ifc',filename:'plant.ifc',sha256:'0'.repeat(64),originalLengthUnit:'millimetre'},
@@ -27,6 +28,12 @@ test('outside pipe diameter is source-owned; physical CAD scale controls 2D and 
   expect(cadRunPlans(project)[0]?.diameter?.nominalMm).toBe(50);
   expect(connectionClearance(project,feed)).toBe(14);
   expect(connectionClearance(project,{...feed,outerDiameterMm:500})).toBe(30);
+});
+
+test('source diameter changes appear as engineering semantic diffs',()=>{
+  const before=setup([measured]);
+  const after=project({id:'plant',label:'Plant',equipment:[a,b],pipes:[{...feed,outerDiameterMm:168.3}],cad:[measured]});
+  expect(semanticDiff(before,after).some(change=>change.type==='changed'&&change.id==='feed')).toBe(true);
 });
 
 test('DN-only and uncalibrated authored pipes never claim exact outside dimensions',()=>{
