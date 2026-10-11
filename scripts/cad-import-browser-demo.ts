@@ -72,7 +72,7 @@ try{
   const firstRun=page.locator('[data-cad-link]').first();
   const selectedKey=await firstRun.getAttribute('data-cad-link');assert(selectedKey);
   await firstRun.click();
-  await page.locator('[data-cad-key]').filter({has:page.locator('path')}).first().waitFor();
+  await page.locator('[data-cad-key][data-selected="true"]').waitFor();
   assert.equal(await page.locator('[data-cad-key][data-selected="true"]').count(),1,'IFC run selection did not focus one reference');
   await screenshot('03b-ifc-navigation.png');
   checks.push('Source-scoped IFC navigation filters and frames individual reference axes');
