@@ -33,7 +33,7 @@ test('outside pipe diameter is source-owned; physical CAD scale controls 2D and 
 test('source diameter changes appear as engineering semantic diffs',()=>{
   const before=setup([measured]);
   const after=project({id:'plant',label:'Plant',equipment:[a,b],pipes:[{...feed,outerDiameterMm:168.3}],cad:[measured]});
-  expect(semanticDiff(before,after).some(change=>change.type==='changed'&&change.id==='feed')).toBe(true);
+  expect(semanticDiff(before,after).some(change=>change.type==='changed'&&change.semanticId==='connection:feed')).toBe(true);
 });
 
 test('DN-only and uncalibrated authored pipes never claim exact outside dimensions',()=>{
