@@ -1,6 +1,8 @@
 import type {CadRunPlan} from '../../core';
 
 export type CadFilter='all'|'pipe'|'raceway'|'cable'|'hidden';
+/** IFC GUID is document-scoped for navigation; a second IFC file may reuse it. */
+export const cadRunKey=(run:Pick<CadRunPlan,'source'|'guid'>):string=>JSON.stringify([run.source,run.guid]);
 
 /** The IFC layer is a read-only projection, never a Saturn Connection. */
 export function cadRunVisible(run:Pick<CadRunPlan,'network'>,filter:CadFilter):boolean {
