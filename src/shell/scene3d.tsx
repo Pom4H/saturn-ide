@@ -18,6 +18,7 @@ import { placementAt, templateDimensions } from './model/entity-placement';
 import { routeIssueReason,routeIssueLabel,routeHasFreeEnd } from './route-issue';
 import { cadRunKey, cadRunVisible } from './model/cad-navigation';
 import { pipeRenderRadii } from '../core/pipe-dimensions';
+import { PipeDiameterEditor } from './pipe-diameter-editor';
 import { CadNavigator } from './cad-navigator';
 import { routeWaypointInsertIndex } from './model/route-waypoints';
 import './scene3d-route-issue.css';
@@ -739,6 +740,7 @@ export default function Scene3D(props:SceneProps){
       <strong>{selectedEdge.id}</strong><button type="button" aria-pressed={addingBend} disabled={!props.beginRoutePoint||(selectedEdge.via?.length??0)>=16}
         onClick={()=>setAddingBend(value=>!value)}>{props.locale==='ru'?'+ Изгиб':'+ Bend'}</button>
       <span>{addingBend?(props.locale==='ru'?'Нажмите на линию для добавления точки':'Click the route to add a point'):(props.locale==='ru'?'Тяните точку; Shift — высота':'Drag a point; Shift — elevation')}</span>
+      {selectedEdge.kind==='pipe'&&<PipeDiameterEditor pipe={selectedEdge} project={props.project} locale={props.locale} busy={props.diameterBusy} onChange={props.setPipeDiameter}/>}
     </div>}
     {props.onCadFilter&&<CadNavigator runs={cadRunPlans(props.project)} filter={props.cadFilter??'all'} selected={props.selectedCad} locale={props.locale} onFilter={props.onCadFilter} onFocus={guid=>focusCad.current(guid)}/>}
     {invalidRoutes.length>0&&<details open={routesExpanded} onToggle={event=>setRoutesExpanded(event.currentTarget.open)} className="scene3d-route-issue" aria-label={props.locale==='ru'?'Проблемы маршрутов':'Route issues'}>
