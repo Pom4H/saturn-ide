@@ -1,14 +1,17 @@
 import type { AuthoringFrame, AuthoringOperation, AuthoredChange, AuthoredFile, AuthoredKind } from '../../core/authoring';
 import type { Documents } from './documents';
+import type { RoutePoint, RouteWaypoint } from '../../core';
 
 export type SourcePlanner = (files: readonly AuthoredFile[], frame: AuthoringFrame, operation: AuthoringOperation) => Promise<readonly AuthoredChange[]>;
 interface CablePreview { id: string; end: 'from' | 'to'; x: number; y: number; z: number }
-interface EditingSnapshot { cablePreview: CablePreview | null; busy: boolean; error: string }
+interface RoutePreview {id:string;via:readonly RouteWaypoint[];action:'add'|'move';index:number;point:RoutePoint}
+interface EditingSnapshot { cablePreview: CablePreview | null; routePreview:RoutePreview | null; busy: boolean; error: string }
 /** Shared Shell inverse-edit controller. A gesture owns no parallel source buffer or topology. */
 export class SourceEditing {
   private frame: AuthoringFrame | undefined;
   private gesture: { before: AuthoringFrame; preview: CablePreview } | null = null;
-  private state: EditingSnapshot = { cablePreview: null, busy: false, error: '' };
+  private routeGesture:{before:AuthoringFrame;preview:RoutePreview}|null=null;
+  private state: EditingSnapshot = { cablePreview: null, routePreview:null, busy: false, error: '' };
   private listeners = new Set<() => void>();
   constructor(private readonly documents: Documents, private readonly plan: SourcePlanner) {}
   getSnapshot = () => this.state;
@@ -45,7 +48,7 @@ export class SourceEditing {
     return this.execute({ kind: 'enabled', id, entity, enabled: !enabled });
   };
   beginCable = (id: string, end: 'from' | 'to', x: number, y: number, z: number): boolean => {
-    if (!this.frame || this.gesture || this.state.busy) return false;
+    if (!this.frame || this.gesture || this.routeGesture || this.state.busy) return false;
     const files = this.files(this.frame);
     if (files.some(file => file.source !== this.frame!.files.find(item => item.path === file.path)?.source)) return false;
     const preview = { id, end, x, y, z };
@@ -60,5 +63,36 @@ export class SourceEditing {
     if (!gesture || cancel) return;
     const { id, end, x, y, z } = gesture.preview;
     await this.execute({ kind: 'endpoint', id, end, target: target ?? { x, y, z } }, gesture.before);
+  };
+  /** One source-owned route gesture, shared by every view. No second authored waypoint registry. */
+  beginRoutePoint = (id:string,action:'add'|'move',index:number,point:RoutePoint):boolean=>{
+    const frame=this.frame;
+    if(!frame||this.gesture||this.routeGesture||this.state.busy)return false;
+    const files=this.files(frame);
+    if(files.some(file=>file.source!==frame.files.find(item=>item.path===file.path)?.source))return false;
+    const edge=[...frame.project.pipes,...frame.project.cables??[]].find(item=>item.id===id);
+    if(!edge||!Number.isInteger(index)||index<0)return false;
+    const via=[...edge.via??[]];
+    if(action==='add'){
+      if(index>via.length||via.length>=16)return false;
+      via.splice(index,0,point);
+    }else{
+      if(index>=via.length||via[index]?.kind==='route-port')return false;
+      via[index]=point;
+    }
+    const preview={id,via,action,index,point};
+    this.routeGesture={before:frame,preview};this.update({routePreview:preview,error:''});return true;
+  };
+  moveRoutePoint=(point:RoutePoint):void=>{
+    const gesture=this.routeGesture;
+    if(!gesture||![point.x,point.y,point.z??0].every(Number.isFinite))return;
+    const {preview}=gesture,via=[...preview.via];via[preview.index]=point;
+    gesture.preview={...preview,point,via};this.update({routePreview:gesture.preview});
+  };
+  endRoutePoint=async(cancel=false):Promise<void>=>{
+    const gesture=this.routeGesture;this.routeGesture=null;this.update({routePreview:null});
+    if(!gesture||cancel)return;
+    const {id,action,index,point}=gesture.preview;
+    await this.execute({kind:'route-point',id,action,index,point},gesture.before);
   };
 }
