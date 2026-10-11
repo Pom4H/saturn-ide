@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
-import { cadRunPlans, systemPortPositions, endLabel, isAttached, isConnected, cableAppearance, interfaceProfile, text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
+import { cadRunPlans, systemPortPositions, endLabel, isAttached, isConnected, cableAppearance, interfaceProfile, text, waypointPosition, type Endpoint, type Equipment, type Locale, type Project, type RoutePoint, type RouteWaypoint, type Snapshot } from '../core';
 import { cadRunBounds, cadRunVisible, type CadFilter } from './model/cad-navigation';
 import { CadNavigator } from './cad-navigator';
+import { routeWaypointInsertIndex } from './model/route-waypoints';
 import { anchor, connectionTip, routingWaypoints, routePath, type PhysicalRoute } from '../topology';
 import { useSvgMotion } from './svg-motion';
 import { roundedPipePath } from './pipe-path';
@@ -28,6 +29,8 @@ export interface SceneProps {
   openSource?:(id:string)=>void;canOpenSource?:(id:string)=>boolean;
   cablePreview?:{id:string;end:'from'|'to';x:number;y:number;z:number}|null;
   beginCable?:(id:string,end:'from'|'to',x:number,y:number,z:number)=>boolean;moveCable?:(x:number,y:number,z:number)=>void;endCable?:(target?:{device:string;port:string},cancel?:boolean)=>void;
+  routePreview?:{id:string;via:readonly RouteWaypoint[]}|null;
+  beginRoutePoint?:(id:string,action:'add'|'move',index:number,point:RoutePoint)=>boolean;moveRoutePoint?:(point:RoutePoint)=>void;endRoutePoint?:(cancel?:boolean)=>void;removeRoutePoint?:(id:string,index:number)=>void;
   displays?:Record<string,(canvas:HTMLCanvasElement,project:Project,controller:Equipment)=>{refresh:(snapshot:Snapshot)=>void;press:(key:'up'|'down'|'left'|'right')=>void}>;
 }
 type DisplayFactory=NonNullable<SceneProps['displays']>[string];
@@ -62,6 +65,8 @@ export function Scene(props:SceneProps){
   const svg=useRef<SVGSVGElement>(null),latest=useRef(props);latest.current=props;
   const drag=useRef<{id:string;x:number;y:number;sx:number;sy:number;moved:boolean}|null>(null);
   const plug=useRef<{id:string;end:'from'|'to';x:number;y:number;moved:boolean;targets:readonly Endpoint[];target?:Endpoint}|null>(null);
+  const bend=useRef<{id:string;index:number;point:RoutePoint;sx:number;sy:number;moved:boolean}|null>(null);
+  const [addingBend,setAddingBend]=useState(false);
   const [availablePorts,setAvailablePorts]=useState<readonly Endpoint[]>([]),[hoveredPort,setHoveredPort]=useState(''),[dragError,setDragError]=useState('');
   const pan=useRef<{x:number;y:number;box:number[]}|null>(null);
   const [placementGhost,setPlacementGhost]=useState<ReturnType<typeof placementAt>|null>(null);
@@ -87,6 +92,9 @@ export function Scene(props:SceneProps){
   useEffect(()=>{if(props.viewRestore?.box&&!props.focus)setBox(props.viewRestore.box);},[props.viewRestore?.version]);
   useEffect(()=>{if(!props.focus&&box.length===4)latest.current.onViewBox?.(box as [number,number,number,number]);},[box.join(',')]);
   const routes=props.routes;
+  const selectedRoute=routes.find(route=>route.id===props.selected);
+  const selectedEdge=[...props.project.pipes,...props.project.cables??[]].find(edge=>edge.id===props.selected);
+  useEffect(()=>setAddingBend(false),[props.selected,props.interaction]);
   const [routesExpanded,setRoutesExpanded]=useState(true);
   const invalidRoutes=routes.filter(route=>!route.valid&&route.id!==props.cablePreview?.id);
   const focusRoute=(id:string,free=false)=>{
@@ -125,13 +133,26 @@ export function Scene(props:SceneProps){
   const nearestPort=(event:PointerEvent,targets:readonly Endpoint[],previous?:Endpoint)=>{let chosen:Endpoint|undefined,best=Infinity;const transform=svg.current!.getScreenCTM();if(!transform)return;for(const endpoint of targets){const point=anchor(props.project,endpoint),screen=svg.current!.createSVGPoint();screen.x=point.x;screen.y=point.y;const position=screen.matrixTransform(transform),distance=Math.hypot(position.x-event.clientX,position.y-event.clientY);if(distance>=(endpoint===previous?24:18))continue;const score=distance-(endpoint===previous?3:0);if(score>=best)continue;best=score;chosen=endpoint;}return chosen;};
   const startPlug=(event:PointerEvent,id:string,end:'from'|'to')=>{props.select(id);if(props.interaction!=='edit'||event.button!==0)return;event.stopPropagation();const p=coordinate(event),edge=[...props.project.pipes,...props.project.cables??[]].find(item=>item.id===id);if(!edge)return;let targets:Endpoint[];try{targets=compatiblePorts(props.displayProject??props.project,id,end);}catch(reason){setDragError(reason instanceof Error?reason.message:String(reason));return;}setDragError('');if(!props.beginCable?.(id,end,p.x,p.y,connectionTip(props.project,edge,end).z))return;plug.current={id,end,x:p.x,y:p.y,moved:false,targets};setAvailablePorts(targets);setHoveredPort('');svg.current!.setPointerCapture(event.pointerId);};
   const finishPlug=(event:PointerEvent|undefined,cancel=false)=>{const current=plug.current;if(!current)return;plug.current=null;setAvailablePorts([]);setHoveredPort('');const target=event&&current.moved?nearestPort(event,current.targets,current.target):undefined;props.endCable?.(target?{device:target.device,port:target.port}:undefined,cancel||!current.moved);};
+  const startBend=(event:PointerEvent,index:number,point:RoutePoint)=>{
+    event.stopPropagation();if(props.interaction!=='edit'||event.button!==0||!selectedEdge)return;
+    if(!props.beginRoutePoint?.(selectedEdge.id,'move',index,point))return;
+    const p=coordinate(event);bend.current={id:selectedEdge.id,index,point,sx:p.x,sy:p.y,moved:false};
+    svg.current!.setPointerCapture(event.pointerId);
+  };
+  const addBend=(event:PointerEvent,route:PhysicalRoute)=>{
+    const edge=[...props.project.pipes,...props.project.cables??[]].find(item=>item.id===route.id);
+    if(!edge)return;const p=coordinate(event),point={x:Math.round(p.x),y:Math.round(p.y)};
+    const index=routeWaypointInsertIndex(props.project,edge.via??[],route.points,point);
+    if(props.beginRoutePoint?.(edge.id,'add',index,point)){props.endRoutePoint?.(false);setAddingBend(false);}
+  };
+  const finishBend=(cancel:boolean)=>{const active=bend.current;bend.current=null;if(active)props.endRoutePoint?.(cancel||!active.moved);};
   const finish=(cancel:boolean)=>{pan.current=null;if(drag.current){const d=drag.current;drag.current=null;props.end?.(cancel||!d.moved);}};
   return <div className="scene-frame"><svg ref={svg} className="scene" viewBox={box.join(' ')} aria-label={props.locale==='ru'?'Мнемосхема':'Process diagram'} data-placement-mode={props.placing?.template} style={{cursor:props.placing?'crosshair':undefined}} tabIndex={0}
     onPointerDownCapture={event=>{if(!props.placing||event.button!==0)return;event.stopPropagation();event.preventDefault();const position=choosePlacement(event);if(position.valid)props.place?.(position);}}
     onPointerLeave={()=>{if(props.placing)setPlacementGhost(null);}}
     onPointerDown={event=>{if(props.focus)return;pan.current={x:event.clientX,y:event.clientY,box};svg.current!.setPointerCapture(event.pointerId);}}
-    onPointerMove={event=>{if(props.placing){setPlacementGhost(choosePlacement(event));return;}const d=drag.current;if(plug.current){const p=coordinate(event);if(Math.hypot(p.x-plug.current.x,p.y-plug.current.y)>3)plug.current.moved=true;const target=nearestPort(event,plug.current.targets,plug.current.target);plug.current.target=target;const next=target?anchor(props.project,target):{x:p.x,y:p.y,z:props.cablePreview?.z??0};setHoveredPort(target?`${target.device}.${target.port}`:'');props.moveCable?.(next.x,next.y,next.z);}else if(d){const p=coordinate(event);if(Math.hypot(p.x-d.sx,p.y-d.sy)>3)d.moved=true;if(d.moved)props.move?.(d.id,Math.round(d.x+p.x-d.sx),Math.round(d.y+p.y-d.sy));}else if(pan.current){const p=pan.current,r=svg.current!.getBoundingClientRect(),scale=Math.max(p.box[2]!/r.width,p.box[3]!/r.height);setBox([p.box[0]!-(event.clientX-p.x)*scale,p.box[1]!-(event.clientY-p.y)*scale,p.box[2]!,p.box[3]!]);}}}
-    onPointerUp={event=>{finishPlug(event);finish(false);}} onPointerCancel={()=>{finishPlug(undefined,true);finish(true);}} onLostPointerCapture={()=>{finishPlug(undefined,true);finish(true);}} onKeyDown={event=>{if(event.key==='Escape'){if(props.placing)props.cancelPlace?.();else {finishPlug(undefined,true);finish(true);}}}}>
+    onPointerMove={event=>{if(props.placing){setPlacementGhost(choosePlacement(event));return;}const d=drag.current;if(plug.current){const p=coordinate(event);if(Math.hypot(p.x-plug.current.x,p.y-plug.current.y)>3)plug.current.moved=true;const target=nearestPort(event,plug.current.targets,plug.current.target);plug.current.target=target;const next=target?anchor(props.project,target):{x:p.x,y:p.y,z:props.cablePreview?.z??0};setHoveredPort(target?`${target.device}.${target.port}`:'');props.moveCable?.(next.x,next.y,next.z);}else if(bend.current){const b=bend.current,p=coordinate(event);if(Math.hypot(p.x-b.sx,p.y-b.sy)>3)b.moved=true;if(b.moved)props.moveRoutePoint?.({...b.point,x:Math.round(b.point.x+p.x-b.sx),y:Math.round(b.point.y+p.y-b.sy)});}else if(d){const p=coordinate(event);if(Math.hypot(p.x-d.sx,p.y-d.sy)>3)d.moved=true;if(d.moved)props.move?.(d.id,Math.round(d.x+p.x-d.sx),Math.round(d.y+p.y-d.sy));}else if(pan.current){const p=pan.current,r=svg.current!.getBoundingClientRect(),scale=Math.max(p.box[2]!/r.width,p.box[3]!/r.height);setBox([p.box[0]!-(event.clientX-p.x)*scale,p.box[1]!-(event.clientY-p.y)*scale,p.box[2]!,p.box[3]!]);}}}
+    onPointerUp={event=>{finishPlug(event);finishBend(false);finish(false);}} onPointerCancel={()=>{finishPlug(undefined,true);finishBend(true);finish(true);}} onLostPointerCapture={()=>{finishPlug(undefined,true);finishBend(true);finish(true);}} onKeyDown={event=>{if(event.key==='Escape'){if(props.placing)props.cancelPlace?.();else {setAddingBend(false);finishPlug(undefined,true);finishBend(true);finish(true);}}}}>
     {!props.focus&&groups.map(group=><g key={group.id} data-system={group.id} data-system-depth={group.depth} data-system-z={group.z} data-focused={props.systemFocus===group.id||undefined} className="scene-system">
       <rect className="scene-system-plate" x={group.x} y={group.y} width={group.width} height={group.height} rx={8}/>
       <g className="scene-system-heading" role="button" tabIndex={0} aria-label={`${props.locale==='ru'?'Приблизить систему':'Focus system'}: ${text(group.label,props.locale)}, ${group.count}`} onPointerDown={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();props.focusSystem?.(group.id);}} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();props.focusSystem?.(group.id);}}}>
