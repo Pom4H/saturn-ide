@@ -55,7 +55,8 @@ export default function Scene3D(props:SceneProps){
   const [displayFailures,setDisplayFailures]=useState<Record<string,string>>({});
   const [dragPorts,setDragPorts]=useState<{count:number;target:string}|null>(null);
   const [routesExpanded,setRoutesExpanded]=useState(true);
-  const [addingBend,setAddingBend]=useState(false);
+  const [addingBend,setAddingBend]=useState(false),addingBendRef=useRef(false);
+  addingBendRef.current=addingBend;
   useEffect(()=>setAddingBend(false),[props.selected,props.interaction]);
   const invalidRoutes=props.routes.filter(route=>!route.valid&&route.id!==props.cablePreview?.id);
   const genericEquipment=props.project.equipment.filter(e=>!e.capabilities.instrument&&!['tank','pump','valve','tee','plc'].includes(e.kind)&&!(e.capabilities.scene3d?.kind==='control-panel'&&e.capabilities.diagram));
@@ -610,7 +611,7 @@ export default function Scene3D(props:SceneProps){
     const select=(event:globalThis.PointerEvent)=>{if(Math.hypot(event.clientX-down[0]!,event.clientY-down[1]!)>4)return;
       const chosen=pick(event);
       if(chosen?.kind==='route'){
-        if(addingBend&&current.current.interaction==='edit'&&chosen.id===current.current.selected){
+        if(addingBendRef.current&&current.current.interaction==='edit'&&chosen.id===current.current.selected){
           const p=current.current.project,edge=[...p.pipes,...p.cables??[]].find(item=>item.id===chosen.id),route=current.current.routes.find(item=>item.id===chosen.id);
           if(edge&&route&&route.points.length>=2){
             aim(event);
@@ -643,7 +644,7 @@ export default function Scene3D(props:SceneProps){
       const hit=ray.intersectObject(object,true)[0]?.object,key=hit?.userData.button as 'up'|'down'|'left'|'right'|undefined;
       if(key)pressButton(String(object.userData.equipment),key);
     };
-    const keyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'&&addingBend){event.preventDefault();setAddingBend(false);return;}if(event.key==='Escape'&&current.current.placing){event.preventDefault();current.current.cancelPlace?.();return;}if(event.key==='Escape'&&gesture){event.preventDefault();pointerCancel();return;}const key=({ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'} as const)[event.key as 'ArrowUp'|'ArrowDown'|'ArrowLeft'|'ArrowRight'];if(!key||!buttonDrivers.has(current.current.selected))return;event.preventDefault();pressButton(current.current.selected,key);};
+    const keyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'&&addingBendRef.current){event.preventDefault();setAddingBend(false);return;}if(event.key==='Escape'&&current.current.placing){event.preventDefault();current.current.cancelPlace?.();return;}if(event.key==='Escape'&&gesture){event.preventDefault();pointerCancel();return;}const key=({ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'} as const)[event.key as 'ArrowUp'|'ArrowDown'|'ArrowLeft'|'ArrowRight'];if(!key||!buttonDrivers.has(current.current.selected))return;event.preventDefault();pressButton(current.current.selected,key);};
     const focusEquipment=(event:MouseEvent)=>{
       const chosen=pick(event);
       if(chosen?.kind==='route'){focusRoute.current(chosen.id);return;}
