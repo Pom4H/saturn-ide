@@ -24,13 +24,13 @@ jobs:
         with:
           repository: Pom4H/saturn-examples
           path: saturn-examples
-          ref: 0215594fb9a7d788109f7d786ebde641964910c0
+          ref: 888d2b74b37c6dd4c576b1bc9f02a2dea932fe05
           ssh-key: ${{ secrets.EXAMPLES_DEPLOY_KEY }}
       - uses: actions/checkout@v4
         with:
           repository: Pom4H/saturn-plugins
           path: saturn-plugins
-          ref: 768a28f6cf96dc33f03aa5e013914a28708bff93
+          ref: 35eecd0061c2ffebf6ebc69ddcbbd76e9b23df8d
           ssh-key: ${{ secrets.PLUGINS_DEPLOY_KEY }}
       - uses: oven-sh/setup-bun@v2
         with:
