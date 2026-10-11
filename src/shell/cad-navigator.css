@@ -12,3 +12,8 @@
 .cad-navigator-list button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cad-navigator-list button small{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cad-navigator button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media(max-width:760px){.cad-navigator{left:8px;bottom:8px;max-width:calc(100% - 16px)}.cad-navigator-panel{max-height:40dvh}}
+
+.cad-run-row{display:grid;gap:3px;min-width:0}
+.cad-run-row .cad-pipe-diameter{font-weight:600;color:var(--text)}
+.cad-navigator-list .cad-copy-diameter{margin:0 7px 6px;min-height:30px;padding:5px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--panel);color:var(--accent);text-align:left;cursor:pointer;font:11px/1.35 var(--font-ui,system-ui)}
+.cad-navigator-list .cad-copy-diameter:hover{border-color:var(--accent);background:var(--panel)}
