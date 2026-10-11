@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { cadRunPlans, systemPortPositions, endLabel, isAttached, isConnected, cableAppearance, interfaceProfile, text, type Endpoint, type Equipment, type Locale, type Project, type Snapshot } from '../core';
+import { cadRunBounds, cadRunVisible, type CadFilter } from './model/cad-navigation';
+import { CadNavigator } from './cad-navigator';
 import { anchor, connectionTip, routingWaypoints, routePath, type PhysicalRoute } from '../topology';
 import { useSvgMotion } from './svg-motion';
 import { roundedPipePath } from './pipe-path';
@@ -18,6 +20,7 @@ export interface SceneProps {
   pipeLeakStates?:Readonly<Record<string,'suspected'|'normal'|'unmonitored'|'unavailable'>>;
   cableIntegrityStates?:Readonly<Record<string,'suspected'|'observed'|'inactive'|'unavailable'|'unmonitored'>>;
   focusRouteId?:string;
+  cadFilter?:CadFilter;onCadFilter?:(filter:CadFilter)=>void;selectedCad?:string;onCadSelect?:(guid:string)=>void;
   onViewBox?:(box:[number,number,number,number])=>void;onCameraPose?:(pose:[number,number,number,number,number,number])=>void;
   systemFocus?:string|null;focusSystem?:(id:string)=>void;
   placing?:{template:string;label:string}|null;place?:(position:{x:number;y:number})=>void;cancelPlace?:()=>void;
@@ -67,12 +70,13 @@ export function Scene(props:SceneProps){
   const base=props.focus?props.project.equipment.filter(e=>e.id===props.focus):props.project.equipment;
   const groups=useMemo(()=>systemLayout(props.project),[props.project]);
   const cadRoutes=useMemo(()=>cadRunPlans(props.project),[props.project.cad]);
+  const visibleCadRoutes=cadRoutes.filter(run=>cadRunVisible(run,props.cadFilter??'all'));
   const visual=(e:Equipment)=>({width:e.capabilities.diagram?.width??160,height:e.capabilities.diagram?.height??150});
   const bounds=()=>{
     if(props.focus&&base[0]){const e=base[0],g=visual(e);return [e.x-18,e.y-30,g.width+36,g.height+70];}
     const chosen=groups.find(group=>group.id===props.systemFocus);
     if(chosen)return [chosen.x-28,chosen.y-28,chosen.width+56,chosen.height+56];
-    const cadPoints=cadRoutes.flatMap(route=>route.points);
+    const cadPoints=visibleCadRoutes.flatMap(route=>route.points);
     const x=Math.min(0,...base.map(e=>e.x-50),...groups.map(g=>g.x-24),...cadPoints.map(p=>p.x-20)),y=Math.min(0,...base.map(e=>e.y-60),...groups.map(g=>g.y-24),...cadPoints.map(p=>p.y-20));
     return [x,y,Math.max(850,...base.map(e=>e.x+visual(e).width+60),...groups.map(g=>g.x+g.width+24),...cadPoints.map(p=>p.x+20))-x,Math.max(460,...base.map(e=>e.y+visual(e).height+60),...groups.map(g=>g.y+g.height+24),...cadPoints.map(p=>p.y+20))-y];
   };
@@ -106,10 +110,14 @@ export function Scene(props:SceneProps){
     setBox([(minX+maxX-width)/2,(minY+maxY-height)/2,width,height]);
   };
   useEffect(()=>{if(props.focusRouteId&&!props.focus)focusRoute(props.focusRouteId);},[props.focusRouteId]);
+  const focusCad=(guid:string)=>{const run=cadRoutes.find(item=>item.guid===guid);if(!run)return;props.onCadSelect?.(guid);const bounds=cadRunBounds(run);if(!bounds)return;
+    const padding=65,width=Math.max(320,bounds.width+padding*2),height=Math.max(240,bounds.height+padding*2);
+    setBox([bounds.x+(bounds.width-width)/2,bounds.y+(bounds.height-height)/2,width,height]);
+  };
   const coordinate=(event:PointerEvent)=>{const p=svg.current!.createSVGPoint();p.x=event.clientX;p.y=event.clientY;return p.matrixTransform(svg.current!.getScreenCTM()!.inverse());};
   useEffect(()=>{
     const node=svg.current!;
-    const wheel=(event:WheelEvent)=>{if(latest.current.focus)return;event.preventDefault();const factor=Math.exp(Math.max(-.2,Math.min(.2,event.deltaY*.001)));setBox(([x=0,y=0,w=850,h=460])=>{const width=Math.max(200,Math.min(8000,w*factor)),height=h*width/w;return [x+(w-width)/2,y+(h-height)/2,width,height];});};
+    const wheel=(event:WheelEvent)=>{if(latest.current.focus)return;event.preventDefault();const factor=Math.exp(Math.max(-.2,Math.min(.2,event.deltaY*.001)));const target=node.createSVGPoint();target.x=event.clientX;target.y=event.clientY;const matrix=node.getScreenCTM();if(!matrix)return;const pointer=target.matrixTransform(matrix.inverse());setBox(([x=0,y=0,w=850,h=460])=>{const width=Math.max(200,Math.min(8000,w*factor)),height=h*width/w;const fx=(pointer.x-x)/w,fy=(pointer.y-y)/h;return [pointer.x-fx*width,pointer.y-fy*height,width,height];});};
     node.addEventListener('wheel',wheel,{passive:false});
     return()=>node.removeEventListener('wheel',wheel);
   },[]);
@@ -132,11 +140,11 @@ export function Scene(props:SceneProps){
         {systemTitleLines(text(group.label,props.locale),group.width).map((line,index)=><text className="scene-system-title" key={index} x={group.x+18} y={group.y+42+index*20}>{line}</text>)}
       </g>
     </g>)}
-    {!props.focus&&cadRoutes.map(run=><g key={`cad-${run.guid}`} data-cad-run={run.guid} data-cad-network={run.network} pointerEvents="none">
+    {!props.focus&&visibleCadRoutes.map(run=><g key={`cad-${run.guid}`} data-cad-run={run.guid} data-cad-network={run.network} data-selected={props.selectedCad===run.guid||undefined} pointerEvents="stroke" style={{cursor:"pointer"}} onPointerDown={event=>event.stopPropagation()} onClick={()=>props.onCadSelect?.(run.guid)} onDoubleClick={()=>focusCad(run.guid)}>
       <title>{`CAD / IFC · ${run.label} · ${run.network} · ${run.source} · проектная пространственная модель`}</title>
       <path d={run.points.map((point,index)=>`${index?'L':'M'}${point.x} ${point.y}`).join(' ')} fill="none"
         stroke={run.network==='pipe'?'#5f91a5':run.network==='raceway'?'#b58c5d':'#a79a7f'}
-        strokeOpacity={.7} strokeWidth={run.network==='raceway'?12:run.network==='pipe'?7:2.5}
+        strokeOpacity={props.selectedCad===run.guid?1:.7} strokeWidth={(run.network==='raceway'?12:run.network==='pipe'?7:2.5)+(props.selectedCad===run.guid?3:0)}
         strokeLinecap="round" strokeLinejoin="round" strokeDasharray="6 4" />
     </g>)}
     {!props.focus&&routes.map(route=>{
@@ -173,7 +181,7 @@ export function Scene(props:SceneProps){
         </g>;
       })}
     </g>;})}
-    {!props.focus&&props.interaction==='edit'&&routes.flatMap(route=>[0,1].map(index=>{const point=index===0?route.points[0]:route.points.at(-1);if(!point)return null;const end=index===0?'from':'to';return <g key={`${route.id}-${end}`} data-cable-plug={`${route.id}.${end}`} onPointerDown={event=>startPlug(event,route.id,end)} style={{cursor:'grab'}}><circle cx={point.x} cy={point.y} r={12} fill="transparent" stroke="transparent" strokeWidth={2}/><circle cx={point.x} cy={point.y} r={6} fill="#f7ca72" stroke="#344955" strokeWidth={2} pointerEvents="none"/></g>;}))}
+    {!props.focus&&props.interaction==='edit'&&routes.filter(route=>route.id===props.selected||props.cablePreview?.id===route.id).flatMap(route=>[0,1].map(index=>{const point=index===0?route.points[0]:route.points.at(-1);if(!point)return null;const end=index===0?'from':'to';return <g key={`${route.id}-${end}`} data-cable-plug={`${route.id}.${end}`} onPointerDown={event=>startPlug(event,route.id,end)} style={{cursor:'grab'}}><circle cx={point.x} cy={point.y} r={12} fill="transparent" stroke="transparent" strokeWidth={2}/><circle cx={point.x} cy={point.y} r={6} fill="#f7ca72" stroke="#344955" strokeWidth={2} pointerEvents="none"/></g>;}))}
     {availablePorts.length>0&&<g pointerEvents="none" data-compatible-port-count={availablePorts.length} role="status" aria-label={props.locale==='ru'?`Порты по контракту: ${availablePorts.length}`:`Ports matching the contract: ${availablePorts.length}`}>
       {availablePorts.map(endpoint=>{const point=anchor(props.project,endpoint),id=`${endpoint.device}.${endpoint.port}`,hovered=id===hoveredPort;return <g key={id} data-compatible-port={id} data-snap-target={hovered||undefined}>
         <circle cx={point.x} cy={point.y} r={hovered?16:13} fill="var(--accent-soft)" fillOpacity={hovered?'.85':'.55'} stroke={hovered?'var(--accent)':'var(--good)'} strokeWidth={hovered?3:2}/>
@@ -189,7 +197,7 @@ export function Scene(props:SceneProps){
       <text x={size.width/2} y={size.height+32} textAnchor="middle" fontSize={12} fontWeight={600} fill={placementGhost.valid?'var(--good)':'var(--bad)'}>{placementGhost.valid?props.placing.label:(props.locale==='ru'?'Место занято':'Occupied')}</text>
     </g>;})()}
     {dragError&&<g role="status" aria-label={props.locale==='ru'?'Не удалось проверить порты':'Could not check ports'} pointerEvents="none"><rect x={box[0]!+10} y={box[1]!+10} width={Math.min(680,box[2]!-20)} height={48} rx={7} fill="var(--raised)" stroke="var(--bad)"/><text x={box[0]!+24} y={box[1]!+40} fill="var(--bad)" fontSize={17}>{props.locale==='ru'?'Проверьте модель перед изменением соединения':'Check the model before editing the connection'}</text><title>{dragError}</title></g>}
-  </svg>{!props.focus&&invalidRoutes.length>0&&<details open={routesExpanded} onToggle={event=>setRoutesExpanded(event.currentTarget.open)} className="scene3d-route-issue" data-route-issue="true" aria-label={props.locale==='ru'?'Проблемы маршрутов':'Route issues'}>
+  </svg>{!props.focus&&props.onCadFilter&&<CadNavigator runs={cadRoutes} filter={props.cadFilter??'all'} selected={props.selectedCad} locale={props.locale} onFilter={props.onCadFilter} onFocus={focusCad}/>}{!props.focus&&invalidRoutes.length>0&&<details open={routesExpanded} onToggle={event=>setRoutesExpanded(event.currentTarget.open)} className="scene3d-route-issue" data-route-issue="true" aria-label={props.locale==='ru'?'Проблемы маршрутов':'Route issues'}>
     <summary><strong>{props.locale==='ru'?'Маршрут требует правки':'Route needs editing'} · {invalidRoutes.length}</strong></summary>
     <p>{props.locale==='ru'?'Красный пунктир обозначает проблему, а не проложенное соединение.':'Red dashes mark a problem, not a routed connection.'}</p>
     <div className="route-issue-list">{invalidRoutes.map(route=><div key={route.id} className="route-issue-item"><b>{routeIssueLabel(props.project,route,props.locale)}</b><code>{route.id}</code><span>{routeIssueReason(route.error,props.locale)}</span><div className="scene-issue-actions"><button onClick={()=>focusRoute(route.id)}>{props.locale==='ru'?'Показать соединение':'Show connection'}</button>{routeHasFreeEnd(props.project,route.id)&&<button onClick={()=>focusRoute(route.id,true)}>{props.locale==='ru'?'Показать свободный конец':'Show free end'}</button>}</div></div>)}</div>
