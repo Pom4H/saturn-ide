@@ -65,16 +65,31 @@ try{
   const oldTray=await page.locator('[data-cad-run="0000000000000000000007"] path').getAttribute('d');
   await pace(1200);await screenshot('03-imported-2d.png');
   checks.push('Actual IFC file parsed; two pipe runs and two cable trays rendered in 2D with original identities');
-
+  // The IFC reference has its own navigable layers and cannot silently become an authored connection.
+  await page.getByRole('button',{name:'Показать слои и оси CAD'}).click();
+  await page.locator('.cad-navigator-filters').getByRole('button',{name:'Лотки'}).click();
+  assert.equal(await page.locator('[data-cad-run]').count(),2,'Tray-only reference filter changed authored connections');
+  const firstRun=page.locator('[data-cad-link]').first();
+  const selectedKey=await firstRun.getAttribute('data-cad-link');assert(selectedKey);
+  await firstRun.click();
+  await page.locator('[data-cad-key]').filter({has:page.locator('path')}).first().waitFor();
+  assert.equal(await page.locator('[data-cad-key][data-selected="true"]').count(),1,'IFC run selection did not focus one reference');
+  await screenshot('03b-ifc-navigation.png');
+  checks.push('Source-scoped IFC navigation filters and frames individual reference axes');
   await page.getByRole('button',{name:'3D',exact:true}).click();
   await page.locator('.scene3d').waitFor();
   await seek(async()=>await page.locator('.scene3d').getAttribute('data-cad-axes')==='4','3D CAD geometry missing');
+  await seek(async()=>await page.locator('.scene3d').getAttribute('data-cad-filter')==='raceway','3D forgot the CAD layer filter');
+  assert.equal(await page.locator('.scene3d').getAttribute('data-selected-cad'),selectedKey,'3D lost IFC reference identity');
   await seek(async()=>Number(await page.locator('.scene3d').getAttribute('data-frames'))>2,'No live 3D frames');
   await pace(1600);await screenshot('04-imported-3d.png');
   checks.push('3D projects the same four authored CAD route axes, not mock canvas imagery');
 
   await page.getByRole('button',{name:'2D',exact:true}).click();
+  await page.getByRole('button',{name:'Показать слои и оси CAD'}).click();
+  await page.locator('.cad-navigator-filters').getByRole('button',{name:'Все',exact:true}).click();
   await page.locator('[data-cad-run]').first().waitFor();
+  assert.equal(await page.locator('[data-cad-run]').count(),4,'Showing all CAD references lost imported axes');
   await page.locator('[data-action="import-cad"]').click();
   await pickIfc(synced,'saturn-pump-room-r2.ifc');
   await page.getByText('Обновление CAD',{exact:false}).waitFor();
