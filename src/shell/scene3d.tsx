@@ -742,7 +742,7 @@ export default function Scene3D(props:SceneProps){
       <span>{addingBend?(props.locale==='ru'?'Нажмите на линию для добавления точки':'Click the route to add a point'):(props.locale==='ru'?'Тяните точку; Shift — высота':'Drag a point; Shift — elevation')}</span>
       {selectedEdge.kind==='pipe'&&<PipeDiameterEditor pipe={selectedEdge} project={props.project} locale={props.locale} busy={props.diameterBusy} onChange={props.setPipeDiameter}/>}
     </div>}
-    {props.onCadFilter&&<CadNavigator runs={cadRunPlans(props.project)} filter={props.cadFilter??'all'} selected={props.selectedCad} locale={props.locale} onFilter={props.onCadFilter} onFocus={guid=>focusCad.current(guid)}/>}
+    {props.onCadFilter&&<CadNavigator runs={cadRunPlans(props.project)} filter={props.cadFilter??'all'} selected={props.selectedCad} locale={props.locale} onFilter={props.onCadFilter} onFocus={guid=>focusCad.current(guid)} targetPipe={props.interaction==='edit'&&selectedEdge?.kind==='pipe'?selectedEdge.id:undefined} onCopyDiameter={props.interaction==='edit'?props.setPipeDiameter:undefined}/>}
     {invalidRoutes.length>0&&<details open={routesExpanded} onToggle={event=>setRoutesExpanded(event.currentTarget.open)} className="scene3d-route-issue" aria-label={props.locale==='ru'?'Проблемы маршрутов':'Route issues'}>
       <summary><strong>{props.locale==='ru'?'Маршрут требует правки':'Route needs editing'} · {invalidRoutes.length}</strong></summary>
       <p>{props.locale==='ru'?'Красный пунктир обозначает проблему, а не проложенное соединение.':'Red dashes mark a problem, not a routed connection.'}</p>
