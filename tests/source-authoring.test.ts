@@ -8,6 +8,7 @@ import { authoringChanges } from '../src/workspace/authoring-operations';
 import { decodeProject } from '../src/runtime/decode-project';
 import { free, isAttached, isConnected, project, pump, plc, cable, pipe, tank, signal, validateProject } from '../src/core';
 import { routeConnections } from '../src/topology';
+import { readAuthoringOperation } from '../src/core/authoring';
 import { semanticDiff } from '../src/semantic';
 import { appRoot } from './helpers';
 
@@ -168,5 +169,37 @@ export default project({id:'route',label:'Route',equipment:[a,b],pipes:[water]})
     const built=await f.builder.build();expect(built.editorError).toBeUndefined();
     expect(built.project.pipes[0]!.via).toEqual([{x:360,y:20}]);
     expect(()=>authoringChanges(built.authoring!.files,built.authoring!,{kind:'route-point',id:'feed',action:'remove',index:5})).toThrow();
+  }finally{f.close();}
+});
+
+test('source-owned outside diameter accepts decimal mm, updates and removal with unchanged pipe endpoints',async()=>{
+  const initial=`import {project,tank,pump,pipe,signal} from '@saturn/core';
+const a=tank('T',{label:'Tank',x:0,y:0});
+const b=pump('P',{label:'Pump',x:500,y:0});
+const flow=signal('flow',{initial:0});
+const feed=pipe('feed',{from:a.ports.outlet,to:b.ports.inlet,flow});
+export default project({id:'sizes',label:'Sizes',equipment:[a,b],pipes:[feed]});`;
+  const f=fixture({'project.ts':initial});
+  try{
+    const first=await f.builder.build();
+    const ends=first.project.pipes[0]!;
+    let frame=first.authoring!;
+    const save=async(outerMm:number|null)=>{
+      const operation=readAuthoringOperation({kind:'pipe-diameter',id:'feed',outerMm});
+      const changes=authoringChanges(frame.files,frame,operation);
+      expect(changes).toHaveLength(1);
+      for(const edit of changes)f.workspace.save(edit.path,edit.source,edit.version);
+      const next=await f.builder.build();expect(next.editorError).toBeUndefined();
+      frame=next.authoring!;
+      const pipe=next.project.pipes[0]!;
+      expect(pipe.from).toEqual(ends.from);expect(pipe.to).toEqual(ends.to);
+      return pipe;
+    };
+    expect((await save(60.3)).outerDiameterMm).toBe(60.3);
+    expect(f.workspace.read('project.ts').source).toContain('outerDiameterMm: 60.3');
+    expect((await save(168.3)).outerDiameterMm).toBe(168.3);
+    expect((await save(null)).outerDiameterMm).toBeUndefined();
+    expect(f.workspace.read('project.ts').source).not.toContain('outerDiameterMm');
+    expect(()=>readAuthoringOperation({kind:'pipe-diameter',id:'feed',outerMm:-12})).toThrow();
   }finally{f.close();}
 });
