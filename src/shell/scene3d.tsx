@@ -17,6 +17,7 @@ import { Scene, type SceneProps } from './scene';
 import { placementAt, templateDimensions } from './model/entity-placement';
 import { routeIssueReason,routeIssueLabel,routeHasFreeEnd } from './route-issue';
 import { cadRunKey, cadRunVisible } from './model/cad-navigation';
+import { pipeRenderRadii } from '../core/pipe-dimensions';
 import { CadNavigator } from './cad-navigator';
 import { routeWaypointInsertIndex } from './model/route-waypoints';
 import './scene3d-route-issue.css';
@@ -351,10 +352,12 @@ export default function Scene3D(props:SceneProps){
           // Every bend still follows the source IFC Axis curve; no automatic path inference.
           const axes=new T.CurvePath<T.Vector3>();
           for(let i=1;i<run.points.length;i++)axes.add(new T.LineCurve3(vector(run.points[i-1]!),vector(run.points[i]!)));
-          const geometry=new T.TubeGeometry(axes,Math.max(6,run.points.length*5),run.network==='pipe'?4.5:run.network==='raceway'?7:2.5,5,false);
+          const geometry=new T.TubeGeometry(axes,Math.max(6,run.points.length*5),run.network==='pipe'?(run.radius??4.5):run.network==='raceway'?7:2.5,12,false);
           const material=new T.MeshStandardMaterial({color:run.network==='pipe'?0x4e879e:run.network==='raceway'?0xb48c56:0x9b8860,metalness:.2,roughness:.65,transparent:true,opacity:.86,depthWrite:true});
           cadResources.geometries.add(geometry);cadResources.materials.add(material);
-          const tube=new T.Mesh(geometry,material);tube.userData.cadGuid=run.guid;tube.userData.cadKey=cadRunKey(run);tube.userData.cadNetwork=run.network;cadWorld.add(tube);
+          const tube=new T.Mesh(geometry,material);tube.userData.cadGuid=run.guid;tube.userData.cadKey=cadRunKey(run);tube.userData.cadNetwork=run.network;
+          if(run.network==='pipe'){tube.userData.calibratedDiameterMm=run.diameter?.outerMm??null;tube.userData.renderRadius=run.radius??4.5;}
+          cadWorld.add(tube);
         }
       }
       for(const object of cadWorld.children){const network=object.userData.cadNetwork as 'pipe'|'raceway'|'cable';object.visible=cadRunVisible({network},p.cadFilter??'all');
@@ -374,6 +377,7 @@ export default function Scene3D(props:SceneProps){
         // Routing already supplies outward terminal leads and height transitions.
         // Raising all cable vertices here created diagonals and a second routing model.
         const points=route.points.map(vector);
+        const pipeSize=pipe?pipeRenderRadii(p.project,pipe):undefined;
         const cableMaterial=cable?new T.MeshStandardMaterial({color:cableAppearance(cable.from.terminal.medium as 'control'|'power'|'bus',cable.from.terminal.family).color,roughness:.65}):wire;
         if(cable)resources.materials.add(cableMaterial);
         const m=route.valid?(route.kind==='pipe'?pipeShell:cableMaterial):route.id===p.cablePreview?.id?pending:invalid;
@@ -382,8 +386,9 @@ export default function Scene3D(props:SceneProps){
           const path=rounded.path;if(route.kind==='pipe')pipeBends+=rounded.bends;
           const segments=Math.max(24,Math.ceil(path.getLength()/4));
           if(route.kind==='pipe'){
-            const shell=mesh(routeWorld,new T.TubeGeometry(path,segments,9,16,false),pipeShell,0,0,0);shell.renderOrder=1;pipeShells++;
-            const liquid=mesh(routeWorld,new T.TubeGeometry(path,segments,6.5,12,false),pipeLiquid,0,0,0);liquid.renderOrder=2;pipeLiquids++;
+            const shell=mesh(routeWorld,new T.TubeGeometry(path,segments,pipeSize?.shell??9,16,false),pipeShell,0,0,0);
+            shell.userData.pipeOuterDiameterMm=pipe?.outerDiameterMm??null;shell.userData.physicalScale=pipeSize?.calibrated??false;shell.renderOrder=1;pipeShells++;
+            const liquid=mesh(routeWorld,new T.TubeGeometry(path,segments,pipeSize?.fluid??7,12,false),pipeLiquid,0,0,0);liquid.renderOrder=2;pipeLiquids++;
             resources.updaters.push(()=>{if(pipe)liquid.material=flowOf(pipe,current.current.project,current.current.snapshot)===null?pipeStale:pipeLiquid;});
           }else mesh(routeWorld,new T.TubeGeometry(path,segments,1.8,8,false),m,0,0,0);
         }else if(!route.valid){
@@ -391,7 +396,7 @@ export default function Scene3D(props:SceneProps){
           const geometry=new T.BufferGeometry().setFromPoints(points),material=new T.LineDashedMaterial({color:route.id===p.cablePreview?.id?0xf2a13e:0xc95751,dashSize:8,gapSize:6,depthTest:false});
           resources.geometries.add(geometry);resources.materials.add(material);
           const guide=new T.Line(geometry,material);guide.computeLineDistances();guide.renderOrder=5;guide.userData.routeDiagnostic=route.id;routeWorld.add(guide);
-        }else for(let i=1;i<points.length;i++)tube(routeWorld,points[i-1]!,points[i]!,route.kind==='pipe'?5:1.5,m);
+        }else for(let i=1;i<points.length;i++)tube(routeWorld,points[i-1]!,points[i]!,route.kind==='pipe'?(pipeSize?.shell??9):1.5,m);
         if(p.interaction==='edit')for(const end of ['from','to'] as const){const point=end==='from'?points[0]:points.at(-1);if(!point)continue;const position=vector(point),handle=mesh(routeWorld,new T.SphereGeometry(6,16,10),amber,position.x,position.y,position.z);handle.userData.cablePlug={id:route.id,end};handle.material=route.id===p.selected?amber:quietPlug;plugMeshes.push(handle);}
         const authored=pipe??cable;
         if(p.interaction==='edit'&&authored)for(const [index,waypoint] of (authored.via??[]).entries()){
@@ -698,7 +703,9 @@ export default function Scene3D(props:SceneProps){
       const route=current.current.routes.find(item=>item.id===current.current.selected);if(!route?.valid)return;
       const path=roundedRoute(route.points.map(vector),route.kind==='pipe'?12:6);
       if(!path.path.curves.length)return;
-      const geometry=new T.TubeGeometry(path.path,Math.max(24,Math.ceil(path.path.getLength()/4)),route.kind==='pipe'?11:3.6,8,false);
+      const chosenPipe=current.current.project.pipes.find(pipe=>pipe.id===route.id);
+      const selectedRadius=chosenPipe?pipeRenderRadii(current.current.project,chosenPipe).shell:9;
+      const geometry=new T.TubeGeometry(path.path,Math.max(24,Math.ceil(path.path.getLength()/4)),route.kind==='pipe'?Math.max(selectedRadius*1.17,selectedRadius+.3):3.6,8,false);
       routeSelectedMesh=new T.Mesh(geometry,routeSelectedMaterial);routeSelectedMesh.renderOrder=6;world.add(routeSelectedMesh);
     };
     const tick=(now:number)=>{const dt=Math.min(.1,(now-last)/1000);last=now;if(!document.hidden){if(!current.current.placing){placementMesh.visible=false;delete node.dataset.placementCandidate;delete node.dataset.placementValid;}if(gesture&&current.current.interaction!=='edit')pointerCancel();if(dirty)synchronize();for(const handle of plugMeshes)handle.material=handle.userData.cablePlug.id===current.current.selected?amber:quietPlug;for(const handle of bendMeshes)handle.visible=handle.userData.routeWaypoint.id===current.current.selected;highlightRoute();if(focusedSystem!==current.current.systemFocus){focusedSystem=current.current.systemFocus;for(const [id,material] of groupBorders)material.color.set(id===focusedSystem?0x17879a:0xa8bec8);}const elapsed=reduced.matches?0:dt;for(const scope of [...deviceResources.values(),routeResources])for(const update of scope.updaters)update(elapsed);
