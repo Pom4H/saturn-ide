@@ -6,10 +6,11 @@ import './cad-navigator.css';
 interface Props {
   runs:readonly CadRunPlan[]; filter:CadFilter; selected?:string;
   locale:Locale; onFilter:(filter:CadFilter)=>void; onFocus:(guid:string)=>void;
+  targetPipe?:string;onCopyDiameter?:(pipeId:string,outerMm:number)=>void;
 }
 
 /** Inspect imported reference axes without promoting IFC geometry to Saturn connections. */
-export function CadNavigator({runs,filter,selected,locale,onFilter,onFocus}:Props){
+export function CadNavigator({runs,filter,selected,locale,onFilter,onFocus,targetPipe,onCopyDiameter}:Props){
   const [open,setOpen]=useState(false);
   if(!runs.length)return null;
   const ru=locale==='ru',visible=runs.filter(run=>cadRunVisible(run,filter));
@@ -32,9 +33,26 @@ export function CadNavigator({runs,filter,selected,locale,onFilter,onFocus}:Prop
           onClick={()=>onFilter(option.id)}>{ru?option.ru:option.en}</button>)}
       </div>
       {visible.length>0?<div className="cad-navigator-list">
-        {visible.map(run=><button key={cadRunKey(run)} type="button" data-cad-link={cadRunKey(run)}
-          aria-pressed={selected===cadRunKey(run)} title={`${run.source} · ${run.guid}`}
-          onClick={()=>onFocus(cadRunKey(run))}><span>{run.label}</span><small>{run.network==='raceway'?(ru?'Лоток':'Tray'):run.network==='pipe'?(ru?'Труба':'Pipe'):(ru?'Кабель':'Cable')} · {run.source}</small></button>)}
+        {visible.map(run=><div key={cadRunKey(run)} className="cad-run-row">
+          <button type="button" data-cad-link={cadRunKey(run)}
+            aria-pressed={selected===cadRunKey(run)} title={`${run.source} · ${run.guid}`}
+            onClick={()=>onFocus(cadRunKey(run))}>
+            <span>{run.label}</span>
+            <small>{run.network==='raceway'?(ru?'Лоток':'Tray'):run.network==='pipe'?(ru?'Труба':'Pipe'):(ru?'Кабель':'Cable')} · {run.source}</small>
+            {run.diameter&&<small className="cad-pipe-diameter">
+              {run.diameter.nominalMm!==undefined?`DN ${run.diameter.nominalMm}`:''}
+              {run.diameter.outerMm!==undefined?`${run.diameter.nominalMm!==undefined?' · ':''}Ø ${run.diameter.outerMm} мм`:''}
+              {run.diameter.outerMm===undefined?(ru?' · наружный Ø неизвестен':' · outside Ø unknown'):''}
+            </small>}
+          </button>
+          {selected===cadRunKey(run)&&run.network==='pipe'&&run.diameter?.outerMm!==undefined&&targetPipe&&onCopyDiameter&&
+            <button className="cad-copy-diameter" type="button"
+              data-copy-cad-diameter={run.guid}
+              title={ru?'Копирует только размер в TypeScript. Связь с CAD и монтаж не подтверждаются.':'Copies the measurement into TypeScript only; does not link or install this CAD run.'}
+              onClick={()=>onCopyDiameter(targetPipe,run.diameter!.outerMm!)}>
+              {ru?`Принять Ø ${run.diameter.outerMm} мм для ${targetPipe}`:`Use Ø ${run.diameter.outerMm} mm for ${targetPipe}`}
+            </button>}
+        </div>)}
       </div>:<p className="cad-navigator-empty">{ru?'Нет осей этого типа':'No axes on this layer'}</p>}
     </div>}
   </div>;
