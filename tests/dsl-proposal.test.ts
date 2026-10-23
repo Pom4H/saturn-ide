@@ -8,7 +8,7 @@ test('plain authored labels need neither locale nor an explicit semantic ID',()=
  const value='Давление "после насоса"\nПроверить';
  expect(applyDslProposal({[path]:source},[{kind:'equipment.label',id:'PT-01',value}])[path]).toBe(source.replace("'Давление'",JSON.stringify(value)));
  expect(()=>applyDslProposal({[path]:source},[{kind:'equipment.label',id:'PT-01',locale:'ru',value}])).toThrow('Unknown or ambiguous');
- for(const label of ['computedLabel',"{...translations,ru:'Давление'}"]){
+ for(const label of ['computedLabel',"{ru:'Давление',...translations}"]){
   const computed=source.replace("'Давление'",label);
   expect(dslCatalog({[path]:computed}).some(target=>target.kind==='equipment.label')).toBe(false);
  }

@@ -1,11 +1,17 @@
 import ts from 'typescript';
 import type { DslChange, DslTarget } from '../core/feedback';
-import { asDeviceCall } from './ast';
+import { asDeviceCall, authoredProperty } from './ast';
 interface Target extends DslTarget {from:number;to:number}
 const prop=(node:ts.ObjectLiteralExpression,name:string)=>{
-  if(node.properties.some(p=>ts.isSpreadAssignment(p)))return undefined;
-  const matches=node.properties.filter((p):p is ts.PropertyAssignment=>ts.isPropertyAssignment(p)&&!ts.isComputedPropertyName(p.name)&&(ts.isIdentifier(p.name)||ts.isStringLiteral(p.name))&&p.name.text===name);
-  return matches.length===1?matches[0]!.initializer:undefined;
+  const found=authoredProperty(node,name);
+  return found.kind==='explicit'?found.node.initializer:undefined;
+};
+/** Source proposals may edit authored modules, not executable adapters or vendor internals. */
+const authoredPath=(path:string)=>{
+  const parts=path.split('/'),file=parts.at(-1)??'';
+  return path.length<=512&&!/[\\:\0]/.test(path)&&/\.tsx?$/.test(file.toLowerCase())&&!/\.(?:test|spec|d)\.tsx?$/.test(file.toLowerCase())&&
+    !/^(?:server|browser|driver)\.tsx?$/.test(file.toLowerCase())&&
+    parts.every(part=>!!part&&!part.startsWith('.')&&!['plugins','firmware','node_modules','targets','protocols','tests','scripts'].includes(part.toLowerCase()));
 };
 const literal=(node:ts.Node|undefined):string|number|boolean|undefined=>{
   if(!node)return;
@@ -16,29 +22,39 @@ const literal=(node:ts.Node|undefined):string|number|boolean|undefined=>{
   if(ts.isPrefixUnaryExpression(node)&&node.operator===ts.SyntaxKind.MinusToken&&ts.isNumericLiteral(node.operand))return -Number(node.operand.text);
 };
 function targets(path:string,source:string):Target[]{
-  // Project-authored files only. No plugin, firmware, protocol, CI or dependency edits.
-  if(!/^(?:[a-zA-Z0-9_-]+\/)*(?:project\.ts|equipment\/[a-zA-Z0-9_./-]+\.device\.ts)$/.test(path)||path.split('/').some(p=>['plugins','firmware','node_modules','targets'].includes(p)||p==='..'))return [];
+  if(!authoredPath(path))return [];
   const tree=ts.createSourceFile(path,source,ts.ScriptTarget.Latest,true),result:Target[]=[];
-  const imports=new Map<string,string>();
+  const imports=new Map<string,string>(),namespaces=new Set<string>();
   for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&ts.isStringLiteral(statement.moduleSpecifier)&&['@saturn/core','saturn-ide/core'].includes(statement.moduleSpecifier.text)){
-    const bindings=statement.importClause?.namedBindings;if(bindings&&ts.isNamedImports(bindings))for(const e of bindings.elements)imports.set(e.name.text,e.propertyName?.text??e.name.text);
+    const clause=statement.importClause;if(!clause||clause.isTypeOnly)continue;
+    const bindings=clause.namedBindings;
+    if(bindings&&ts.isNamedImports(bindings))for(const e of bindings.elements){if(!e.isTypeOnly)imports.set(e.name.text,e.propertyName?.text??e.name.text);}
+    else if(bindings&&ts.isNamespaceImport(bindings))namespaces.add(bindings.name.text);
   }
+  const coreCall=(expression:ts.Expression):string|undefined=>ts.isIdentifier(expression)?imports.get(expression.text):
+    ts.isPropertyAccessExpression(expression)&&ts.isIdentifier(expression.expression)&&namespaces.has(expression.expression.text)?expression.name.text:undefined;
   const add=(kind:DslTarget['kind'],id:string,node:ts.Node|undefined,locale?:'ru'|'en')=>{const value=literal(node);if(node&&value!==undefined)result.push({kind,id,path,...(locale?{locale}:{}),value,from:node.getStart(tree),to:node.end});};
   const visit=(node:ts.Node)=>{
+    if(ts.isFunctionLike(node))return; // Shared factory implementation is not an instance override.
     if(ts.isCallExpression(node)){
       const [first,second]=node.arguments;
       if(first&&ts.isStringLiteral(first)&&second&&ts.isObjectLiteralExpression(second)){
-        if(ts.isIdentifier(node.expression)&&imports.get(node.expression.text)==='alarm')add('alarm.above',first.text,prop(second,'above'));
-        else if(path.endsWith('.device.ts')&&(asDeviceCall(node,tree)||typeof literal(prop(second,'semanticId'))==='string'&&String(literal(prop(second,'semanticId'))).startsWith('equipment:'))){
+        if(coreCall(node.expression)==='alarm')add('alarm.above',first.text,prop(second,'above'));
+        else if(asDeviceCall(node,tree)||typeof literal(prop(second,'semanticId'))==='string'&&String(literal(prop(second,'semanticId'))).startsWith('equipment:')){
           const label=prop(second,'label');
           if(label&&ts.isStringLiteral(label))add('equipment.label',first.text,label);
           else if(label&&ts.isObjectLiteralExpression(label))for(const locale of ['ru','en'] as const)add('equipment.label',first.text,prop(label,locale),locale);
-          for(const field of second.properties)if(ts.isPropertyAssignment(field)&&ts.isIdentifier(field.name)){
+          for(const field of second.properties)if(ts.isPropertyAssignment(field)&&(ts.isIdentifier(field.name)||ts.isStringLiteral(field.name))){
+            const owned=authoredProperty(second,field.name.text);
+            if(owned.kind!=='explicit'||owned.node!==field)continue;
             let initializer=field.initializer;
-            // Protocol binding preserves the same owned signal; only change its literal initial value.
-            if(ts.isCallExpression(initializer)&&ts.isPropertyAccessExpression(initializer.expression)&&initializer.expression.name.text==='bind'&&initializer.arguments[0])initializer=initializer.arguments[0];
-            if(ts.isCallExpression(initializer)&&ts.isIdentifier(initializer.expression)&&imports.get(initializer.expression.text)==='signal'){
-              const options=initializer.arguments[0];if(options&&ts.isObjectLiteralExpression(options))add('signal.initial',`${first.text}.${field.name.text}`,prop(options,'initial'));
+            // Bind is the imported core function, never an arbitrary object's method.
+            while(ts.isCallExpression(initializer)&&coreCall(initializer.expression)==='bind'&&initializer.arguments[0])initializer=initializer.arguments[0];
+            if(ts.isCallExpression(initializer)&&coreCall(initializer.expression)==='signal'){
+              const [firstArg,secondArg]=initializer.arguments;
+              const explicitId=firstArg&&ts.isStringLiteral(firstArg)?firstArg.text:undefined;
+              const options=explicitId!==undefined?secondArg:firstArg;
+              if(options&&ts.isObjectLiteralExpression(options))add('signal.initial',explicitId??`${first.text}.${field.name.text}`,prop(options,'initial'));
             }
           }
         }

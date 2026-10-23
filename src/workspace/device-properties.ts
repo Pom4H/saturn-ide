@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { deviceCalls, numericLiteral } from './ast';
+import { authoredProperty, deviceCalls, numericLiteral } from './ast';
 import { HttpError } from './files';
 
 export interface DevicePropertiesPatch {
@@ -12,7 +12,6 @@ export interface DevicePropertiesPatch {
   readonly system?:string|null;
 }
 interface TextEdit {readonly from:number;readonly to:number;readonly text:string}
-const key=(node:ts.PropertyName,tree:ts.SourceFile)=>ts.isIdentifier(node)||ts.isStringLiteral(node)?node.text:node.getText(tree);
 /** Edits one unambiguous authored equipment call by AST offsets; no regex replacement or second authored state. */
 export function patchDeviceProperties(source:string,id:string,patch:DevicePropertiesPatch):string{
   if(!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}$/.test(id))throw new HttpError(400,'Invalid equipment id');
@@ -23,10 +22,15 @@ export function patchDeviceProperties(source:string,id:string,patch:DeviceProper
   const tree=ts.createSourceFile('equipment.ts',source,ts.ScriptTarget.Latest,true);
   const matches=deviceCalls(tree,new Set([id]));
   if(matches.length!==1)throw new HttpError(409,'Equipment source is missing or ambiguous; edit TypeScript directly');
-  const options=matches[0]!.options,existing=new Map(options.properties.filter(ts.isPropertyAssignment).map(node=>[key(node.name,tree),node]));
+  const options=matches[0]!.options;
+  const explicit=(object:ts.ObjectLiteralExpression,name:string)=>{
+    const found=authoredProperty(object,name);
+    if(found.kind==='ambiguous')throw new HttpError(409,`Computed or ambiguous ${name} is read-only in the inspector; edit TypeScript`);
+    return found.kind==='explicit'?found.node:undefined;
+  };
   const edits:TextEdit[]=[],inserted:string[]=[];
   const property=(name:string,value:string,allowComputed=false)=>{
-    const prop=existing.get(name);
+    const prop=explicit(options,name);
     if(!prop){inserted.push(`${name}: ${value}`);return;}
     if(!allowComputed&&name==='label'&&!ts.isStringLiteralLike(prop.initializer))throw new HttpError(409,'Computed label is read-only in the inspector; edit TypeScript');
     if(!allowComputed&&['x','y','z'].includes(name)&&!numericLiteral(prop.initializer))throw new HttpError(409,`Computed ${name} is read-only in the inspector; edit TypeScript`);
@@ -34,9 +38,9 @@ export function patchDeviceProperties(source:string,id:string,patch:DeviceProper
     edits.push({from:prop.initializer.getStart(tree),to:prop.initializer.end,text:value});
   };
   if(patch.label!==undefined){
-    const original=existing.get('label')?.initializer;
+    const original=explicit(options,'label')?.initializer;
     if(original&&ts.isObjectLiteralExpression(original)){
-      const lang=patch.locale??'ru',entry=original.properties.filter(ts.isPropertyAssignment).find(p=>key(p.name,tree)===lang);
+      const lang=patch.locale??'ru',entry=explicit(original,lang);
       if(!entry||!ts.isStringLiteralLike(entry.initializer))throw new HttpError(409,'Computed localized label is read-only in the inspector; edit TypeScript');
       edits.push({from:entry.initializer.getStart(tree),to:entry.initializer.end,text:JSON.stringify(patch.label.trim())});
     }else property('label',JSON.stringify(patch.label.trim()));
